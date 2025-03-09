@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  algorithmic-trading:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: backtest
+    volumes:
+      - ./data:/app/data
+      - ./results:/app/results
+      - ./config.json:/app/config.json
+    environment:
+      # GPU Settings
+      - NVIDIA_VISIBLE_DEVICES=all
+      - TF_FORCE_GPU_ALLOW_GROWTH=true
+      - TF_GPU_ALLOCATOR=cuda_malloc_async
+      - TF_XLA_FLAGS=--tf_xla_auto_jit=2
+      - TF_GPU_THREAD_MODE=gpu_private
+      - TF_GPU_THREAD_COUNT=2
+      - TF_ENABLE_GPU_GARBAGE_COLLECTION=true
+      # New transformer/ensemble settings
+      - TF_ENABLE_ONEDNN_OPTS=1
+      # API Keys (replace with your own or use environment variables)
+      - BINANCE_API_KEY=XW2qoCu1zlZdA8FEW98y7Md55ZtJ7fpaV1un6QkZErMeHIY7VXYAY5J6FonVTUdy
+      - BINANCE_API_SECRET=ivuwpI0yYRPRvSrex0IHGLcF4QP6jWTcUMCsWJ0DSQ3retcwOSTcmm9yzB1PFaP2
+      # Python settings
+      - PYTHONUNBUFFERED=1
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+        limits:
+          cpus: '4'
+          memory: 32G
+    shm_size: 8gb
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "200m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import tensorflow as tf; print(tf.config.list_physical_devices('GPU'))"]
+      interval: 5m
+      timeout: 30s
+      retries: 3
+      start_period: 60s
