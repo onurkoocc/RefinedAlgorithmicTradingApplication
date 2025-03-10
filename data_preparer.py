@@ -40,7 +40,7 @@ class DataPreparer:
             'm30_bb_upper', 'm30_obv', 'm30_bb_mid',
             'open', 'high', 'low', 'close', 'volume', 'atr_14',
             'm30_rsi_14', 'm30_macd', 'm30_macd_signal', 'm30_macd_histogram',
-            'm30_cmf', 'm30_mfi', 'm30_vwap'
+            'm30_cmf', 'm30_mfi', 'm30_vwap', 'm30_adx', 'cumulative_delta_volume'
         ]
         available_features = []
         for col in df.columns:
@@ -55,7 +55,8 @@ class DataPreparer:
             ('rsi_14', 'm30_rsi_14'),
             ('macd', 'm30_macd'),
             ('macd_signal', 'm30_macd_signal'),
-            ('macd_histogram', 'm30_macd_histogram')
+            ('macd_histogram', 'm30_macd_histogram'),
+            ('adx', 'm30_adx')
         ]
 
         for base, prefixed in indicator_pairs:
@@ -129,7 +130,7 @@ class DataPreparer:
             'm30_bb_upper', 'm30_obv', 'm30_bb_mid',
             'open', 'high', 'low', 'close', 'volume', 'atr_14',
             'm30_rsi_14', 'm30_macd', 'm30_macd_signal', 'm30_macd_histogram',
-            'm30_cmf', 'm30_mfi', 'm30_vwap'
+            'm30_cmf', 'm30_mfi', 'm30_vwap', 'm30_adx', 'cumulative_delta_volume'
         ]
 
         available_features = []
@@ -146,7 +147,8 @@ class DataPreparer:
             ('rsi_14', 'm30_rsi_14'),
             ('macd', 'm30_macd'),
             ('macd_signal', 'm30_macd_signal'),
-            ('macd_histogram', 'm30_macd_histogram')
+            ('macd_histogram', 'm30_macd_histogram'),
+            ('adx', 'm30_adx')
         ]
 
         for base, prefixed in indicator_pairs:

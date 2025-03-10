@@ -134,13 +134,17 @@ class DataManager:
             df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
             df.set_index('timestamp', inplace=True)
 
-            numeric_cols = ['open', 'high', 'low', 'close', 'volume', 'quote_asset_volume']
+            # CHANGE HERE: Include taker volume columns in the numeric columns list
+            numeric_cols = ['open', 'high', 'low', 'close', 'volume', 'quote_asset_volume',
+                            'taker_buy_base_asset_volume', 'taker_buy_quote_asset_volume']
             for col in numeric_cols:
                 df[col] = pd.to_numeric(df[col], errors='coerce').astype(np.float32)
 
             df['turnover'] = df['quote_asset_volume']
 
-            df = df[['open', 'high', 'low', 'close', 'volume', 'turnover']]
+            # CHANGE HERE: Include taker volume columns in the final DataFrame
+            df = df[['open', 'high', 'low', 'close', 'volume', 'turnover',
+                     'taker_buy_base_asset_volume', 'taker_buy_quote_asset_volume']]
             df.sort_index(inplace=True)
 
             if df.index.duplicated().any():

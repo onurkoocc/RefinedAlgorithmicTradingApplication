@@ -17,14 +17,14 @@ class FeatureEngineer:
         self.indicators = [
             "ema_20", "obv", "bb_width", "bb_upper", "bb_lower", "bb_mid",
             "atr_14", "rsi_14", "macd", "macd_signal", "macd_histogram",
-            "cmf", "mfi", "vwap"
+            "cmf", "mfi", "vwap", "adx", "cumulative_delta_volume"
         ]
 
         self.essential_features = [
             "open", "high", "low", "close", "volume",
             "ema_20", "obv", "bb_width", "atr_14",
             "rsi_14", "macd", "macd_signal", "macd_histogram",
-            "cmf", "mfi", "vwap"
+            "cmf", "mfi", "vwap", "adx", "cumulative_delta_volume"
         ]
 
         self.ema_period = 20
@@ -34,12 +34,25 @@ class FeatureEngineer:
         self.macd_fast = 12
         self.macd_slow = 26
         self.macd_signal = 9
-
+        self.adx_period = 14
         self.cmf_period = 20
         self.mfi_period = 14
         self.vwap_period = 14
 
     def process_features(self, df_30m: pd.DataFrame) -> pd.DataFrame:
+        # First, ensure all column names are lowercase
+        df_30m.columns = [col.lower() for col in df_30m.columns]
+
+        # Debug: Print all columns to see what's available
+        self.logger.info(f"Available columns in input data: {df_30m.columns.tolist()}")
+
+        # Preserve taker volume columns if they exist
+        taker_volume_columns = []
+        for col in df_30m.columns:
+            if 'taker' in col.lower():
+                taker_volume_columns.append(col)
+                self.logger.info(f"Found taker volume column: {col}")
+
         if self.use_chunking and len(df_30m) > self.chunk_size:
             final_df = self._process_data_in_chunks(df_30m, chunk_size=self.chunk_size)
         else:
@@ -56,8 +69,16 @@ class FeatureEngineer:
             self.logger.warning(f"Found {inf_check} infinite values before filtering indicators, replacing with NaN")
             final_df = final_df.replace([np.inf, -np.inf], np.nan)
 
-        final_df = self._filter_indicators(final_df)
+        # Make sure taker volume columns are preserved in the filtered dataframe
+        if taker_volume_columns:
+            self.logger.info(f"Preserving taker volume columns for CDV calculation: {taker_volume_columns}")
 
+            # Ensure these columns exist in final_df
+            for col in taker_volume_columns:
+                if col in df_30m.columns and col not in final_df.columns:
+                    final_df[col] = df_30m[col]
+
+        final_df = self._filter_indicators(final_df)
         final_df = self.compute_advanced_features(final_df)
 
         # Validate again before scaling
@@ -82,6 +103,7 @@ class FeatureEngineer:
 
     def compute_advanced_features(self, df: pd.DataFrame) -> pd.DataFrame:
         df = df.copy()
+        df = self._add_cumulative_delta_volume(df)
 
         df = self._add_swing_points(df)
         df = self._add_market_structure(df)
@@ -93,12 +115,40 @@ class FeatureEngineer:
 
         return df
 
+    def _add_cumulative_delta_volume(self, df: pd.DataFrame) -> pd.DataFrame:
+
+
+        if 'taker_buy_base_asset_volume' in df.columns and 'volume' in df.columns:
+            self.logger.info("Found taker_buy_base_asset_volume column - using for CDV calculation")
+            buy_volume = df['taker_buy_base_asset_volume']
+            sell_volume = df['volume'] - buy_volume
+            delta_volume = buy_volume - sell_volume
+            df['cumulative_delta_volume'] = delta_volume.cumsum()
+            df['cdv_normalized'] = df['cumulative_delta_volume'] / df['volume'].rolling(20).mean()
+            self.logger.info("Using actual taker volume data for CDV calculation")
+        else:
+            taker_cols = [col for col in df.columns if 'taker' in col.lower() and 'buy' in col.lower()]
+
+            if taker_cols:
+                taker_col = taker_cols[0]
+                self.logger.info(f"Using alternative taker volume column: {taker_col}")
+                buy_volume = df[taker_col]
+                sell_volume = df['volume'] - buy_volume
+                delta_volume = buy_volume - sell_volume
+                df['cumulative_delta_volume'] = delta_volume.cumsum()
+                df['cdv_normalized'] = df['cumulative_delta_volume'] / df['volume'].rolling(20).mean()
+                self.logger.info(f"Using taker volume from column '{taker_col}' for CDV calculation")
+            else:
+                self.logger.info("Taker buy volume data not available for CDV, using price-based estimation")
+                price_change = df['close'].pct_change()
+                volume = df['volume']
+
+                estimated_delta = volume * np.sign(price_change)
+                df['cumulative_delta_volume'] = estimated_delta.fillna(0).cumsum()
+                df['cdv_normalized'] = df['cumulative_delta_volume'] / df['volume'].rolling(20).mean()
+
+        return df
     def _add_swing_points(self, df: pd.DataFrame, window: int = 5) -> pd.DataFrame:
-        """
-        Identify swing high/low points using only past data.
-        A true swing point can only be confirmed after a retracement,
-        so we need to look for past formations without using future data.
-        """
         highs = df['high'].values
         lows = df['low'].values
 
@@ -569,12 +619,24 @@ class FeatureEngineer:
     def _process_data_combined(self, df_30m: pd.DataFrame) -> pd.DataFrame:
         df_30m = df_30m.copy()
 
+        # Ensure column names are lowercase
+        df_30m.columns = [col.lower() for col in df_30m.columns]
+
+        # Debug log to see available columns
+        self.logger.info(f"Columns in process_data_combined input: {df_30m.columns.tolist()}")
+
         df_30m.replace([np.inf, -np.inf], np.nan, inplace=True)
         if not isinstance(df_30m.index, pd.DatetimeIndex):
             df_30m.index = pd.to_datetime(df_30m.index)
 
         feat_30m = self._compute_core_indicators(df_30m).add_prefix('m30_')
         feat_30m[['open', 'high', 'low', 'close', 'volume']] = df_30m[['open', 'high', 'low', 'close', 'volume']]
+
+        # Process taker volume data if available - improved detection
+        taker_columns = [col for col in df_30m.columns if 'taker' in col.lower()]
+        for col in taker_columns:
+            feat_30m[col] = df_30m[col]
+            self.logger.info(f"Preserved taker column: {col}")
 
         if 'm30_obv' in feat_30m.columns:
             feat_30m['obv'] = feat_30m['m30_obv']
@@ -583,7 +645,8 @@ class FeatureEngineer:
         for base, prefixed in [('ema_20', 'm30_ema_20'), ('rsi_14', 'm30_rsi_14'),
                                ('macd', 'm30_macd'), ('macd_signal', 'm30_macd_signal'),
                                ('macd_histogram', 'm30_macd_histogram'),
-                               ('atr_14', 'm30_atr_14'), ('bb_width', 'm30_bb_width')]:
+                               ('atr_14', 'm30_atr_14'), ('bb_width', 'm30_bb_width'),
+                               ('adx', 'm30_adx')]:  # Added ADX mapping
             if prefixed in feat_30m.columns:
                 feat_30m[base] = feat_30m[prefixed]
 
@@ -676,7 +739,7 @@ class FeatureEngineer:
         tr = pd.concat([high_low, high_close_prev, low_close_prev], axis=1).max(axis=1)
         out[f'atr_{self.atr_period}'] = tr.rolling(self.atr_period).mean()
 
-        # Calculate RSI (Relative Strength Index)
+        # Calculate RSI with shorter period (changed from 14 to 9)
         delta = df['close'].diff()
         gain = (delta.where(delta > 0, 0)).rolling(window=self.rsi_period).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(window=self.rsi_period).mean()
@@ -698,6 +761,33 @@ class FeatureEngineer:
         out['macd'] = ema_12 - ema_26
         out['macd_signal'] = out['macd'].ewm(span=self.macd_signal, adjust=False).mean()
         out['macd_histogram'] = out['macd'] - out['macd_signal']
+
+        # Calculate ADX (Average Directional Index)
+        # True Range (already computed for ATR)
+        plus_dm = (df['high'] - df['high'].shift(1)).clip(lower=0)
+        minus_dm = (df['low'].shift(1) - df['low']).clip(lower=0)
+
+        # Directional Movement conditions
+        plus_dm_mask = (df['high'] - df['high'].shift(1)) > (df['low'].shift(1) - df['low'])
+        minus_dm_mask = (df['low'].shift(1) - df['low']) > (df['high'] - df['high'].shift(1))
+
+        plus_dm = plus_dm.where(plus_dm_mask, 0)
+        minus_dm = minus_dm.where(minus_dm_mask, 0)
+
+        # Smoothed values
+        tr_smooth = tr.ewm(span=self.adx_period, adjust=False).mean()
+        plus_di = 100 * (plus_dm.ewm(span=self.adx_period, adjust=False).mean() / tr_smooth)
+        minus_di = 100 * (minus_dm.ewm(span=self.adx_period, adjust=False).mean() / tr_smooth)
+
+        # Calculate DX and ADX
+        dx_denom = np.maximum(plus_di + minus_di, 1e-10)  # Avoid division by zero
+        dx = 100 * abs(plus_di - minus_di) / dx_denom
+        out['adx'] = dx.ewm(span=self.adx_period, adjust=False).mean()
+        out['adx'] = out['adx'].fillna(25)  # Neutral value
+
+        # Also store +DI and -DI for additional signal possibilities
+        out['plus_di'] = plus_di.fillna(25)
+        out['minus_di'] = minus_di.fillna(25)
 
         # Calculate CMF (Chaikin Money Flow)
         multiplier = np.zeros_like(df['high'].values)
@@ -845,8 +935,15 @@ class FeatureEngineer:
             'm30_bb_upper', 'm30_obv', 'm30_bb_mid',
             'open', 'high', 'low', 'close', 'volume', 'atr_14',
             'm30_rsi_14', 'm30_macd', 'm30_macd_signal', 'm30_macd_histogram',
-            'm30_cmf', 'm30_mfi', 'm30_vwap'
+            'm30_cmf', 'm30_mfi', 'm30_vwap', 'm30_adx', 'cumulative_delta_volume'
         ]
+
+        # Add taker volume columns to required features
+        taker_columns = [col for col in df.columns if 'taker' in col.lower()]
+        for col in taker_columns:
+            if col not in required_features:
+                required_features.append(col)
+                self.logger.info(f"Added taker column to required features: {col}")
 
         self.required_model_features = required_features.copy()
 
@@ -857,13 +954,27 @@ class FeatureEngineer:
 
         existing_columns = [col for col in required_features if col in df.columns]
 
+        # Also include taker columns
+        for col in taker_columns:
+            if col not in existing_columns:
+                existing_columns.append(col)
+
         if len(existing_columns) < len(required_features):
             missing_columns = set(required_features) - set(existing_columns)
             self.logger.warning(f"Some required columns are missing from the dataframe: {missing_columns}")
 
         self.logger.info(f"Using indicators for model: {existing_columns}")
 
-        filtered_df = df[existing_columns + actual_columns].copy()
+        # Make sure to include all necessary columns in the filtered dataframe
+        all_columns = existing_columns + actual_columns + taker_columns
+        # Remove duplicates while preserving order
+        filtered_columns = []
+        for col in all_columns:
+            if col not in filtered_columns:
+                filtered_columns.append(col)
+
+        filtered_df = df[filtered_columns].copy()
+        self.logger.info(f"Filtered dataframe columns: {filtered_df.columns.tolist()}")
 
         return filtered_df
 

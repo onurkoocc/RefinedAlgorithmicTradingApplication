@@ -46,12 +46,12 @@ class Config:
                     "open", "high", "low", "close", "volume",
                     "market_regime", "volatility_regime", "obv",
                     "ema_20", "rsi_14", "macd", "macd_signal", "macd_histogram",
-                    "cmf", "mfi", "vwap"
+                    "cmf", "mfi", "vwap", "adx", "cumulative_delta_volume"
                 ],
                 "indicators": [
                     "ema_20", "rsi_14", "macd", "macd_signal", "macd_histogram",
                     "bb_width", "atr_14", "obv",
-                    "cmf", "mfi", "vwap"
+                    "cmf", "mfi", "vwap", "adx", "cumulative_delta_volume"
                 ],
                 "ema_period": 20,
                 "rsi_period": 14,
