@@ -129,7 +129,8 @@ class Config:
                 "dropout_rate": 0.2
             },
             "signal": {
-                "confidence_threshold": 0.5,
+                "confidence_threshold": 0.35,
+                "ensemble_threshold": 0.42,
                 "strong_signal_threshold": 0.7,
                 "atr_multiplier_sl": 2.5,
                 "use_regime_filter": True,
@@ -140,7 +141,7 @@ class Config:
             },
             "risk": {
                 "initial_capital": 10000.0,
-                "max_risk_per_trade": 0.015,
+                "max_risk_per_trade": 0.018,
                 "max_correlated_exposure": 0.06,
                 "volatility_scaling": True,
                 "max_drawdown_percent": 0.2,
@@ -151,7 +152,6 @@ class Config:
                 "min_trade_size_btc": 0.0005,
                 "use_rsi_scaling": True,
                 "use_ema_based_exits": True,
-
                 # Enhanced exit strategy settings
                 "enhanced_exit_strategy": True,
                 "momentum_exit_enabled": True,
@@ -159,11 +159,11 @@ class Config:
 
                 # Phase-specific risk settings
                 "phase_specific_risk": {
-                    "neutral": 1.25,
-                    "uptrend": 1.0,
+                    "neutral": 1.3,
+                    "uptrend": 1.1,
                     "downtrend": 0.9,
                     "ranging_at_support": 0.8,
-                    "ranging_at_resistance": 0.6
+                    "ranging_at_resistance": 0.4
                 },
 
                 # Enhanced partial exit configuration
@@ -197,8 +197,8 @@ class Config:
             },
             "time_management": {
                 # Enhanced time-based settings
-                "min_profit_taking_hours": 1.5,
-                "small_profit_exit_hours": 24,
+                "min_profit_taking_hours": 2.5,
+                "small_profit_exit_hours": 20,
                 "stagnant_exit_hours": 30,
                 "max_trade_duration_hours": 60,
 
@@ -214,12 +214,12 @@ class Config:
 
                 # Enhanced profit targets
                 "profit_targets": {
-                    "micro": 0.006,
+                    "micro": 0.005,
                     "quick": 0.01,
                     "small": 0.015,
-                    "medium": 0.025,
-                    "large": 0.04,
-                    "extended": 0.06
+                    "medium": 0.023,
+                    "large": 0.035,
+                    "extended": 0.05
                 },
 
                 # Phase-specific profit preferences

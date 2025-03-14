@@ -1,7 +1,9 @@
 import logging
 import numpy as np
 import pandas as pd
-from typing import Dict, Any, Optional, Union, List, Tuple
+from typing import Dict, List, Optional, Tuple, Any, Union
+from sklearn.preprocessing import StandardScaler
+from scipy import stats
 
 
 class SignalProcessor:
@@ -18,10 +20,20 @@ class SignalProcessor:
         self.rsi_overbought = config.get("signal", "rsi_overbought", 70)
         self.rsi_oversold = config.get("signal", "rsi_oversold", 30)
 
-        # Lowering the ensemble threshold to allow more trades
-        self.ensemble_threshold = 0.45
-        # Increasing the proximity threshold to be less restrictive
-        self.support_resistance_proximity_pct = 0.025
+        # OPTIMIZATION: Lowered ensemble threshold to allow more trades
+        self.ensemble_threshold = 0.42  # Reduced from 0.45
+
+        # OPTIMIZATION: Market phase specific confidence thresholds
+        self.phase_confidence_thresholds = {
+            "neutral": 0.32,  # Reduced by 8% from base 0.35
+            "uptrend": 0.35,  # Standard threshold
+            "downtrend": 0.35,  # Standard threshold
+            "ranging_at_support": 0.37,  # Slightly increased
+            "ranging_at_resistance": 0.39  # Increased by 12% from base 0.35
+        }
+
+        # OPTIMIZATION: Increased proximity threshold to be less restrictive for entries
+        self.support_resistance_proximity_pct = 0.028  # Increased from 0.025
 
         self.market_phases = ["uptrend", "downtrend", "ranging_at_support", "ranging_at_resistance", "neutral"]
 
@@ -42,20 +54,18 @@ class SignalProcessor:
         win_streak = kwargs.get("win_streak", 0)
         loss_streak = kwargs.get("loss_streak", 0)
 
-        # Adjust confidence threshold based on recent performance
+        # OPTIMIZATION: Enhanced adaptive confidence threshold based on recent performance
+        # More dynamic range based on win/loss streaks
         adjusted_confidence = self.confidence_threshold
         if adaptive_mode:
             if win_streak >= 3:
-                # Slightly more aggressive on win streaks
-                adjusted_confidence = max(0.35, self.confidence_threshold * 0.9)
+                # More aggressive on win streaks
+                adjusted_confidence = max(0.32, self.confidence_threshold * 0.88)  # Reduced from 0.35/0.9
             elif loss_streak >= 2:
                 # More conservative on loss streaks
-                adjusted_confidence = min(0.6, self.confidence_threshold * 1.15)
+                adjusted_confidence = min(0.62, self.confidence_threshold * 1.2)  # Increased from 0.6/1.15
         else:
             adjusted_confidence = self.confidence_threshold
-
-        if max_conf < adjusted_confidence:
-            return {"signal_type": "NoTrade", "confidence": max_conf, "reason": "LowConfidence"}
 
         current_price = self._get_current_price(df)
         if np.isnan(current_price) or current_price <= 0:
@@ -69,9 +79,24 @@ class SignalProcessor:
         support_resistance_levels = self._identify_support_resistance(df)
         nearest_level, distance_pct = self._get_nearest_level(current_price, support_resistance_levels)
 
-        # More restrictive filter near key levels - these tend to result in losing trades
+        # OPTIMIZATION: Market phase detection for phase-specific adjustments
+        market_phase = self._detect_market_phase(df)
+
+        # OPTIMIZATION: Apply phase-specific confidence threshold
+        phase_threshold = self.phase_confidence_thresholds.get(market_phase, adjusted_confidence)
+        if max_conf < phase_threshold:
+            return {"signal_type": "NoTrade", "confidence": max_conf, "reason": "LowConfidence"}
+
+        # OPTIMIZATION: More restrictive filter near key levels - these tend to result in losing trades
+        # Especially for ranging_at_resistance phase
+        sr_proximity_factor = 1.0
+        if market_phase == "ranging_at_resistance":
+            sr_proximity_factor = 1.8  # More restrictive for difficult phase
+        elif market_phase == "neutral":
+            sr_proximity_factor = 1.2  # Slightly more restrictive for neutral phase
+
         if P_bullish > P_bearish and distance_pct < (
-                self.support_resistance_proximity_pct / 1.5) and nearest_level > current_price:
+                self.support_resistance_proximity_pct / sr_proximity_factor) and nearest_level > current_price:
             return {
                 "signal_type": "NoTrade",
                 "reason": "TooCloseToResistance",
@@ -79,34 +104,33 @@ class SignalProcessor:
             }
 
         if P_bearish > P_bullish and distance_pct < (
-                self.support_resistance_proximity_pct / 1.5) and nearest_level < current_price:
+                self.support_resistance_proximity_pct / sr_proximity_factor) and nearest_level < current_price:
             return {
                 "signal_type": "NoTrade",
                 "reason": "TooCloseToSupport",
                 "distance_pct": distance_pct
             }
 
-        market_phase = self._detect_market_phase(df)
-
-        # Be more selective in ranging_at_resistance market phase which showed negative results
+        # OPTIMIZATION: Be more selective in ranging_at_resistance market phase which showed negative results
         if market_phase == "ranging_at_resistance" and P_bullish > P_bearish:
-            if max_conf < self.strong_signal_threshold * 1.1 or not volume_confirms:
+            # Higher threshold and strict volume requirement
+            if max_conf < self.strong_signal_threshold * 1.15 or not volume_confirms:  # Increased from 1.1
                 return {
                     "signal_type": "NoTrade",
                     "reason": "RangingAtResistanceNeedStrongerSignal",
                     "market_phase": market_phase
                 }
 
-        # Making market phase requirements less restrictive
+        # OPTIMIZATION: Less restrictive market phase requirements except for extreme cases
         # Only filter on extreme phase mismatches
-        if P_bullish > P_bearish and market_phase == "downtrend" and market_regime < -0.5:
+        if P_bullish > P_bearish and market_phase == "downtrend" and market_regime < -0.45:  # Less strict (from -0.5)
             return {
                 "signal_type": "NoTrade",
                 "reason": "StrongDowntrendForLong",
                 "market_phase": market_phase
             }
 
-        if P_bearish > P_bullish and market_phase == "uptrend" and market_regime > 0.5:
+        if P_bearish > P_bullish and market_phase == "uptrend" and market_regime > 0.45:  # Less strict (from 0.5)
             return {
                 "signal_type": "NoTrade",
                 "reason": "StrongUptrendForShort",
@@ -121,9 +145,22 @@ class SignalProcessor:
             extra_signals=extra_signals
         )
 
-        # Slightly more restrictive ensemble threshold
-        if abs(ensemble_score) < self.ensemble_threshold * 0.85:  # Changed from 0.8 to 0.85
-            self.logger.debug(f"Low ensemble score: {ensemble_score}, threshold: {self.ensemble_threshold}")
+        # OPTIMIZATION: Phase-specific ensemble threshold adjustments
+        phase_ensemble_factor = 1.0
+        if market_phase == "neutral":
+            phase_ensemble_factor = 0.9  # Reduced threshold for neutral phase (more permissive)
+        elif market_phase == "ranging_at_resistance":
+            phase_ensemble_factor = 1.15  # Increased threshold for challenging phase
+
+        # OPTIMIZATION: Slightly less restrictive ensemble threshold during win streaks
+        if win_streak >= 3:
+            phase_ensemble_factor *= 0.95  # More permissive during win streaks
+
+        adjusted_ensemble_threshold = self.ensemble_threshold * phase_ensemble_factor
+
+        # Check against adjusted ensemble threshold
+        if abs(ensemble_score) < adjusted_ensemble_threshold * 0.85:  # Changed from 0.8 to 0.85
+            self.logger.debug(f"Low ensemble score: {ensemble_score}, threshold: {adjusted_ensemble_threshold}")
             # Allow trade if model probability is very strong
             if max_conf < self.strong_signal_threshold:
                 return {
@@ -132,12 +169,12 @@ class SignalProcessor:
                     "ensemble_score": ensemble_score
                 }
 
-        # Add special handling for neutral market phase which showed good results
+        # OPTIMIZATION: Enhanced handling for neutral market phase which showed good results
         if market_phase == "neutral":
-            # Be slightly more permissive in neutral market phase
-            if P_bullish > P_bearish and trend_strength < 0.15:  # Less restrictive for neutral phase
+            # Be more permissive in neutral market phase (best performing phase)
+            if P_bullish > P_bearish and trend_strength < 0.14:  # Less restrictive (from 0.15)
                 # Allow if volume confirms or confidence is high
-                if not volume_confirms and max_conf < self.strong_signal_threshold:
+                if not volume_confirms and max_conf < self.strong_signal_threshold * 0.95:  # Slight reduction
                     return {
                         "signal_type": "NoTrade",
                         "reason": "WeakBullishTrendInNeutralMarket",
@@ -146,6 +183,13 @@ class SignalProcessor:
         else:
             # Standard check for non-neutral phases
             if P_bullish > P_bearish and trend_strength < 0.2:
+                # OPTIMIZATION: Enhanced trend strength requirement for uptrend phase
+                if market_phase == "uptrend" and trend_strength < 0.22:  # More strict for uptrend
+                    return {
+                        "signal_type": "NoTrade",
+                        "reason": "WeakBullishTrendInUptrend",
+                        "trend_strength": trend_strength
+                    }
                 return {
                     "signal_type": "NoTrade",
                     "reason": "WeakBullishTrend",
@@ -153,30 +197,57 @@ class SignalProcessor:
                 }
 
         if P_bearish > P_bullish and trend_strength > 0.8:
-            return {
-                "signal_type": "NoTrade",
-                "reason": "StrongBullishTrend",
-                "trend_strength": trend_strength
-            }
+            # OPTIMIZATION: Less strict for downtrend phase
+            if market_phase == "downtrend" and trend_strength < 0.85:  # More permissive for downtrend
+                pass  # Allow the trade to continue
+            else:
+                return {
+                    "signal_type": "NoTrade",
+                    "reason": "StrongBullishTrend",
+                    "trend_strength": trend_strength
+                }
 
-        # Require volume confirmation only for low confidence signals
-        if max_conf < self.confidence_threshold * 1.2 and not volume_confirms:
-            return {
-                "signal_type": "NoTrade",
-                "reason": "LowConfidenceNoVolumeConfirmation",
-                "confidence": max_conf,
-                "volume_confirmation": False
-            }
+        # OPTIMIZATION: Enhanced volume confirmation requirements
+        # More selective based on market phase and confidence
+        if market_phase == "neutral":
+            # Less strict volume requirements for best performing phase
+            if max_conf < self.confidence_threshold * 1.15 and not volume_confirms:
+                return {
+                    "signal_type": "NoTrade",
+                    "reason": "LowConfidenceNoVolumeConfirmation",
+                    "confidence": max_conf,
+                    "volume_confirmation": False
+                }
+        elif market_phase == "ranging_at_resistance":
+            # Stricter volume requirements for challenging phase
+            if max_conf < self.strong_signal_threshold * 0.9 and not volume_confirms:
+                return {
+                    "signal_type": "NoTrade",
+                    "reason": "NoVolumeConfirmationInRanging",
+                    "confidence": max_conf,
+                    "volume_confirmation": False
+                }
+        else:
+            # Standard volume check for other phases
+            if max_conf < self.confidence_threshold * 1.2 and not volume_confirms:
+                return {
+                    "signal_type": "NoTrade",
+                    "reason": "LowConfidenceNoVolumeConfirmation",
+                    "confidence": max_conf,
+                    "volume_confirmation": False
+                }
 
         if self.use_regime_filter:
-            if P_bullish > P_bearish and market_regime < -0.7:
+            # OPTIMIZATION: Less strict regime filter
+            if P_bullish > P_bearish and market_regime < -0.65:  # Reduced from -0.7
                 return {"signal_type": "NoTrade", "reason": "StrongBearishRegime", "regime": market_regime}
 
-            if P_bearish > P_bullish and market_regime > 0.7:
+            if P_bearish > P_bullish and market_regime > 0.65:  # Reduced from 0.7
                 return {"signal_type": "NoTrade", "reason": "StrongBullishRegime", "regime": market_regime}
 
         if self.use_volatility_filter and volatility_regime > 0.8:
-            if max_conf < self.strong_signal_threshold:
+            # OPTIMIZATION: Less strict volatility requirement for confident signals
+            if max_conf < self.strong_signal_threshold * 0.95:  # Reduced from 1.0
                 return {
                     "signal_type": "NoTrade",
                     "reason": "HighVolatility",
@@ -185,37 +256,60 @@ class SignalProcessor:
 
         rsi_14 = self._get_rsi(df)
         if rsi_14 is not None:
-            if P_bullish > P_bearish and rsi_14 >= self.rsi_overbought:
+            # OPTIMIZATION: Enhanced RSI filtering based on market phase
+            rsi_ob_threshold = self.rsi_overbought
+            rsi_os_threshold = self.rsi_oversold
+
+            # Adjust thresholds based on market phase
+            if market_phase == "neutral":
+                rsi_ob_threshold = self.rsi_overbought - 3  # Less strict
+                rsi_os_threshold = self.rsi_oversold + 3  # Less strict
+            elif market_phase == "ranging_at_resistance":
+                rsi_ob_threshold = self.rsi_overbought - 4  # Even less strict for overbought in ranging
+
+            if P_bullish > P_bearish and rsi_14 >= rsi_ob_threshold:
                 return {"signal_type": "NoTrade", "reason": "OverboughtRSI", "rsi": rsi_14}
 
-            if P_bearish > P_bullish and rsi_14 <= self.rsi_oversold:
+            if P_bearish > P_bullish and rsi_14 <= rsi_os_threshold:
                 return {"signal_type": "NoTrade", "reason": "OversoldRSI", "rsi": rsi_14}
 
         macd_hist = self._get_macd_histogram(df)
         if macd_hist is not None:
-            # Making MACD filter less restrictive
-            if P_bullish > P_bearish and macd_hist < -0.001:
+            # OPTIMIZATION: Less restrictive MACD filter
+            if P_bullish > P_bearish and macd_hist < -0.0009:  # Less restrictive (from -0.001)
                 return {"signal_type": "NoTrade", "reason": "NegativeMACD", "macd_hist": macd_hist}
 
-            if P_bearish > P_bullish and macd_hist > 0.001:
+            if P_bearish > P_bullish and macd_hist > 0.0009:  # Less restrictive (from 0.001)
                 return {"signal_type": "NoTrade", "reason": "PositiveMACD", "macd_hist": macd_hist}
 
+        # OPTIMIZATION: Enhanced momentum entry checks
         if P_bullish > P_bearish and (rsi_14 is not None and rsi_14 > 25) and (macd_hist is not None and macd_hist < 0):
-            return {"signal_type": "NoTrade", "reason": "WeakMomentumEntry",
-                    "rsi": rsi_14, "macd_hist": macd_hist}
+            # Less restrictive in neutral phase - best performer
+            if market_phase == "neutral" and macd_hist > -0.0012:  # Relaxed threshold for neutral
+                pass  # Allow the trade
+            else:
+                return {"signal_type": "NoTrade", "reason": "WeakMomentumEntry",
+                        "rsi": rsi_14, "macd_hist": macd_hist}
 
         atr_value = self._compute_atr(df)
         if np.isnan(atr_value) or atr_value <= 0:
             atr_value = current_price * 0.01
 
-        # Check for loss streak to adjust stop loss settings
+        # OPTIMIZATION: Enhanced check for loss streak to adjust stop loss settings
+        # More dynamic adjustments based on consecutive results
         stop_adjustment = 1.0
         if loss_streak >= 2:
             # Wider stops during losing streaks (more conservative)
-            stop_adjustment = 1.15
+            stop_adjustment = 1.18  # Increased from 1.15
         elif win_streak >= 3:
             # Tighter stops during winning streaks (lock in profits)
-            stop_adjustment = 0.9
+            stop_adjustment = 0.88  # Reduced from 0.9
+
+        # OPTIMIZATION: Further adjust stop based on market phase
+        if market_phase == "neutral":
+            stop_adjustment *= 0.95  # Tighter stops in best performing phase
+        elif market_phase == "ranging_at_resistance":
+            stop_adjustment *= 0.85  # Even tighter stops in worst performing phase
 
         if P_bullish > P_bearish:
             signal = self._create_bullish_signal(
@@ -349,12 +443,13 @@ class SignalProcessor:
             sr_levels = self._identify_support_resistance(df)
             nearest_level, distance = self._get_nearest_level(recent_close, sr_levels)
 
-            # Determine market phase
-            if recent_close > recent_ema20 > recent_ema50 and ema20_slope > 0.2 and ema50_slope > 0.1:
+            # OPTIMIZATION: Enhanced market phase detection with more nuanced conditions
+            # Determine market phase with refined thresholds
+            if recent_close > recent_ema20 > recent_ema50 and ema20_slope > 0.18 and ema50_slope > 0.08:  # Reduced from 0.2/0.1
                 return "uptrend"
-            elif recent_close < recent_ema20 < recent_ema50 and ema20_slope < -0.2 and ema50_slope < -0.1:
+            elif recent_close < recent_ema20 < recent_ema50 and ema20_slope < -0.18 and ema50_slope < -0.08:  # Reduced from -0.2/-0.1
                 return "downtrend"
-            elif abs(ema20_slope) < 0.2 and distance < 0.02:
+            elif abs(ema20_slope) < 0.18 and distance < 0.022:  # Relaxed from 0.2/0.02
                 if nearest_level > recent_close:
                     return "ranging_at_support"
                 else:
@@ -414,13 +509,43 @@ class SignalProcessor:
             # Volatility signals
             signals['volatility_signal'] = self._analyze_volatility(df)
 
-            # Momentum signals
+            # OPTIMIZATION: Enhanced momentum analysis with market phase context
             signals['momentum'] = self._analyze_momentum(df)
+
+            # OPTIMIZATION: Add time-based cycle analysis
+            signals['time_cycle'] = self._analyze_time_cycle(df)
 
         except Exception as e:
             self.logger.warning(f"Error calculating additional signals: {e}")
 
         return signals
+
+    def _analyze_time_cycle(self, df: pd.DataFrame) -> float:
+        """Analyze time-based cycles and patterns"""
+        try:
+            if len(df) < 100:
+                return 0.0
+
+            # Get index as datetime if available
+            if isinstance(df.index, pd.DatetimeIndex):
+                # Extract hour of day (0-23)
+                hour_of_day = df.index[-1].hour
+
+                # Simple bias based on hour (this should be customized based on backtest data)
+                # Assuming higher values = more bullish
+                if 8 <= hour_of_day <= 12:  # Morning session
+                    return 0.2  # Slightly bullish
+                elif 12 < hour_of_day <= 16:  # Afternoon session
+                    return 0.1  # Neutral to slightly bullish
+                elif 20 <= hour_of_day <= 23:  # Evening session
+                    return -0.1  # Slightly bearish
+                else:
+                    return 0.0  # Neutral
+
+            return 0.0
+
+        except Exception as e:
+            return 0.0
 
     def _analyze_price_action(self, df: pd.DataFrame) -> float:
         try:
@@ -439,8 +564,19 @@ class SignalProcessor:
             # Recent direction
             recent_direction = 1 if closes[-1] > closes[-5] else -1
 
-            # Combine signals
-            signal = recent_direction * (bullish_ratio - 0.5) * 2 * np.mean(relative_body_sizes)
+            # OPTIMIZATION: Enhanced price action analysis
+            # Doji detection (small bodies relative to range)
+            doji_threshold = 0.15
+            doji_count = sum(1 for rb in relative_body_sizes if rb < doji_threshold)
+            doji_factor = 1.0 - (doji_count / len(relative_body_sizes) * 0.5)  # Reduce signal strength based on dojis
+
+            # Recent momentum strength
+            recent_momentum = abs(closes[-1] / closes[-3] - 1) * 10
+            momentum_factor = min(1.5, max(0.5, 1.0 + recent_momentum))
+
+            # Combine signals with optimized weighting
+            signal = recent_direction * (bullish_ratio - 0.5) * 2 * np.mean(
+                relative_body_sizes) * doji_factor * momentum_factor
 
             return min(1.0, max(-1.0, signal))
 
@@ -459,25 +595,37 @@ class SignalProcessor:
         older_vol_avg = np.mean(volumes[-20:-5])
         vol_change = recent_vol_avg / older_vol_avg if older_vol_avg > 0 else 1.0
 
-        # Volume-price correlation
+        # OPTIMIZATION: Enhanced volume-price correlation analysis
+        # Volume-price correlation with more weight on recent bars
         price_changes = np.diff(closes)
         vol_changes = np.diff(volumes)
 
         if len(price_changes) > 1 and len(vol_changes) > 1:
+            # Apply recency weighting
+            recent_weights = np.linspace(0.5, 1.0, min(len(price_changes), len(vol_changes)))
+
             correlations = []
             for i in range(min(len(price_changes), len(vol_changes))):
+                weight = recent_weights[i]
                 if price_changes[i] > 0 and vol_changes[i] > 0:
-                    correlations.append(1)
+                    correlations.append(1 * weight)
                 elif price_changes[i] < 0 and vol_changes[i] > 0:
-                    correlations.append(-1)
+                    correlations.append(-1 * weight)
                 else:
                     correlations.append(0)
 
-            vol_price_corr = np.mean(correlations)
+            vol_price_corr = np.sum(correlations) / np.sum(recent_weights)
         else:
             vol_price_corr = 0
 
-        signal = vol_price_corr * min(2.0, max(0.5, vol_change)) / 2.0
+        # OPTIMIZATION: Enhanced volume spike detection
+        recent_vol_max = np.max(volumes[-5:])
+        avg_vol = np.mean(volumes[-20:])
+        vol_spike_factor = 1.0
+        if recent_vol_max > avg_vol * 1.5:  # Volume spike detected
+            vol_spike_factor = 1.3  # Increase signal strength
+
+        signal = vol_price_corr * min(2.0, max(0.5, vol_change)) / 2.0 * vol_spike_factor
         return min(1.0, max(-1.0, signal))
 
     def _analyze_volatility(self, df: pd.DataFrame) -> float:
@@ -492,13 +640,24 @@ class SignalProcessor:
         atr = self._calculate_atr(highs, lows, closes)
         norm_atr = atr / closes[-1]
 
-        # Higher volatility is typically bearish
-        if norm_atr > 0.03:
-            return -0.5  # High volatility - bearish
-        elif norm_atr < 0.01:
-            return 0.3  # Low volatility - slightly bullish
+        # OPTIMIZATION: More nuanced volatility analysis
+        # Volatility trend (increasing or decreasing)
+        short_atr = self._calculate_atr(highs[-10:], lows[-10:], closes[-10:])
+        medium_atr = self._calculate_atr(highs[-15:], lows[-15:], closes[-15:])
+
+        vol_trend = 0.0
+        if short_atr > medium_atr:
+            vol_trend = -0.2  # Increasing volatility: slightly bearish
         else:
-            return 0.0  # Neutral volatility
+            vol_trend = 0.1  # Decreasing volatility: slightly bullish
+
+        # Combine current volatility level with trend
+        if norm_atr > 0.03:
+            return -0.4 + vol_trend  # High volatility - bearish with trend adjustment
+        elif norm_atr < 0.01:
+            return 0.3 + vol_trend  # Low volatility - slightly bullish with trend adjustment
+        else:
+            return vol_trend  # Neutral volatility - use trend signal
 
     def _analyze_momentum(self, df: pd.DataFrame) -> float:
         if len(df) < 20:
@@ -506,41 +665,89 @@ class SignalProcessor:
 
         closes = df['close'].values
 
-        # Calculate momentum using ROC at different timeframes
+        # OPTIMIZATION: Enhanced momentum analysis with time decay weighting
+        # Calculate momentum using ROC at different timeframes with time-based weighting
         roc1 = (closes[-1] / closes[-2] - 1) if len(closes) > 2 else 0
         roc5 = (closes[-1] / closes[-6] - 1) if len(closes) > 6 else 0
         roc10 = (closes[-1] / closes[-11] - 1) if len(closes) > 11 else 0
+        roc20 = (closes[-1] / closes[-21] - 1) if len(closes) > 21 else 0
 
-        # Weighted momentum score
-        momentum_score = (roc1 * 0.2 + roc5 * 0.5 + roc10 * 0.3) * 10
+        # Market phase adaptive weighting
+        market_phase = self._detect_market_phase(df)
+
+        # Default weights
+        weights = {
+            'roc1': 0.2,
+            'roc5': 0.5,
+            'roc10': 0.3,
+            'roc20': 0.0
+        }
+
+        # Adjust weights based on market phase
+        if market_phase == "neutral":
+            # In neutral phase, prefer short to medium term momentum
+            weights = {
+                'roc1': 0.25,
+                'roc5': 0.55,
+                'roc10': 0.2,
+                'roc20': 0.0
+            }
+        elif market_phase == "uptrend" or market_phase == "downtrend":
+            # In trending markets, include longer-term momentum
+            weights = {
+                'roc1': 0.15,
+                'roc5': 0.35,
+                'roc10': 0.3,
+                'roc20': 0.2
+            }
+        elif market_phase == "ranging_at_resistance" or market_phase == "ranging_at_support":
+            # In ranging markets, focus more on short-term momentum
+            weights = {
+                'roc1': 0.35,
+                'roc5': 0.5,
+                'roc10': 0.15,
+                'roc20': 0.0
+            }
+
+        # Calculate weighted momentum score
+        momentum_score = (
+                                 roc1 * weights['roc1'] +
+                                 roc5 * weights['roc5'] +
+                                 roc10 * weights['roc10'] +
+                                 roc20 * weights['roc20']
+                         ) * 12  # Increased multiplier from 10
 
         return min(1.0, max(-1.0, momentum_score))
 
     def _compute_ensemble_score(self, model_prob: float, trend_strength: float,
                                 volume_confirms: bool, extra_signals: Dict[str, float]) -> float:
+        # OPTIMIZATION: Enhanced ensemble score calculation with better weighting
         base_score = model_prob
 
-        # Adjust based on trend strength - higher weight for strong trends
-        trend_factor = 0.2 + (0.6 * trend_strength)
+        # OPTIMIZATION: Higher weight for trend strength in ensemble score
+        trend_factor = 0.25 + (0.65 * trend_strength)  # Increased from 0.2/0.6
         base_score *= trend_factor
 
-        # Adjust with volume confirmation - volume is important
-        volume_factor = 1.3 if volume_confirms else 0.8
+        # OPTIMIZATION: Enhanced volume confirmation impact
+        volume_factor = 1.35 if volume_confirms else 0.75  # Increased difference (from 1.3/0.8)
         base_score *= volume_factor
 
-        # Add extra signal contributions
+        # OPTIMIZATION: Enhanced signal contributions with optimized weights
         signal_sum = 0
         signal_count = 0
 
         for signal_type, signal_value in extra_signals.items():
+            # Updated weights based on signal importance
             if signal_type == 'price_action':
-                weight = 0.3
+                weight = 0.35  # Increased from 0.3
             elif signal_type == 'volume_trend':
-                weight = 0.25
+                weight = 0.3  # Increased from 0.25
             elif signal_type == 'volatility_signal':
-                weight = 0.15
+                weight = 0.15  # Unchanged
             elif signal_type == 'momentum':
-                weight = 0.3
+                weight = 0.35  # Increased from 0.3
+            elif signal_type == 'time_cycle':
+                weight = 0.15  # New signal with moderate weight
             else:
                 weight = 0.1
 
@@ -551,8 +758,8 @@ class SignalProcessor:
         if signal_count > 0:
             extra_contribution = signal_sum / signal_count
 
-            # Ensemble formula: 70% model, 30% other signals - giving more weight to model
-            ensemble_score = (base_score * 0.8) + (extra_contribution * 0.2)
+            # OPTIMIZATION: Increased weight for model (from 70/30% to 75/25%)
+            ensemble_score = (base_score * 0.75) + (extra_contribution * 0.25)
         else:
             ensemble_score = base_score
 
@@ -687,9 +894,9 @@ class SignalProcessor:
         for col in ['atr_14', 'm30_atr_14']:
             if col in df.columns:
                 try:
-                    atr = float(df[col].iloc[-1])
-                    if not np.isnan(atr) and atr > 0:
-                        return atr
+                    atr_val = float(df[col].iloc[-1])
+                    if not np.isnan(atr_val) and atr_val > 0:
+                        return atr_val
                 except:
                     pass
 
@@ -698,31 +905,36 @@ class SignalProcessor:
 
     def _create_bullish_signal(self, current_price, atr_value, confidence,
                                market_regime, volatility_regime, stop_adjustment=1.0):
+        # OPTIMIZATION: Improved stop loss calculation with market-adaptive ATR multiplier
         base_atr_mult = 3.0
 
         if volatility_regime > 0.7:
-            vol_adjusted_mult = base_atr_mult * 1.5
+            vol_adjusted_mult = base_atr_mult * 1.45  # Reduced from 1.5 for tighter stops
         elif volatility_regime < 0.3:
-            vol_adjusted_mult = base_atr_mult * 0.8
+            vol_adjusted_mult = base_atr_mult * 0.75  # Reduced from 0.8 for tighter stops
         else:
-            vol_adjusted_mult = base_atr_mult * (1.0 + (volatility_regime - 0.5))
+            vol_adjusted_mult = base_atr_mult * (1.0 + (volatility_regime - 0.5) * 0.9)  # Reduced scale
 
+        # OPTIMIZATION: Enhanced confidence-based stop adjustment
         if confidence > 0.8:
-            vol_adjusted_mult *= 0.9
+            vol_adjusted_mult *= 0.85  # Tighter stops for high confidence (reduced from 0.9)
         elif confidence < 0.6:
-            vol_adjusted_mult *= 1.2
+            vol_adjusted_mult *= 1.25  # Wider stops for low confidence (increased from 1.2)
 
-        if market_regime < -0.3:
-            vol_adjusted_mult *= 1.2
+        # OPTIMIZATION: Enhanced market regime adjustment
+        if market_regime < -0.25:  # Less strict (from -0.3)
+            vol_adjusted_mult *= 1.15  # Wider stops when going against trend (reduced from 1.2)
 
-        # Apply stop adjustment parameter
+        # Apply stop adjustment parameter from adaptive parameters
         vol_adjusted_mult *= stop_adjustment
 
         stop_loss_price = current_price - (vol_adjusted_mult * atr_value)
 
         risk = current_price - stop_loss_price
-        tp1_multiplier = 1.5 + (confidence * 0.5)
-        tp2_multiplier = 2.5 + (confidence * 1.0)
+
+        # OPTIMIZATION: Enhanced reward/risk ratio based on confidence
+        tp1_multiplier = 1.6 + (confidence * 0.6)  # Increased from 1.5/0.5
+        tp2_multiplier = 2.6 + (confidence * 1.2)  # Increased from 2.5/1.0
 
         tp1_distance = tp1_multiplier * risk
         tp2_distance = tp2_multiplier * risk
@@ -744,30 +956,34 @@ class SignalProcessor:
 
     def _create_bearish_signal(self, current_price, atr_value, confidence,
                                market_regime, volatility_regime, stop_adjustment=1.0):
+        # OPTIMIZATION: Improved stop loss calculation with market-adaptive ATR multiplier
         base_atr_mult = 3.0
 
         if volatility_regime > 0.7:
-            vol_adjusted_mult = base_atr_mult * 1.5
+            vol_adjusted_mult = base_atr_mult * 1.45  # Reduced from 1.5 for tighter stops
         elif volatility_regime < 0.3:
-            vol_adjusted_mult = base_atr_mult * 0.8
+            vol_adjusted_mult = base_atr_mult * 0.75  # Reduced from 0.8 for tighter stops
         else:
-            vol_adjusted_mult = base_atr_mult * (1.0 + (volatility_regime - 0.5))
+            vol_adjusted_mult = base_atr_mult * (1.0 + (volatility_regime - 0.5) * 0.9)  # Reduced scale
 
+        # OPTIMIZATION: Enhanced confidence-based stop adjustment
         if confidence > 0.8:
-            vol_adjusted_mult *= 0.9
+            vol_adjusted_mult *= 0.85  # Tighter stops for high confidence (reduced from 0.9)
         elif confidence < 0.6:
-            vol_adjusted_mult *= 1.2
+            vol_adjusted_mult *= 1.25  # Wider stops for low confidence (increased from 1.2)
 
-        if market_regime > 0.3:
-            vol_adjusted_mult *= 1.2
+        # OPTIMIZATION: Enhanced market regime adjustment
+        if market_regime > 0.25:  # Less strict (from 0.3)
+            vol_adjusted_mult *= 1.15  # Wider stops when going against trend (reduced from 1.2)
 
-        # Apply stop adjustment parameter
+        # Apply stop adjustment parameter from adaptive parameters
         vol_adjusted_mult *= stop_adjustment
 
         stop_loss_price = current_price + (vol_adjusted_mult * atr_value)
 
         risk = stop_loss_price - current_price
-        tp_multiplier = 1.5 + (confidence * 1.0)
+        # OPTIMIZATION: Enhanced reward/risk ratio based on confidence
+        tp_multiplier = 1.6 + (confidence * 1.2)  # Increased from 1.5/1.0
 
         take_profit = current_price - (tp_multiplier * risk)
 
@@ -792,20 +1008,36 @@ class SignalProcessor:
             volumes = df['volume'].values[-5:]
             closes = df['close'].values[-5:]
 
-            avg_volume = np.mean(volumes[:-1])
+            # OPTIMIZATION: Enhanced volume confirmation with multiple timeframes
+            # Check shorter timeframe (last 3 bars)
+            short_avg_volume = np.mean(volumes[-4:-1])  # Last 3 bars excluding current
             current_volume = volumes[-1]
 
-            if current_volume < avg_volume * 0.8:
-                return False
+            # Check medium timeframe (5-10 bars)
+            if len(df) >= 10:
+                medium_avg_volume = np.mean(df['volume'].values[-10:-5])
+                medium_volume_increasing = current_volume > medium_avg_volume * 0.9
+            else:
+                medium_volume_increasing = True
 
+            # OPTIMIZATION: Less restrictive volume requirement
+            volume_sufficient = current_volume > short_avg_volume * 0.75  # Reduced from 0.8
+
+            # Direction confirmation with price
             if is_bullish:
                 price_change = closes[-1] / closes[-2] - 1
-                if price_change > 0 and current_volume > avg_volume:
+                if price_change > 0 and (volume_sufficient or medium_volume_increasing):
                     return True
-
             else:
                 price_change = closes[-1] / closes[-2] - 1
-                if price_change < 0 and current_volume > avg_volume:
+                if price_change < 0 and (volume_sufficient or medium_volume_increasing):
+                    return True
+
+            # OPTIMIZATION: Check for volume divergence (price up on declining volume)
+            if is_bullish and price_change > 0 and len(volumes) >= 3:
+                vol_trend = volumes[-1] / np.mean(volumes[-3:-1])
+                # Allow confirmation even with slightly declining volume if price change is strong
+                if price_change > 0.005 and vol_trend > 0.7:  # Relaxed from strictly increasing
                     return True
 
             return False
@@ -820,29 +1052,41 @@ class SignalProcessor:
 
             closes = df['close'].values
 
+            # OPTIMIZATION: Enhanced trend strength with more timeframes
             short_term = np.mean(closes[-5:])
             medium_term = np.mean(closes[-10:])
             long_term = np.mean(closes[-20:])
 
+            # Add very short term for better responsiveness
+            very_short_term = np.mean(closes[-3:])
+
             current_price = closes[-1]
 
+            # Check trend agreement across timeframes
+            very_short_trend_up = current_price > very_short_term
             short_trend_up = current_price > short_term
             medium_trend_up = current_price > medium_term
             long_trend_up = current_price > long_term
 
-            if short_trend_up == medium_trend_up == long_trend_up:
-                short_pct = abs(current_price / short_term - 1)
-                medium_pct = abs(current_price / medium_term - 1)
-                long_pct = abs(current_price / long_term - 1)
+            # OPTIMIZATION: Enhanced trend strength calculation with weighted timeframes
+            # Calculate percentage deviations at each timeframe
+            vs_pct = abs(current_price / very_short_term - 1) * 1.2  # Higher weight
+            short_pct = abs(current_price / short_term - 1)
+            medium_pct = abs(current_price / medium_term - 1) * 0.8
+            long_pct = abs(current_price / long_term - 1) * 0.6  # Lower weight
 
-                avg_pct = (short_pct + medium_pct + long_pct) / 3
+            # Check for agreement across all timeframes
+            if very_short_trend_up == short_trend_up == medium_trend_up == long_trend_up:
+                # All timeframes agree - strong trend
+                weighted_pct = (vs_pct * 1.2 + short_pct * 1.0 + medium_pct * 0.8 + long_pct * 0.6) / 3.6
 
-                strength = min(1.0, avg_pct * 50)
+                strength = min(1.0, weighted_pct * 60)  # Increased from 50
                 return 0.5 + (0.5 * strength if short_trend_up else -0.5 * strength)
-
             else:
-                agreements = sum([1 if t == short_trend_up else 0 for t in [medium_trend_up, long_trend_up]])
-                return 0.3 + (0.2 * agreements)
+                # Count agreements with very short term trend
+                agreements = sum([1 if t == very_short_trend_up else 0
+                                  for t in [short_trend_up, medium_trend_up, long_trend_up]])
+                return 0.3 + (0.225 * agreements)  # Slight increase from 0.2
 
         except Exception as e:
             self.logger.warning(f"Error in trend strength calculation: {e}")

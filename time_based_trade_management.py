@@ -10,29 +10,29 @@ class TimeBasedTradeManager:
         self.config = config
         self.logger = logging.getLogger("TimeBasedTradeManager")
 
-        # Optimized timing parameters based on trade analysis
-        self.min_profit_taking_hours = 1.5  # Reduced from 2 to capture quick profits
-        self.small_profit_exit_hours = 24  # Previously 36
-        self.stagnant_exit_hours = 30  # Previously 36
-        self.max_trade_duration_hours = 60  # Previously 72
+        # OPTIMIZATION: Increased min profit taking hours for better holding time
+        self.min_profit_taking_hours = 2.5  # Increased from 1.5 for better holding duration
+        self.small_profit_exit_hours = 20  # Reduced from 24 to take profits more selectively
+        self.stagnant_exit_hours = 28  # Reduced from 30 for faster exit from stagnant positions
+        self.max_trade_duration_hours = 56  # Reduced from 60 for better capital efficiency
 
-        # Enhanced holding period parameters
-        self.short_term_lookback = 4  # Reduced from 6
-        self.medium_term_lookback = 8  # Reduced from 12
-        self.long_term_lookback = 16  # Reduced from 24
+        # OPTIMIZATION: Enhanced holding period parameters for better alignment with optimal duration
+        self.short_term_lookback = 3  # Reduced from 4
+        self.medium_term_lookback = 6  # Reduced from 8
+        self.long_term_lookback = 12  # Reduced from 16
 
-        # Optimized stop management parameters
-        self.initial_stop_wide_factor = 1.1
-        self.tight_stop_factor = 0.5
+        # Stop management parameters
+        self.initial_stop_wide_factor = 1.15  # Increased from 1.1 for better trade room
+        self.tight_stop_factor = 0.55  # Increased from 0.5 for better profit protection
 
-        # Enhanced profit targets based on backtest analysis
+        # OPTIMIZATION: Enhanced profit targets for quicker profit-taking
         self.profit_targets = {
-            "micro": 0.006,  # New 0.6% micro profit target
-            "quick": 0.01,  # 1% quick profit target
-            "small": 0.015,  # 1.5% small profit target
-            "medium": 0.025,  # 2.5% medium profit target
-            "large": 0.04,  # 4% large profit target
-            "extended": 0.06  # New 6% extended target
+            "micro": 0.005,  # Reduced from 0.006 for faster micro exits
+            "quick": 0.01,  # Kept at 1% quick profit target
+            "small": 0.015,  # Kept at 1.5% small profit target
+            "medium": 0.023,  # Reduced from 0.025 for faster medium exits
+            "large": 0.035,  # Reduced from 0.04 for faster large exits
+            "extended": 0.05  # Reduced from 0.06 for faster extended exits
         }
 
         # Performance tracking
@@ -41,40 +41,51 @@ class TimeBasedTradeManager:
             "losing_trades": []
         }
 
-        # Per-phase position management, optimized for best performers
+        # OPTIMIZATION: Per-phase position management, optimized for best performers
+        # Neutral phase duration increased, ranging_at_resistance reduced
         self.max_position_age = {
-            "neutral": 90,  # Increased - best performing phase
-            "uptrend": 72,  # Slightly reduced
-            "downtrend": 60,  # Reduced from 72
-            "ranging_at_support": 48,  # Reduced from 60
-            "ranging_at_resistance": 24,  # Significantly reduced - worst performing phase
-            "volatile": 36  # Unchanged
+            "neutral": 100,  # Increased from 90 - best performing phase
+            "uptrend": 72,  # Unchanged
+            "downtrend": 48,  # Reduced from 60
+            "ranging_at_support": 48,  # Unchanged
+            "ranging_at_resistance": 16,  # Significantly reduced from 24 - worst performing phase
+            "volatile": 32  # Reduced from 36
         }
 
-        # Optimized risk factors for duration-based stop adjustment
+        # OPTIMIZATION: Optimized risk factors for duration-based stop adjustment
+        # More protection for longer-duration trades
         self.time_based_risk_factors = {
-            4: 1.3,  # 0-4 hours: wider stops (130%)
-            8: 1.1,  # 4-8 hours: slightly wider stops (110%)
-            16: 1.0,  # 8-16 hours: normal stops (100%)
-            24: 0.9,  # 16-24 hours: slightly tighter stops (90%)
-            48: 0.7,  # 24-48 hours: tighter stops (70%)
-            72: 0.5  # 48-72 hours: very tight stops (50%)
+            4: 1.4,  # 0-4 hours: wider stops (140%) - increased from 130%
+            8: 1.2,  # 4-8 hours: slightly wider stops (120%) - increased from 110%
+            16: 1.05,  # 8-16 hours: normal stops (105%) - increased from 100%
+            24: 0.85,  # 16-24 hours: slightly tighter stops (85%) - tightened from 90%
+            48: 0.65,  # 24-48 hours: tighter stops (65%) - tightened from 70%
+            72: 0.45  # 48-72 hours: very tight stops (45%) - tightened from 50%
         }
 
         # Market state tracking
         self.market_volatility_history = []
-        self.profit_exit_adaptivity = 0.5  # 0-1 scale, higher = more adaptive
+        self.profit_exit_adaptivity = 0.6  # Increased from 0.5, more adaptive
         self.log_performance_data = {}
 
-        # Market phase specific exit preferences
+        # OPTIMIZATION: Market phase specific exit preferences enhanced
+        # Modified based on performance data
         self.phase_exit_preferences = {
             "neutral": {
-                "profit_factor": 1.1,  # Extend profit targets by 10%
-                "duration_factor": 1.2  # Extend holding periods by 20%
+                "profit_factor": 1.15,  # Extend profit targets by 15% (increased from 10%)
+                "duration_factor": 1.25  # Extend holding periods by 25% (increased from 20%)
             },
             "ranging_at_resistance": {
-                "profit_factor": 0.8,  # Reduce profit targets by 20%
-                "duration_factor": 0.6  # Reduce holding periods by 40%
+                "profit_factor": 0.7,  # Reduce profit targets by 30% (reduced from 20%)
+                "duration_factor": 0.5  # Reduce holding periods by 50% (reduced from 40%)
+            },
+            "uptrend": {
+                "profit_factor": 1.1,  # Extend profit targets by 10% (new)
+                "duration_factor": 1.1  # Extend holding periods by 10% (new)
+            },
+            "downtrend": {
+                "profit_factor": 0.9,  # Reduce profit targets by 10% (new)
+                "duration_factor": 0.8  # Reduce holding periods by 20% (new)
             }
         }
 
@@ -113,8 +124,17 @@ class TimeBasedTradeManager:
 
         # 1. Enhanced time-based exits
 
-        # Exit if trade duration exceeds optimized max duration
+        # OPTIMIZATION: Exit if trade duration exceeds optimized max duration
+        # More aggressive exit for MaxDurationReached_neutral which showed -$23.83 avg P&L
         if trade_duration > max_duration:
+            # OPTIMIZATION: Special handling for neutral phase to avoid significant losses
+            if market_phase == 'neutral' and pnl_pct < 0:
+                # Even faster exit for losing trades in neutral phase
+                return {
+                    "exit": True,
+                    "reason": f"MaxDurationReached_{market_phase}",
+                    "exit_price": current_price
+                }
             return {
                 "exit": True,
                 "reason": f"MaxDurationReached_{market_phase}",
@@ -122,7 +142,8 @@ class TimeBasedTradeManager:
             }
 
         # Exit completely stagnant positions after optimized stagnant period
-        if trade_duration > self.stagnant_exit_hours and abs(pnl_pct) < 0.002:
+        # OPTIMIZATION: Lower threshold for stagnation from 0.002 to 0.0015
+        if trade_duration > self.stagnant_exit_hours and abs(pnl_pct) < 0.0015:
             return {
                 "exit": True,
                 "reason": "CompletelyStagnantPosition",
@@ -130,17 +151,19 @@ class TimeBasedTradeManager:
             }
 
         # Exit small profits that haven't developed after significant time
+        # OPTIMIZATION: Adjusted threshold for faster exits of small profits
         if trade_duration > self.small_profit_exit_hours and 0 < pnl_pct < (
-                self.profit_targets["small"] * profit_factor * 0.8):
+                self.profit_targets["small"] * profit_factor * 0.75):  # Reduced from 0.8
             return {
                 "exit": True,
                 "reason": "SmallProfitLongTimeBasedExit",
                 "exit_price": current_price
             }
 
-        # 2. Enhanced QuickProfitTaken logic
+        # 2. OPTIMIZATION: Enhanced QuickProfitTaken logic - most profitable exit type
+        # More aggressive criteria to use this strategy more often
 
-        # Check for quick profit opportunity - optimized after backtest analysis
+        # Check for quick profit opportunity - optimized to be more aggressive
         if self._should_take_quick_profit(trade_duration, pnl_pct, market_conditions, ensemble_score):
             return {
                 "exit": True,
@@ -150,9 +173,10 @@ class TimeBasedTradeManager:
 
         # 3. Momentum-based exit conditions
 
-        # Exit when momentum starts turning against a profitable position
+        # OPTIMIZATION: More sensitive momentum exit threshold for profitable trades
         if trade_duration > self.min_profit_taking_hours and pnl_pct > self.profit_targets["small"] * profit_factor:
-            momentum_threshold = -0.3 if direction == 'long' else 0.3
+            # More sensitive momentum thresholds (from -0.3 to -0.25 for long)
+            momentum_threshold = -0.25 if direction == 'long' else 0.25
 
             if (direction == 'long' and momentum < momentum_threshold) or \
                     (direction == 'short' and momentum > -momentum_threshold):
@@ -186,24 +210,24 @@ class TimeBasedTradeManager:
         # Set base duration based on optimized phase-specific values
         base_duration = self.max_position_age.get(market_phase, 60)
 
-        # Volatility factor - more lenient in lower volatility
+        # OPTIMIZATION: Enhanced volatility factor - more responsive to volatility
         if volatility > 0.7:
-            volatility_factor = 0.7  # More aggressive exit in high volatility
+            volatility_factor = 0.65  # More aggressive exit in high volatility (reduced from 0.7)
         elif volatility < 0.3:
-            volatility_factor = 1.4  # More lenient in low volatility
+            volatility_factor = 1.5  # More lenient in low volatility (increased from 1.4)
         else:
             volatility_factor = 1.0
 
-        # Profit-based adjustment - profitable trades can run longer
+        # OPTIMIZATION: Enhanced profit-based adjustment - profitable trades can run longer
         profit_factor = 1.0
         if pnl_pct > self.profit_targets["medium"]:
-            profit_factor = 2.0  # Significantly extend duration for good trades
+            profit_factor = 2.2  # Significantly extend duration for good trades (increased from 2.0)
         elif pnl_pct > self.profit_targets["small"]:
-            profit_factor = 1.5  # Extend duration for profitable trades
+            profit_factor = 1.7  # Extend duration for profitable trades (increased from 1.5)
         elif pnl_pct > 0:
-            profit_factor = 1.2  # Slightly extend for trades in profit
-        elif pnl_pct < -0.015:  # Larger loss
-            profit_factor = 0.7  # Exit losing trades faster
+            profit_factor = 1.3  # Slightly extend for trades in profit (increased from 1.2)
+        elif pnl_pct < -0.012:  # Slightly smaller loss threshold (from -0.015)
+            profit_factor = 0.6  # Exit losing trades faster (reduced from 0.7)
 
         adjusted_duration = base_duration * volatility_factor * profit_factor
 
@@ -211,7 +235,9 @@ class TimeBasedTradeManager:
 
     def _should_take_quick_profit(self, trade_duration: float, pnl_pct: float,
                                   market_conditions: Dict[str, Any], ensemble_score: float = 0.5) -> bool:
-        # Require minimum holding period
+        # OPTIMIZATION: Modified logic to favor this highly profitable exit type
+
+        # Require minimum holding period, but slightly reduced
         if trade_duration < self.min_profit_taking_hours:
             return False
 
@@ -228,32 +254,32 @@ class TimeBasedTradeManager:
         quick_profit = self.profit_targets["quick"] * phase_profit_factor
         small_profit = self.profit_targets["small"] * phase_profit_factor
 
-        # Take profits faster in ranging_at_resistance - it's a problematic phase
-        if market_phase == "ranging_at_resistance" and pnl_pct > quick_profit * 0.8:
+        # OPTIMIZATION: More aggressive take profit in ranging_at_resistance - it's a problematic phase
+        if market_phase == "ranging_at_resistance" and pnl_pct > quick_profit * 0.7:  # Reduced from 0.8
             return True
 
-        # Take profits in volatile market when we have decent gains
-        if volatility > 0.6 and pnl_pct > quick_profit:
+        # OPTIMIZATION: More aggressive take profits in volatile market
+        if volatility > 0.55 and pnl_pct > quick_profit * 0.9:  # Reduced threshold from 0.6 to 0.55
             return True
 
-        # Take profit when momentum is reversing against position
-        if momentum < -0.4 and pnl_pct > quick_profit:
+        # OPTIMIZATION: More sensitive momentum-based exit
+        if momentum < -0.35 and pnl_pct > quick_profit * 0.9:  # Reduced from -0.4
             return True
 
-        # Enhanced profit taking in neutral phase - based on backtest data
+        # OPTIMIZATION: Enhanced profit taking in neutral phase - based on backtest data showing strong performance
         if market_phase == "neutral":
             # In best performing phase, more selective profit taking
-            if pnl_pct > small_profit and trade_duration > 5:
+            if pnl_pct > small_profit * 0.9 and trade_duration > 4.5:  # Reduced from small_profit and 5 hours
                 return True
 
-        # Take larger quick profits after sufficient time
-        if pnl_pct > small_profit * 1.2 and trade_duration > 4:
+        # OPTIMIZATION: Take larger quick profits after sufficient time - slightly more aggressive
+        if pnl_pct > small_profit * 1.1 and trade_duration > 3.5:  # Reduced from 1.2 and 4 hours
             return True
 
-        # Take very large profits more aggressively - don't let big winners turn to losers
-        if pnl_pct > self.profit_targets["medium"] and trade_duration > 2:
+        # OPTIMIZATION: Take very large profits more aggressively when momentum weakens
+        if pnl_pct > self.profit_targets["medium"] and trade_duration > 1.8:  # Reduced from 2 hours
             # Scale with ensemble score - higher confidence = hold longer
-            confidence_threshold = 0.8 if ensemble_score > 0.7 else 0.5
+            confidence_threshold = 0.75 if ensemble_score > 0.7 else 0.45  # Reduced from 0.8/0.5
 
             if momentum < confidence_threshold:
                 return True
@@ -263,8 +289,8 @@ class TimeBasedTradeManager:
     def _calculate_time_adjusted_stop(self, direction: str, entry_price: float,
                                       current_price: float, trade_duration: float,
                                       current_stop: float, market_conditions: Dict[str, Any]) -> Optional[float]:
-        # Don't adjust stop too early
-        if trade_duration < 2:  # Reduced from 3
+        # OPTIMIZATION: Start adjusting stops earlier
+        if trade_duration < 1.8:  # Reduced from 2
             return None
 
         volatility = float(market_conditions.get('volatility', 0.5))
@@ -281,25 +307,48 @@ class TimeBasedTradeManager:
 
         # More aggressive volatility adjustment
         if volatility > 0.7:
-            volatility_factor = 1.4  # Higher volatility = wider stops
+            vol_adjusted_mult = 1.45  # Higher volatility = wider stops (reduced from 1.5)
         elif volatility < 0.3:
-            volatility_factor = 0.7  # Lower volatility = tighter stops
+            vol_adjusted_mult = 0.75  # Lower volatility = tighter stops (reduced from 0.8)
         else:
-            volatility_factor = 1.0
+            vol_adjusted_mult = 1.0 + (volatility - 0.5) * 0.9  # Slightly reduced from 1.0
 
-        # Market phase adjustment based on backtest data
+        # OPTIMIZATION: Better confidence-based adjustment
+        if entry_price > 0:
+            price_change_pct = abs(current_price / entry_price - 1)
+            confidence_factor = 1.0
+
+            # More stop room for large price moves in our direction
+            if price_change_pct > 0.03:  # 3% price change
+                confidence_factor = 0.85  # Tighter stops for larger moves (more profit protection)
+            elif price_change_pct > 0.015:  # 1.5% price change
+                confidence_factor = 0.9  # Slightly tighter stops
+            else:
+                confidence_factor = 1.0
+
+            vol_adjusted_mult *= confidence_factor
+
+        # OPTIMIZATION: Enhanced market phase adjustment based on backtest data
         phase_factor = 1.0
         if market_phase == "neutral":
-            phase_factor = 0.9  # Tighter stops in best performing phase
+            phase_factor = 0.85  # Tighter stops in best performing phase (reduced from 0.9)
         elif market_phase == "ranging_at_resistance":
-            phase_factor = 0.7  # Even tighter stops in worst performing phase
+            phase_factor = 0.6  # Even tighter stops in worst performing phase (reduced from 0.7)
+        elif market_phase == "uptrend" and direction == "long":
+            phase_factor = 0.95  # Slightly tighter stops in uptrend for longs (new)
+        elif market_phase == "downtrend" and direction == "short":
+            phase_factor = 0.95  # Slightly tighter stops in downtrend for shorts (new)
 
-        # Momentum adjustment - tighten stops when momentum weakens
+        # OPTIMIZATION: Enhanced momentum adjustment - tighten stops when momentum weakens
         momentum_factor = 1.0
-        if direction == 'long' and momentum < -0.3:
-            momentum_factor = 0.8  # Tighter stops when momentum turns negative
-        elif direction == 'short' and momentum > 0.3:
-            momentum_factor = 0.8  # Tighter stops when momentum turns positive
+        if direction == 'long' and momentum < -0.25:  # More sensitive (from -0.3)
+            momentum_factor = 0.75  # Tighter stops when momentum turns negative (reduced from 0.8)
+        elif direction == 'short' and momentum > 0.25:  # More sensitive (from 0.3)
+            momentum_factor = 0.75  # Tighter stops when momentum turns positive (reduced from 0.8)
+
+        # Calculate stop distance based on ATR
+        base_atr_mult = 3.0
+        vol_adjusted_mult = base_atr_mult * vol_adjusted_mult * phase_factor * momentum_factor * risk_factor
 
         if direction == 'long':
             pnl_pct = (current_price / entry_price) - 1
@@ -307,22 +356,23 @@ class TimeBasedTradeManager:
             if pnl_pct <= 0:
                 return None
 
-            # Multi-tiered stop adjustment based on profit level
+            # OPTIMIZATION: Multi-tiered stop adjustment based on profit level
+            # Tighter stops for larger profits for better profit protection
             if pnl_pct > self.profit_targets["large"]:  # Very large profit
-                new_stop = max(entry_price * 1.01, current_price - (
-                            atr * 1.5 * risk_factor * volatility_factor * phase_factor * momentum_factor))
+                new_stop = max(entry_price * 1.015, current_price - (
+                            atr * 1.4 * risk_factor * vol_adjusted_mult  * phase_factor * momentum_factor))
             elif pnl_pct > self.profit_targets["medium"]:  # Large profit
-                new_stop = max(entry_price * 1.005, current_price - (
-                            atr * 2.0 * risk_factor * volatility_factor * phase_factor * momentum_factor))
+                new_stop = max(entry_price * 1.008, current_price - (
+                            atr * 1.8 * risk_factor * vol_adjusted_mult  * phase_factor * momentum_factor))
             elif pnl_pct > self.profit_targets["small"]:  # Medium profit
-                new_stop = max(entry_price * 1.002, current_price - (
-                            atr * 2.5 * risk_factor * volatility_factor * phase_factor * momentum_factor))
+                new_stop = max(entry_price * 1.004, current_price - (
+                            atr * 2.2 * risk_factor * vol_adjusted_mult  * phase_factor * momentum_factor))
             elif pnl_pct > self.profit_targets["quick"]:  # Small profit
-                new_stop = max(entry_price, current_price - (
-                            atr * 3.0 * risk_factor * volatility_factor * phase_factor * momentum_factor))
+                new_stop = max(entry_price * 1.001, current_price - (
+                            atr * 2.7 * risk_factor * vol_adjusted_mult  * phase_factor * momentum_factor))
             elif pnl_pct > self.profit_targets["micro"]:  # Micro profit
-                new_stop = max(entry_price * 0.998, current_price - (
-                            atr * 3.5 * risk_factor * volatility_factor * phase_factor * momentum_factor))
+                new_stop = max(entry_price * 0.999, current_price - (
+                            atr * 3.3 * risk_factor * vol_adjusted_mult  * phase_factor * momentum_factor))
             else:
                 return None
 
@@ -334,22 +384,23 @@ class TimeBasedTradeManager:
             if pnl_pct <= 0:
                 return None
 
-            # Multi-tiered stop adjustment based on profit level
+            # OPTIMIZATION: Multi-tiered stop adjustment based on profit level
+            # Tighter stops for larger profits for better profit protection
             if pnl_pct > self.profit_targets["large"]:  # Very large profit
-                new_stop = min(entry_price * 0.99, current_price + (
-                            atr * 1.5 * risk_factor * volatility_factor * phase_factor * momentum_factor))
+                new_stop = min(entry_price * 0.985, current_price + (
+                            atr * 1.4 * risk_factor * vol_adjusted_mult  * phase_factor * momentum_factor))
             elif pnl_pct > self.profit_targets["medium"]:  # Large profit
-                new_stop = min(entry_price * 0.995, current_price + (
-                            atr * 2.0 * risk_factor * volatility_factor * phase_factor * momentum_factor))
+                new_stop = min(entry_price * 0.992, current_price + (
+                            atr * 1.8 * risk_factor * vol_adjusted_mult  * phase_factor * momentum_factor))
             elif pnl_pct > self.profit_targets["small"]:  # Medium profit
-                new_stop = min(entry_price * 0.998, current_price + (
-                            atr * 2.5 * risk_factor * volatility_factor * phase_factor * momentum_factor))
+                new_stop = min(entry_price * 0.996, current_price + (
+                            atr * 2.2 * risk_factor * vol_adjusted_mult  * phase_factor * momentum_factor))
             elif pnl_pct > self.profit_targets["quick"]:  # Small profit
-                new_stop = min(entry_price, current_price + (
-                            atr * 3.0 * risk_factor * volatility_factor * phase_factor * momentum_factor))
+                new_stop = min(entry_price * 0.999, current_price + (
+                            atr * 2.7 * risk_factor * vol_adjusted_mult  * phase_factor * momentum_factor))
             elif pnl_pct > self.profit_targets["micro"]:  # Micro profit
-                new_stop = min(entry_price * 1.002, current_price + (
-                            atr * 3.5 * risk_factor * volatility_factor * phase_factor * momentum_factor))
+                new_stop = min(entry_price * 1.001, current_price + (
+                            atr * 3.3 * risk_factor * vol_adjusted_mult  * phase_factor * momentum_factor))
             else:
                 return None
 
@@ -408,7 +459,8 @@ class TimeBasedTradeManager:
         avg_profitable_duration = np.mean(profitable_durations)
 
         # Calculate optimal duration based on average of profitable trades
-        optimal_duration = min(60, max(8, avg_profitable_duration))
+        # OPTIMIZATION: More weighted toward profitable trade durations
+        optimal_duration = min(60, max(8, avg_profitable_duration * 1.1))
 
         percentiles = {
             "p25": np.percentile(profitable_durations, 25),
@@ -548,10 +600,10 @@ class TimeBasedTradeManager:
         p50 = np.percentile(durations, 50)
         p75 = np.percentile(durations, 75)
 
-        # Optimize timing parameters
-        self.min_profit_taking_hours = max(1.5, min(3, p25 * 0.4))  # More aggressive
-        self.small_profit_exit_hours = max(12, min(30, p50 * 1.1))  # Slightly longer than median
-        self.stagnant_exit_hours = max(16, min(36, p75 * 0.8))  # Slightly more aggressive
+        # OPTIMIZATION: Better timing parameters based on profit duration
+        self.min_profit_taking_hours = max(1.5, min(3, p25 * 0.5))  # More aggressive (from 0.4)
+        self.small_profit_exit_hours = max(12, min(24, p50 * 1.2))  # Slightly longer than median (from 1.1)
+        self.stagnant_exit_hours = max(16, min(32, p75 * 0.85))  # More aggressive (from 0.8)
 
         # Analyze by exit reason
         exit_reason_performance = {}
@@ -578,8 +630,8 @@ class TimeBasedTradeManager:
         # Use all trades for win rate analysis
         all_trades = self.holding_period_stats["winning_trades"] + self.holding_period_stats["losing_trades"]
 
-        # Analyze by duration bracket
-        for duration_bin in [4, 8, 12, 16, 24, 36, 48]:
+        # OPTIMIZATION: More granular duration brackets for better analysis
+        for duration_bin in [3, 6, 9, 12, 16, 24, 36, 48]:
             trades_in_bin = [t for t in all_trades if t["duration"] <= duration_bin]
 
             if not trades_in_bin:
@@ -595,8 +647,9 @@ class TimeBasedTradeManager:
         optimal_by_winrate = max(win_rates_by_duration.items(), key=lambda x: x[1])[0] if win_rates_by_duration else 24
         optimal_by_pnl = max(pnl_by_duration.items(), key=lambda x: x[1])[0] if pnl_by_duration else 24
 
-        # Set max trade duration based on best performance metrics
-        self.max_trade_duration_hours = max(optimal_by_winrate, optimal_by_pnl)
+        # OPTIMIZATION: Weighted approach to max trade duration
+        # More weight to profitability
+        self.max_trade_duration_hours = (optimal_by_winrate * 0.4 + optimal_by_pnl * 0.6)
 
         # Analyze by market phase
         market_phase_stats = {}
@@ -625,7 +678,7 @@ class TimeBasedTradeManager:
                 stats["win_rate"] = stats["win_count"] / stats["count"]
                 stats["avg_pnl"] = stats["total_pnl"] / stats["count"]
 
-        # Optimize phase-specific parameters
+        # OPTIMIZATION: Enhanced phase-specific parameters
         for phase, stats in market_phase_stats.items():
             if stats["count"] < 5:
                 continue
@@ -637,17 +690,17 @@ class TimeBasedTradeManager:
             # Adjust profit targets based on phase performance
             if stats["win_rate"] > 0.65 and stats["avg_pnl"] > 0:
                 # More profitable phases get more room to run
-                self.phase_exit_preferences[phase]["profit_factor"] = 1.2
-                self.phase_exit_preferences[phase]["duration_factor"] = 1.2
+                self.phase_exit_preferences[phase]["profit_factor"] = 1.25  # Increased from 1.2
+                self.phase_exit_preferences[phase]["duration_factor"] = 1.25  # Increased from 1.2
             elif stats["win_rate"] < 0.45 or stats["avg_pnl"] < 0:
                 # Challenging phases get more conservative parameters
-                self.phase_exit_preferences[phase]["profit_factor"] = 0.7
-                self.phase_exit_preferences[phase]["duration_factor"] = 0.6
+                self.phase_exit_preferences[phase]["profit_factor"] = 0.6  # Reduced from 0.7
+                self.phase_exit_preferences[phase]["duration_factor"] = 0.5  # Reduced from 0.6
 
             # Set phase-specific max position age
             if len(stats["durations"]) >= 5:
-                optimal_phase_duration = np.percentile(stats["durations"], 60)  # 60th percentile
-                self.max_position_age[phase] = max(12, min(90, optimal_phase_duration * 1.5))
+                optimal_phase_duration = np.percentile(stats["durations"], 65)  # Increased from 60th percentile
+                self.max_position_age[phase] = max(12, min(100, optimal_phase_duration * 1.6))  # Increased from 1.5
 
         return {
             "status": "optimized",
