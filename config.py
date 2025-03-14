@@ -44,25 +44,77 @@ class Config:
                 "correlation_threshold": 0.9,
                 "keep_essential_features": [
                     "open", "high", "low", "close", "volume",
-                    "market_regime", "volatility_regime", "obv",
-                    "ema_20", "rsi_14", "macd", "macd_signal", "macd_histogram",
-                    "cmf", "mfi", "vwap", "adx", "cumulative_delta_volume"
+                    # Trend-based indicators
+                    "ema_5", "ema_10", "ema_20",
+                    "macd", "macd_signal", "macd_histogram",
+                    "macd_fast", "macd_fast_signal", "macd_fast_histogram",
+                    "parabolic_sar", "adx", "plus_di", "minus_di",
+                    "linear_regression_slope",
+                    # Momentum-based indicators
+                    "rsi_14", "rsi_7",
+                    "stoch_k", "stoch_d",
+                    "stoch_k_fast", "stoch_d_fast",
+                    "mfi",
+                    # Volatility indicators
+                    "atr_14",
+                    "bb_upper", "bb_lower", "bb_middle", "bb_width", "bb_percent_b",
+                    "donchian_high", "donchian_low", "donchian_middle",
+                    "keltner_upper", "keltner_lower", "keltner_middle",
+                    # Volume indicators
+                    "obv", "volume_oscillator", "cmf", "force_index", "vwap", "net_taker_flow",
+                    # Market condition indicators
+                    "market_regime", "volatility_regime", "cumulative_delta_volume"
                 ],
                 "indicators": [
-                    "ema_20", "rsi_14", "macd", "macd_signal", "macd_histogram",
-                    "bb_width", "atr_14", "obv",
-                    "cmf", "mfi", "vwap", "adx", "cumulative_delta_volume"
+                    # Trend-based indicators
+                    "ema_5", "ema_10", "ema_20",
+                    "macd", "macd_signal", "macd_histogram",
+                    "macd_fast", "macd_fast_signal", "macd_fast_histogram",
+                    "parabolic_sar", "adx", "plus_di", "minus_di",
+                    "linear_regression_slope",
+                    # Momentum-based indicators
+                    "rsi_14", "rsi_7",
+                    "stoch_k", "stoch_d",
+                    "stoch_k_fast", "stoch_d_fast",
+                    "mfi",
+                    # Volatility indicators
+                    "atr_14",
+                    "bb_upper", "bb_lower", "bb_middle", "bb_width", "bb_percent_b",
+                    "donchian_high", "donchian_low", "donchian_middle",
+                    "keltner_upper", "keltner_lower", "keltner_middle",
+                    # Volume indicators
+                    "obv", "volume_oscillator", "cmf", "force_index", "vwap", "net_taker_flow"
                 ],
-                "ema_period": 20,
-                "rsi_period": 14,
+                # Trend indicator parameters
+                "ema_short_period": 5,
+                "ema_medium_period": 10,
+                "ema_long_period": 20,
                 "macd_fast": 12,
                 "macd_slow": 26,
                 "macd_signal": 9,
+                "fast_macd_fast": 5,
+                "fast_macd_slow": 10,
+                "fast_macd_signal": 5,
+                "adx_period": 14,
+                # Momentum indicator parameters
+                "rsi_short_period": 7,
+                "rsi_long_period": 14,
+                "stoch_period": 14,
+                "stoch_k_period": 3,
+                "stoch_d_period": 3,
+                "stoch_fast_period": 5,
+                "mfi_period": 14,
+                # Volatility indicator parameters
+                "atr_period": 14,
                 "bb_period": 20,
                 "bb_stddev": 2,
-                "atr_period": 14,
-                "cmf_period": 20,
-                "mfi_period": 14,
+                "donchian_period": 20,
+                "keltner_period": 20,
+                # Volume indicator parameters
+                "volume_oscillator_short": 10,
+                "volume_oscillator_long": 20,
+                "cmf_period": 14,
+                "force_index_period": 13,
                 "vwap_period": 14
             },
             "model": {
@@ -82,8 +134,8 @@ class Config:
                 "atr_multiplier_sl": 2.5,
                 "use_regime_filter": True,
                 "use_volatility_filter": True,
-                "rsi_overbought": 75,
-                "rsi_oversold": 25,
+                "rsi_overbought": 80,
+                "rsi_oversold": 20,
                 "use_macd_filter": True
             },
             "risk": {
@@ -99,9 +151,105 @@ class Config:
                 "min_trade_size_btc": 0.0005,
                 "use_rsi_scaling": True,
                 "use_ema_based_exits": True,
+
+                # Enhanced exit strategy settings
+                "enhanced_exit_strategy": True,
+                "momentum_exit_enabled": True,
+                "dynamic_trailing_stop": True,
+
+                # Phase-specific risk settings
+                "phase_specific_risk": {
+                    "neutral": 1.25,
+                    "uptrend": 1.0,
+                    "downtrend": 0.9,
+                    "ranging_at_support": 0.8,
+                    "ranging_at_resistance": 0.6
+                },
+
+                # Enhanced partial exit configuration
                 "partial_exit": {
-                    "threshold": 0.025,
-                    "portion": 0.5
+                    "multi_stage_enabled": True,
+                    "stages": [
+                        {"threshold": 0.005, "portion": 0.15, "id": "level0"},
+                        {"threshold": 0.01, "portion": 0.2, "id": "level1"},
+                        {"threshold": 0.018, "portion": 0.2, "id": "level2"},
+                        {"threshold": 0.025, "portion": 0.2, "id": "level3"},
+                        {"threshold": 0.035, "portion": 0.15, "id": "level4"},
+                        {"threshold": 0.05, "portion": 0.1, "id": "level5"}
+                    ],
+                    "volatility_factor_enabled": True,
+                    "breakeven_adjustment": True
+                },
+
+                # Stop loss configuration
+                "stop_loss": {
+                    "breakeven_threshold": 0.02,
+                    "trailing_settings": {
+                        "large_profit": {"threshold": 0.05, "atr_multiple": 1.0},
+                        "medium_profit": {"threshold": 0.03, "atr_multiple": 1.5},
+                        "small_profit": {"threshold": 0.015, "atr_multiple": 2.0},
+                        "micro_profit": {"threshold": 0.008, "atr_multiple": 2.5},
+                        "default": {"atr_multiple": 3.0}
+                    },
+                    "volatility_adjustment": True,
+                    "phase_adjustment": True
+                }
+            },
+            "time_management": {
+                # Enhanced time-based settings
+                "min_profit_taking_hours": 1.5,
+                "small_profit_exit_hours": 24,
+                "stagnant_exit_hours": 30,
+                "max_trade_duration_hours": 60,
+
+                # Market phase specific durations
+                "max_position_age": {
+                    "neutral": 90,
+                    "uptrend": 72,
+                    "downtrend": 60,
+                    "ranging_at_support": 48,
+                    "ranging_at_resistance": 24,
+                    "volatile": 36
+                },
+
+                # Enhanced profit targets
+                "profit_targets": {
+                    "micro": 0.006,
+                    "quick": 0.01,
+                    "small": 0.015,
+                    "medium": 0.025,
+                    "large": 0.04,
+                    "extended": 0.06
+                },
+
+                # Phase-specific profit preferences
+                "phase_exit_preferences": {
+                    "neutral": {
+                        "profit_factor": 1.1,
+                        "duration_factor": 1.2
+                    },
+                    "ranging_at_resistance": {
+                        "profit_factor": 0.8,
+                        "duration_factor": 0.6
+                    }
+                },
+
+                # Risk factors for different durations
+                "time_based_risk_factors": {
+                    "4": 1.3,
+                    "8": 1.1,
+                    "16": 1.0,
+                    "24": 0.9,
+                    "48": 0.7,
+                    "72": 0.5
+                },
+
+                # Dynamic exit settings by market conditions
+                "momentum_exit": {
+                    "enabled": True,
+                    "threshold_long": -0.3,
+                    "threshold_short": 0.3,
+                    "min_profit_required": 0.015
                 }
             },
             "backtest": {
@@ -112,7 +260,13 @@ class Config:
                 "fixed_cost": 0.001,
                 "variable_cost": 0.0005,
                 "min_hours_between_trades": 2,
-                "track_indicator_metrics": True
+                "track_indicator_metrics": True,
+
+                # Enhanced backtest analysis settings
+                "enhanced_exit_analysis": True,
+                "export_phase_metrics": True,
+                "track_exit_performance": True,
+                "adaptive_trade_spacing": True
             }
         }
 
@@ -127,11 +281,40 @@ class Config:
         self._validate_positive_int(self.config["feature_engineering"], "chunk_size", 500)
         self._validate_float_range(self.config["feature_engineering"], "correlation_threshold", 0.5, 1.0)
 
-        self._validate_positive_int(self.config["feature_engineering"], "ema_period", 10)
-        self._validate_positive_int(self.config["feature_engineering"], "rsi_period", 2)
+        # Validate trend indicator parameters
+        self._validate_positive_int(self.config["feature_engineering"], "ema_short_period", 3)
+        self._validate_positive_int(self.config["feature_engineering"], "ema_medium_period", 5)
+        self._validate_positive_int(self.config["feature_engineering"], "ema_long_period", 10)
         self._validate_positive_int(self.config["feature_engineering"], "macd_fast", 8)
         self._validate_positive_int(self.config["feature_engineering"], "macd_slow", 12)
         self._validate_positive_int(self.config["feature_engineering"], "macd_signal", 3)
+        self._validate_positive_int(self.config["feature_engineering"], "fast_macd_fast", 3)
+        self._validate_positive_int(self.config["feature_engineering"], "fast_macd_slow", 5)
+        self._validate_positive_int(self.config["feature_engineering"], "fast_macd_signal", 3)
+        self._validate_positive_int(self.config["feature_engineering"], "adx_period", 7)
+
+        # Validate momentum indicator parameters
+        self._validate_positive_int(self.config["feature_engineering"], "rsi_short_period", 3)
+        self._validate_positive_int(self.config["feature_engineering"], "rsi_long_period", 7)
+        self._validate_positive_int(self.config["feature_engineering"], "stoch_period", 7)
+        self._validate_positive_int(self.config["feature_engineering"], "stoch_k_period", 1)
+        self._validate_positive_int(self.config["feature_engineering"], "stoch_d_period", 1)
+        self._validate_positive_int(self.config["feature_engineering"], "stoch_fast_period", 3)
+        self._validate_positive_int(self.config["feature_engineering"], "mfi_period", 7)
+
+        # Validate volatility indicator parameters
+        self._validate_positive_int(self.config["feature_engineering"], "atr_period", 7)
+        self._validate_positive_int(self.config["feature_engineering"], "bb_period", 10)
+        self._validate_positive_float(self.config["feature_engineering"], "bb_stddev", 1.0)
+        self._validate_positive_int(self.config["feature_engineering"], "donchian_period", 10)
+        self._validate_positive_int(self.config["feature_engineering"], "keltner_period", 10)
+
+        # Validate volume indicator parameters
+        self._validate_positive_int(self.config["feature_engineering"], "volume_oscillator_short", 5)
+        self._validate_positive_int(self.config["feature_engineering"], "volume_oscillator_long", 10)
+        self._validate_positive_int(self.config["feature_engineering"], "cmf_period", 7)
+        self._validate_positive_int(self.config["feature_engineering"], "force_index_period", 7)
+        self._validate_positive_int(self.config["feature_engineering"], "vwap_period", 7)
 
         self._validate_positive_int(self.config["model"], "sequence_length", 10)
         self._validate_positive_int(self.config["model"], "horizon", 1)
@@ -165,10 +348,34 @@ class Config:
 
         self._validate_boolean(self.config["risk"], "use_rsi_scaling")
         self._validate_boolean(self.config["risk"], "use_ema_based_exits")
+        self._validate_boolean(self.config["risk"], "enhanced_exit_strategy")
+        self._validate_boolean(self.config["risk"], "momentum_exit_enabled")
+        self._validate_boolean(self.config["risk"], "dynamic_trailing_stop")
 
+        # Validate enhanced partial exit settings
         if "partial_exit" in self.config["risk"]:
-            self._validate_float_range(self.config["risk"]["partial_exit"], "threshold", 0.005, 0.1)
-            self._validate_float_range(self.config["risk"]["partial_exit"], "portion", 0.1, 0.9)
+            self._validate_boolean(self.config["risk"]["partial_exit"], "multi_stage_enabled")
+            self._validate_boolean(self.config["risk"]["partial_exit"], "volatility_factor_enabled")
+            self._validate_boolean(self.config["risk"]["partial_exit"], "breakeven_adjustment")
+
+            # Validate stop loss settings
+            if "stop_loss" in self.config["risk"]:
+                self._validate_float_range(self.config["risk"]["stop_loss"], "breakeven_threshold", 0.005, 0.1)
+                self._validate_boolean(self.config["risk"]["stop_loss"], "volatility_adjustment")
+                self._validate_boolean(self.config["risk"]["stop_loss"], "phase_adjustment")
+
+        # Validate time management settings
+        if "time_management" in self.config:
+            self._validate_positive_float(self.config["time_management"], "min_profit_taking_hours", 0.5)
+            self._validate_positive_float(self.config["time_management"], "small_profit_exit_hours", 1.0)
+            self._validate_positive_float(self.config["time_management"], "stagnant_exit_hours", 1.0)
+            self._validate_positive_float(self.config["time_management"], "max_trade_duration_hours", 10.0)
+
+            # Validate momentum exit settings
+            if "momentum_exit" in self.config["time_management"]:
+                self._validate_boolean(self.config["time_management"]["momentum_exit"], "enabled")
+                self._validate_float_range(self.config["time_management"]["momentum_exit"], "min_profit_required",
+                                           0.005, 0.1)
 
         self._validate_positive_int(self.config["backtest"], "train_window_size", 1000)
         self._validate_positive_int(self.config["backtest"], "test_window_size", 100)
@@ -178,6 +385,10 @@ class Config:
         self._validate_float_range(self.config["backtest"], "variable_cost", 0.0, 0.01)
         self._validate_positive_int(self.config["backtest"], "min_hours_between_trades", 1)
         self._validate_boolean(self.config["backtest"], "track_indicator_metrics")
+        self._validate_boolean(self.config["backtest"], "enhanced_exit_analysis")
+        self._validate_boolean(self.config["backtest"], "export_phase_metrics")
+        self._validate_boolean(self.config["backtest"], "track_exit_performance")
+        self._validate_boolean(self.config["backtest"], "adaptive_trade_spacing")
 
     def _load_from_file(self, config_path: str) -> None:
         try:

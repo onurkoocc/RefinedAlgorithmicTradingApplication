@@ -5,6 +5,8 @@ import tensorflow as tf
 
 from tensorflow.keras import Input, Model
 from tensorflow.keras.layers import Dense, BatchNormalization, LSTM, Conv1D, Dropout, Layer
+from tensorflow.keras.layers import MaxPooling1D, Bidirectional, GRU, Add, LayerNormalization, GlobalAveragePooling1D, \
+    MultiHeadAttention
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint, Callback
 from tensorflow.keras.mixed_precision import set_global_policy
@@ -68,7 +70,6 @@ class SimpleTradeMetric(Callback):
 
 
 class AttentionLayer(tf.keras.layers.Layer):
-
     def __init__(self, **kwargs):
         super(AttentionLayer, self).__init__(**kwargs)
         self.W = None
@@ -116,6 +117,17 @@ class AttentionLayer(tf.keras.layers.Layer):
     @classmethod
     def from_config(cls, config):
         return cls(**config)
+
+
+class ShapeLayer(Layer):
+    def __init__(self, **kwargs):
+        super(ShapeLayer, self).__init__(**kwargs)
+
+    def call(self, inputs):
+        return inputs
+
+    def compute_output_shape(self, input_shape):
+        return input_shape
 
 
 class TradingModel:
@@ -261,7 +273,7 @@ class TradingModel:
             self.logger.warning("NaN or Inf values in input data, replacing with zeros")
             X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
 
-        batch_size = batch_size or min(self.batch_size, 512)
+        batch_size = batch_size or min(self.batch_size, 256)
 
         try:
             predictions = self.model.predict(X, verbose=0, batch_size=batch_size)
@@ -292,7 +304,8 @@ class TradingModel:
         path = model_path or self.model_path
 
         custom_objects = {
-            "AttentionLayer": AttentionLayer
+            "AttentionLayer": AttentionLayer,
+            "ShapeLayer": ShapeLayer
         }
 
         if not os.path.exists(path):
@@ -393,30 +406,52 @@ class TradingModel:
     def _build_simpler_model(self, input_shape):
         inputs = Input(shape=input_shape, dtype=tf.float32)
 
+        # Feature Extraction Layers
         x = Conv1D(filters=64, kernel_size=3, padding='same', activation='relu')(inputs)
         x = BatchNormalization()(x)
+        x = Conv1D(filters=32, kernel_size=5, padding='same', activation='relu')(x)
+        x = BatchNormalization()(x)
+        x = MaxPooling1D(pool_size=2)(x)
 
-        lstm_out = LSTM(units=48, return_sequences=True, dropout=0.1)(x)
+        # Sequence Modeling
+        x = Bidirectional(GRU(64, return_sequences=True))(x)
+        x = Dropout(0.3)(x)
 
-        attention_dim = 48
-        num_heads = 4
+        # Apply ShapeLayer to get shape info
+        x = ShapeLayer()(x)
 
-        attn_out = tf.keras.layers.MultiHeadAttention(
-            num_heads=num_heads,
-            key_dim=attention_dim // num_heads
-        )(lstm_out, lstm_out)
+        # Get feature dimension (static)
+        feature_dim = x.shape[2]
 
-        x = tf.keras.layers.Add()([lstm_out, attn_out])
-        x = tf.keras.layers.LayerNormalization()(x)
+        # Self-Attention
+        attention_output = MultiHeadAttention(num_heads=4, key_dim=16)(x, x)
+        x = Add()([x, attention_output])
+        x = LayerNormalization()(x)
+        x = Dropout(0.3)(x)
 
-        x = tf.keras.layers.GlobalAveragePooling1D()(x)
+        # Transformer Encoder (2 layers)
+        for i in range(2):
+            # Multi-head attention
+            attention_output = MultiHeadAttention(num_heads=4, key_dim=16)(x, x)
+            attention_output = Dropout(0.3)(attention_output)
+            x = Add()([x, attention_output])
+            x = LayerNormalization()(x)
 
-        x = Dense(32, activation="relu")(x)
-        x = Dropout(rate=0.2)(x)
+            # Feed-forward network
+            ffn = Dense(128, activation='relu')(x)
+            ffn = Dense(feature_dim)(ffn)  # Match feature dimension of x
+            ffn = Dropout(0.3)(ffn)
+            x = Add()([x, ffn])
+            x = LayerNormalization()(x)
 
-        outputs = Dense(5, activation="softmax", dtype=tf.float32)(x)
+        # Global Pooling
+        x = GlobalAveragePooling1D()(x)
 
-        model = Model(inputs, outputs, name="multihead_attention_model")
+        # Output Layers
+        x = Dense(32, activation='relu')(x)
+        outputs = Dense(5, activation='softmax', dtype=tf.float32)(x)
+
+        model = Model(inputs, outputs, name="hybrid_transformer_model")
 
         model.compile(
             optimizer=Adam(learning_rate=5e-4),

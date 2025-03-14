@@ -40,6 +40,17 @@ class BacktestEngine:
         self.consolidated_trades = []
         self.feature_engineer = FeatureEngineer(config)
 
+        # Enhanced trade tracking
+        self.exit_reason_stats = {}
+        self.market_phase_stats = {}
+        self.total_partial_exits = 0
+        self.total_quick_profit_exits = 0
+
+        # Trade performance tracking
+        self.best_exit_reasons = []
+        self.best_performing_phases = []
+        self.avg_trade_holding_time = 0
+
     def run_walk_forward(self, df_features: pd.DataFrame) -> pd.DataFrame:
         df_len = len(df_features)
         min_required = self.train_window_size + self.test_window_size
@@ -110,13 +121,14 @@ class BacktestEngine:
             time_stats = self.time_manager.get_exit_performance_stats()
             self._export_time_analysis(time_stats)
 
+            # Export enhanced exit strategy analysis
+            self._export_exit_strategy_analysis()
+
         self.logger.info(f"Walk-forward complete. Produced {len(df_results)} results")
         return df_results
 
-    # These changes should be applied to the _run_iteration method in your BacktestEngine class
-
     def _run_iteration(self, iteration: int, start_idx: int, df_features: pd.DataFrame, cumulative_capital: float) -> \
-    Dict[str, Any]:
+            Dict[str, Any]:
         train_end = start_idx + self.train_window_size
         test_end = min(train_end + self.test_window_size, len(df_features))
 
@@ -182,10 +194,6 @@ class BacktestEngine:
 
         return result
 
-    # And these changes should be applied to the _simulate_trading method in your BacktestEngine class
-
-    # Modify in backtest_engine.py - _simulate_trading method
-
     def _simulate_trading(self, iteration: int, df_test: pd.DataFrame,
                           risk_manager) -> Dict[str, Any]:
         try:
@@ -215,7 +223,7 @@ class BacktestEngine:
                 return {"final_equity": risk_manager.initial_capital, "trades": [], "metrics": {}}
 
         self.logger.info(f"Predicting on test data of length {len(X_test)}")
-        predictions = self.model.predict(X_test, batch_size=512)
+        predictions = self.model.predict(X_test, batch_size=256)
         if len(predictions) != len(X_test):
             self.logger.error("Prediction shape mismatch")
             return {"final_equity": risk_manager.initial_capital, "trades": [], "metrics": {}}
@@ -231,10 +239,16 @@ class BacktestEngine:
 
         signal_counts = {"Buy": 0, "Sell": 0, "NoTrade": 0}
 
-        # NEW: Track consecutive trade outcomes to adapt strategy
+        # Track consecutive trade outcomes to adapt strategy
         recent_outcomes = []
         consecutive_win_count = 0
         consecutive_loss_count = 0
+
+        # Enhanced exit strategy tracking
+        market_phase_counts = {}
+        exit_reason_counts = {}
+        partial_exit_counts = 0
+        quick_profit_counts = 0
 
         for i, model_probs in enumerate(predictions):
             if i % 100 == 0:
@@ -251,9 +265,9 @@ class BacktestEngine:
                 continue
 
             try:
-                # NEW: Adjust signal generation based on recent performance
+                # Adjust signal generation based on recent performance
                 adjusted_signal = {
-                    "adaptive_mode": False,
+                    "adaptive_mode": True,  # Enable adaptive mode
                     "win_streak": consecutive_win_count,
                     "loss_streak": consecutive_loss_count
                 }
@@ -261,7 +275,7 @@ class BacktestEngine:
                 signal = self.signal_processor.generate_signal(
                     model_probs,
                     df_test.iloc[:row_idx + 1],
-                    **adjusted_signal  # Add this parameter to your generate_signal method
+                    **adjusted_signal
                 )
 
                 # Count signal types for debugging
@@ -271,6 +285,12 @@ class BacktestEngine:
                     signal_counts["Sell"] += 1
                 else:
                     signal_counts["NoTrade"] += 1
+
+                # Track market phase
+                market_phase = signal.get("market_phase", "neutral")
+                if market_phase not in market_phase_counts:
+                    market_phase_counts[market_phase] = 0
+                market_phase_counts[market_phase] += 1
 
             except Exception as e:
                 self.logger.error(f"Signal error at {current_time}: {e}")
@@ -294,18 +314,31 @@ class BacktestEngine:
                     "momentum": float(signal.get("momentum", 0))
                 }
 
+                # Enhanced time-based exit evaluation
                 time_exit_decision = self.time_manager.evaluate_time_based_exit(
                     trade_entry, current_price, current_time, market_conditions
                 )
 
                 if time_exit_decision.get("exit", False):
+                    # Process time-based exit
+                    exit_reason = time_exit_decision.get("reason", "TimeBasedExit")
+
+                    # Track exit reason
+                    if exit_reason not in exit_reason_counts:
+                        exit_reason_counts[exit_reason] = 0
+                    exit_reason_counts[exit_reason] += 1
+
+                    # Track special exit types
+                    if exit_reason == "QuickProfitTaken":
+                        quick_profit_counts += 1
+
                     trades, position, trade_entry = self._finalize_exit(
                         iteration, risk_manager, trades, trade_entry,
                         current_time, current_price, time_exit_decision,
                         df_test, row_idx
                     )
 
-                    # NEW: Track consecutive outcomes
+                    # Track consecutive outcomes
                     trade_pnl = trades[-1].get('pnl', 0)
                     if trade_pnl > 0:
                         consecutive_win_count += 1
@@ -324,6 +357,7 @@ class BacktestEngine:
                     last_signal_time = current_time
                     continue
 
+                # Enhanced risk management exit check
                 exit_decision = risk_manager.handle_exit_decision(
                     trade_entry,
                     current_price,
@@ -339,13 +373,21 @@ class BacktestEngine:
                 )
 
                 if exit_decision.get("exit", False):
+                    # Process risk management exit
+                    exit_reason = exit_decision.get("reason", "RiskExit")
+
+                    # Track exit reason
+                    if exit_reason not in exit_reason_counts:
+                        exit_reason_counts[exit_reason] = 0
+                    exit_reason_counts[exit_reason] += 1
+
                     trades, position, trade_entry = self._finalize_exit(
                         iteration, risk_manager, trades, trade_entry,
                         current_time, current_price, exit_decision,
                         df_test, row_idx
                     )
 
-                    # NEW: Track consecutive outcomes
+                    # Track consecutive outcomes
                     trade_pnl = trades[-1].get('pnl', 0)
                     if trade_pnl > 0:
                         consecutive_win_count += 1
@@ -363,6 +405,7 @@ class BacktestEngine:
                     equity_curve.append(risk_manager.current_capital)
                     last_signal_time = current_time
                 else:
+                    # Apply stop updates
                     if exit_decision.get("update_stop", False):
                         new_stop = float(exit_decision.get("new_stop", 0))
                         if not np.isnan(new_stop) and new_stop > 0:
@@ -376,6 +419,7 @@ class BacktestEngine:
                                         'current_stop_loss']):
                                 trade_entry['current_stop_loss'] = new_stop
 
+                    # Enhanced partial exit handling
                     partial_exit = risk_manager.get_partial_exit_level(
                         trade_entry['direction'],
                         trade_entry['entry_price'],
@@ -383,6 +427,9 @@ class BacktestEngine:
                     )
 
                     if partial_exit and not trade_entry.get('partial_exit_taken', False):
+                        # Track partial exit
+                        partial_exit_counts += 1
+
                         trades, position, trade_entry = self._execute_partial_exit(
                             iteration, risk_manager, trades, trade_entry,
                             current_time, current_price, partial_exit,
@@ -391,7 +438,7 @@ class BacktestEngine:
                         equity_curve.append(risk_manager.current_capital)
 
             if position == 0:
-                # NEW: Adaptive min hours between trades based on recent performance
+                # Adaptive min hours between trades based on recent performance
                 min_hours_adjusted = self.min_hours_between_trades
 
                 # If on a winning streak, be more aggressive
@@ -444,8 +491,8 @@ class BacktestEngine:
                                 'market_phase': signal.get('market_phase', 'neutral'),
                                 'volume_confirmation': bool(signal.get('volume_confirmation', False)),
                                 'trend_strength': float(signal.get('trend_strength', 0.5)),
-                                'consecutive_wins': consecutive_win_count,  # NEW
-                                'consecutive_losses': consecutive_loss_count  # NEW
+                                'consecutive_wins': consecutive_win_count,
+                                'consecutive_losses': consecutive_loss_count
                             }
 
                             trade_entry['entry_ema_20'] = self._get_ema_20(df_test, row_idx)
@@ -464,6 +511,22 @@ class BacktestEngine:
 
         self.logger.info(
             f"Signal statistics: Buy: {signal_counts['Buy']}, Sell: {signal_counts['Sell']}, NoTrade: {signal_counts['NoTrade']}")
+
+        # Track exit strategy statistics
+        self.total_partial_exits += partial_exit_counts
+        self.total_quick_profit_exits += quick_profit_counts
+
+        # Update market phase stats
+        for phase, count in market_phase_counts.items():
+            if phase not in self.market_phase_stats:
+                self.market_phase_stats[phase] = 0
+            self.market_phase_stats[phase] += count
+
+        # Update exit reason stats
+        for reason, count in exit_reason_counts.items():
+            if reason not in self.exit_reason_stats:
+                self.exit_reason_stats[reason] = 0
+            self.exit_reason_stats[reason] += count
 
         if position != 0 and trade_entry is not None:
             trade_entry['exit_signal'] = "EndOfTest"
@@ -645,7 +708,25 @@ class BacktestEngine:
             t_rec['exit_macd_signal'] = 0.0
             t_rec['exit_macd_histogram'] = 0.0
 
+        # Calculate trade duration for analysis
+        entry_time = t_rec.get('entry_time')
+        exit_time = t_rec.get('exit_time')
+        if entry_time and exit_time and isinstance(entry_time, datetime) and isinstance(exit_time, datetime):
+            duration_hours = (exit_time - entry_time).total_seconds() / 3600
+            t_rec['duration_hours'] = duration_hours
+
+            # Track aggregate holding time
+            if len(trades) > 0:
+                self.avg_trade_holding_time = ((self.avg_trade_holding_time * len(trades)) + duration_hours) / (
+                            len(trades) + 1)
+            else:
+                self.avg_trade_holding_time = duration_hours
+
         trades.append(t_rec)
+
+        # Track best performing exit types
+        exit_reason = exit_decision.get('reason', 'ExitSignal')
+        self._track_exit_performance(exit_reason, close_pnl)
 
         risk_manager.update_after_trade(t_rec)
 
@@ -707,7 +788,17 @@ class BacktestEngine:
             partial_rec['exit_macd_signal'] = 0.0
             partial_rec['exit_macd_histogram'] = 0.0
 
+        # Calculate trade duration for analysis
+        entry_time = partial_rec.get('entry_time')
+        if entry_time and isinstance(entry_time, datetime) and isinstance(current_time, datetime):
+            duration_hours = (current_time - entry_time).total_seconds() / 3600
+            partial_rec['duration_hours'] = duration_hours
+
         trades.append(partial_rec)
+
+        # Track partial exit performance
+        exit_reason = f"PartialExit_{int(portion * 100)}pct"
+        self._track_exit_performance(exit_reason, partial_pnl)
 
         risk_manager.current_capital += partial_pnl
 
@@ -719,6 +810,41 @@ class BacktestEngine:
         self.logger.debug(f"Partial exit at {current_time}: {exit_qty} @ ${exit_price}, PnL: ${partial_pnl:.2f}")
 
         return trades, position, trade_entry
+
+    def _track_exit_performance(self, exit_reason: str, pnl: float):
+        """Track performance of different exit strategies"""
+        if not hasattr(self, 'exit_performance'):
+            self.exit_performance = {}
+
+        if exit_reason not in self.exit_performance:
+            self.exit_performance[exit_reason] = {
+                'count': 0,
+                'total_pnl': 0,
+                'win_count': 0,
+                'avg_pnl': 0,
+                'win_rate': 0
+            }
+
+        perf = self.exit_performance[exit_reason]
+        perf['count'] += 1
+        perf['total_pnl'] += pnl
+
+        if pnl > 0:
+            perf['win_count'] += 1
+
+        perf['avg_pnl'] = perf['total_pnl'] / perf['count']
+        perf['win_rate'] = perf['win_count'] / perf['count']
+
+        # Update best exit strategies list
+        if perf['count'] >= 5 and perf['avg_pnl'] > 0:
+            if exit_reason not in self.best_exit_reasons:
+                self.best_exit_reasons.append(exit_reason)
+                # Sort by average PnL
+                self.best_exit_reasons = sorted(
+                    self.best_exit_reasons,
+                    key=lambda x: self.exit_performance[x]['avg_pnl'] if x in self.exit_performance else 0,
+                    reverse=True
+                )
 
     def _compute_class_weights(self, y_train: np.ndarray) -> Dict[int, float]:
         try:
@@ -795,6 +921,43 @@ class BacktestEngine:
             avg_win_entry_macd_hist = 0
             avg_win_exit_macd_hist = 0
 
+        # Calculate metrics by market phase
+        phase_metrics = {}
+        for t in trades:
+            phase = t.get('market_phase', 'neutral')
+            pnl = t.get('pnl', 0)
+
+            if phase not in phase_metrics:
+                phase_metrics[phase] = {
+                    'count': 0,
+                    'wins': 0,
+                    'total_pnl': 0,
+                    'win_rate': 0,
+                    'avg_pnl': 0
+                }
+
+            stats = phase_metrics[phase]
+            stats['count'] += 1
+            stats['total_pnl'] += pnl
+
+            if pnl > 0:
+                stats['wins'] += 1
+
+            if stats['count'] > 0:
+                stats['win_rate'] = stats['wins'] / stats['count']
+                stats['avg_pnl'] = stats['total_pnl'] / stats['count']
+
+            # Update best performing phases
+            if stats['count'] >= 5 and stats['avg_pnl'] > 0:
+                if phase not in self.best_performing_phases:
+                    self.best_performing_phases.append(phase)
+                    # Sort by average PnL
+                    self.best_performing_phases = sorted(
+                        self.best_performing_phases,
+                        key=lambda x: phase_metrics[x]['avg_pnl'] if x in phase_metrics else 0,
+                        reverse=True
+                    )
+
         avg_hours_in_trade = 0
         for t in trades:
             if 'entry_time' in t and 'exit_time' in t:
@@ -818,7 +981,8 @@ class BacktestEngine:
             'avg_exit_rsi': avg_exit_rsi,
             'avg_win_entry_macd_hist': avg_win_entry_macd_hist,
             'avg_win_exit_macd_hist': avg_win_exit_macd_hist,
-            'avg_hours_in_trade': avg_hours_in_trade
+            'avg_hours_in_trade': avg_hours_in_trade,
+            'phase_metrics': phase_metrics
         }
 
     def _calculate_consolidated_metrics(self, final_equity: float) -> Dict[str, float]:
@@ -1020,6 +1184,125 @@ class BacktestEngine:
         self.logger.info(f"Exported {len(df_trades)} trades to {csv_path}")
         self.logger.info(f"Exported summary to {summary_path}")
 
+    def _export_exit_strategy_analysis(self) -> None:
+        """Export enhanced exit strategy analysis"""
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        analysis_path = self.output_dir / f'exit_strategy_analysis_{timestamp}.txt'
+
+        with open(analysis_path, 'w') as f:
+            f.write("Enhanced Exit Strategy Analysis\n")
+            f.write("==============================\n\n")
+
+            # Exit strategy performance
+            f.write("Exit Strategy Performance\n")
+            f.write("-----------------------\n")
+            if hasattr(self, 'exit_performance'):
+                f.write(f"Total trades analyzed: {len(self.consolidated_trades)}\n")
+                f.write(f"Total partial exits executed: {self.total_partial_exits}\n")
+                f.write(f"Total quick profit exits executed: {self.total_quick_profit_exits}\n\n")
+
+                f.write("Exit Strategy Performance by Type:\n")
+                for reason, perf in sorted(self.exit_performance.items(),
+                                           key=lambda x: x[1]['avg_pnl'] if x[1]['count'] > 5 else -9999,
+                                           reverse=True):
+                    if perf['count'] >= 5:  # Only show strategies with enough data
+                        f.write(f"  {reason}:\n")
+                        f.write(f"    Count: {perf['count']}\n")
+                        f.write(f"    Win Rate: {perf['win_rate'] * 100:.1f}%\n")
+                        f.write(f"    Avg P&L: ${perf['avg_pnl']:.2f}\n")
+                        f.write(f"    Total P&L: ${perf['total_pnl']:.2f}\n\n")
+            else:
+                f.write("No exit performance data available.\n\n")
+
+            # Best performing exit strategies
+            f.write("Top Performing Exit Strategies\n")
+            f.write("----------------------------\n")
+            if hasattr(self, 'best_exit_reasons') and self.best_exit_reasons:
+                for i, reason in enumerate(self.best_exit_reasons[:5], 1):
+                    if reason in self.exit_performance:
+                        perf = self.exit_performance[reason]
+                        f.write(
+                            f"{i}. {reason}: ${perf['avg_pnl']:.2f} avg P&L, {perf['win_rate'] * 100:.1f}% win rate\n")
+            else:
+                f.write("No best exit strategies identified.\n")
+            f.write("\n")
+
+            # Market phase performance
+            f.write("Market Phase Performance\n")
+            f.write("-----------------------\n")
+            for phase, count in sorted(self.market_phase_stats.items(), key=lambda x: x[1], reverse=True):
+                f.write(f"{phase}: {count} occurrences\n")
+            f.write("\n")
+
+            # Best performing market phases
+            f.write("Top Performing Market Phases\n")
+            f.write("--------------------------\n")
+            if hasattr(self, 'best_performing_phases') and self.best_performing_phases:
+                for i, phase in enumerate(self.best_performing_phases[:3], 1):
+                    f.write(f"{i}. {phase}\n")
+            else:
+                f.write("No best performing phases identified.\n")
+            f.write("\n")
+
+            # Trading timing analysis
+            f.write("Trading Timing Analysis\n")
+            f.write("----------------------\n")
+            f.write(f"Average trade holding time: {self.avg_trade_holding_time:.2f} hours\n")
+
+            # Recommendations
+            f.write("\nExit Strategy Recommendations\n")
+            f.write("---------------------------\n")
+
+            # Generate recommendations based on collected data
+            if hasattr(self, 'exit_performance') and self.exit_performance:
+                # Find best and worst performing strategies
+                best_strategies = sorted(
+                    [(k, v) for k, v in self.exit_performance.items() if v['count'] >= 5],
+                    key=lambda x: x[1]['avg_pnl'],
+                    reverse=True
+                )[:3]
+
+                worst_strategies = sorted(
+                    [(k, v) for k, v in self.exit_performance.items() if v['count'] >= 5],
+                    key=lambda x: x[1]['avg_pnl']
+                )[:3]
+
+                if best_strategies:
+                    f.write("1. Prioritize these exit strategies:\n")
+                    for i, (strategy, perf) in enumerate(best_strategies, 1):
+                        f.write(f"   {i}. {strategy}: ${perf['avg_pnl']:.2f} avg P&L\n")
+
+                if worst_strategies:
+                    f.write("\n2. Avoid or modify these exit strategies:\n")
+                    for i, (strategy, perf) in enumerate(worst_strategies, 1):
+                        f.write(f"   {i}. {strategy}: ${perf['avg_pnl']:.2f} avg P&L\n")
+
+                # Holding time recommendations based on average performance
+                f.write("\n3. Time-based recommendations:\n")
+                if self.avg_trade_holding_time < 5:
+                    f.write("   - Consider longer holding periods for winning trades\n")
+                elif self.avg_trade_holding_time > 24:
+                    f.write("   - Consider taking profits earlier on winning trades\n")
+
+                # Market phase recommendations
+                if hasattr(self, 'best_performing_phases') and self.best_performing_phases:
+                    f.write("\n4. Market phase strategy recommendations:\n")
+                    for phase in self.best_performing_phases[:2]:
+                        f.write(f"   - Increase position size during {phase} phase\n")
+
+                # Partial exit strategy recommendations
+                partial_exits = [k for k in self.exit_performance.keys() if "PartialExit" in k]
+                if partial_exits:
+                    best_partial = max(partial_exits, key=lambda x: self.exit_performance[x][
+                        'avg_pnl'] if x in self.exit_performance else 0)
+                    f.write(f"\n5. Partial exit optimization:\n")
+                    f.write(f"   - Prioritize {best_partial} partial exit strategy\n")
+
+            else:
+                f.write("Insufficient data for exit strategy recommendations.\n")
+
+        self.logger.info(f"Exported exit strategy analysis to {analysis_path}")
+
     def _export_time_analysis(self, time_stats: Dict[str, Any]) -> None:
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         time_path = self.output_dir / f'time_analysis_{timestamp}.txt'
@@ -1051,5 +1334,12 @@ class BacktestEngine:
                 percentiles = optimal["percentiles"]
                 f.write(f"Profitable Duration Percentiles: 25%={percentiles.get('p25', 0):.1f}h, " +
                         f"50%={percentiles.get('p50', 0):.1f}h, 75%={percentiles.get('p75', 0):.1f}h\n")
+
+            # Phase-specific duration analysis
+            if "phase_optimal_durations" in optimal:
+                f.write("\nOptimal Durations by Market Phase\n")
+                f.write("-------------------------------\n")
+                for phase, duration in optimal["phase_optimal_durations"].items():
+                    f.write(f"{phase}: {duration:.1f}h\n")
 
         self.logger.info(f"Exported time analysis to {time_path}")

@@ -23,8 +23,27 @@ class DataPreparer:
         self.test_sequence_length = self.sequence_length
 
         self.essential_features = [
-            "ema_20", "obv", "force_index", "bb_width", "bb_upper", "bb_lower", "bb_mid",
-            "stoch_k", "stoch_d", "atr_14", "rsi_14", "macd", "macd_signal", "macd_histogram"
+            # Trend-based
+            "ema_5", "ema_10", "ema_20",
+            "macd", "macd_signal", "macd_histogram",
+            "macd_fast", "macd_fast_signal", "macd_fast_histogram",
+            "parabolic_sar", "adx", "plus_di", "minus_di",
+            "linear_regression_slope",
+
+            # Momentum-based
+            "rsi_14", "rsi_7",
+            "stoch_k", "stoch_d",
+            "stoch_k_fast", "stoch_d_fast",
+            "mfi",
+
+            # Volatility
+            "atr_14",
+            "bb_upper", "bb_lower", "bb_middle", "bb_width", "bb_percent_b",
+            "donchian_high", "donchian_low", "donchian_middle",
+            "keltner_upper", "keltner_lower", "keltner_middle",
+
+            # Volume
+            "obv", "volume_oscillator", "cmf", "force_index", "vwap", "net_taker_flow"
         ]
 
     def prepare_data(self, df: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray, np.ndarray,
@@ -36,27 +55,64 @@ class DataPreparer:
         actual_cols = [col for col in df.columns if col.startswith('actual_')]
 
         required_features = [
-            'm30_ema_20', 'm30_bb_lower', 'm30_bb_width',
-            'm30_bb_upper', 'm30_obv', 'm30_bb_mid',
-            'open', 'high', 'low', 'close', 'volume', 'atr_14',
-            'm30_rsi_14', 'm30_macd', 'm30_macd_signal', 'm30_macd_histogram',
-            'm30_cmf', 'm30_mfi', 'm30_vwap', 'm30_adx', 'cumulative_delta_volume'
+            # Trend indicators with prefixes
+            'm30_ema_5', 'm30_ema_10', 'm30_ema_20',
+            'm30_macd', 'm30_macd_signal', 'm30_macd_histogram',
+            'm30_macd_fast', 'm30_macd_fast_signal', 'm30_macd_fast_histogram',
+            'm30_parabolic_sar', 'm30_adx', 'm30_plus_di', 'm30_minus_di',
+            'm30_linear_regression_slope',
+
+            # Momentum indicators with prefixes
+            'm30_rsi_14', 'm30_rsi_7',
+            'm30_stoch_k', 'm30_stoch_d',
+            'm30_stoch_k_fast', 'm30_stoch_d_fast',
+            'm30_mfi',
+
+            # Volatility indicators with prefixes
+            'm30_atr_14',
+            'm30_bb_upper', 'm30_bb_lower', 'm30_bb_middle', 'm30_bb_width', 'm30_bb_percent_b',
+            'm30_donchian_high', 'm30_donchian_low', 'm30_donchian_middle',
+            'm30_keltner_upper', 'm30_keltner_lower', 'm30_keltner_middle',
+
+            # Volume indicators with prefixes
+            'm30_obv', 'm30_volume_oscillator', 'm30_cmf', 'm30_force_index', 'm30_vwap', 'm30_net_taker_flow',
+
+            # Price data
+            'open', 'high', 'low', 'close', 'volume'
         ]
         available_features = []
         for col in df.columns:
             if col in required_features and col not in available_features:
                 available_features.append(col)
 
-        if 'atr_14' not in available_features and 'm30_atr_14' in df.columns:
-            available_features.append('m30_atr_14')
-
+        # Handle prefixed/non-prefixed indicator pairs
         indicator_pairs = [
+            ('ema_5', 'm30_ema_5'),
+            ('ema_10', 'm30_ema_10'),
             ('ema_20', 'm30_ema_20'),
             ('rsi_14', 'm30_rsi_14'),
+            ('rsi_7', 'm30_rsi_7'),
             ('macd', 'm30_macd'),
             ('macd_signal', 'm30_macd_signal'),
             ('macd_histogram', 'm30_macd_histogram'),
-            ('adx', 'm30_adx')
+            ('macd_fast', 'm30_macd_fast'),
+            ('macd_fast_signal', 'm30_macd_fast_signal'),
+            ('macd_fast_histogram', 'm30_macd_fast_histogram'),
+            ('parabolic_sar', 'm30_parabolic_sar'),
+            ('adx', 'm30_adx'),
+            ('plus_di', 'm30_plus_di'),
+            ('minus_di', 'm30_minus_di'),
+            ('stoch_k', 'm30_stoch_k'),
+            ('stoch_d', 'm30_stoch_d'),
+            ('stoch_k_fast', 'm30_stoch_k_fast'),
+            ('stoch_d_fast', 'm30_stoch_d_fast'),
+            ('mfi', 'm30_mfi'),
+            ('atr_14', 'm30_atr_14'),
+            ('bb_width', 'm30_bb_width'),
+            ('bb_percent_b', 'm30_bb_percent_b'),
+            ('cmf', 'm30_cmf'),
+            ('vwap', 'm30_vwap'),
+            ('obv', 'm30_obv')
         ]
 
         for base, prefixed in indicator_pairs:
@@ -126,11 +182,30 @@ class DataPreparer:
         actual_cols = [col for col in df.columns if col.startswith('actual_')]
 
         required_features = [
-            'm30_ema_20', 'm30_bb_lower', 'm30_bb_width',
-            'm30_bb_upper', 'm30_obv', 'm30_bb_mid',
-            'open', 'high', 'low', 'close', 'volume', 'atr_14',
-            'm30_rsi_14', 'm30_macd', 'm30_macd_signal', 'm30_macd_histogram',
-            'm30_cmf', 'm30_mfi', 'm30_vwap', 'm30_adx', 'cumulative_delta_volume'
+            # Trend indicators with prefixes
+            'm30_ema_5', 'm30_ema_10', 'm30_ema_20',
+            'm30_macd', 'm30_macd_signal', 'm30_macd_histogram',
+            'm30_macd_fast', 'm30_macd_fast_signal', 'm30_macd_fast_histogram',
+            'm30_parabolic_sar', 'm30_adx', 'm30_plus_di', 'm30_minus_di',
+            'm30_linear_regression_slope',
+
+            # Momentum indicators with prefixes
+            'm30_rsi_14', 'm30_rsi_7',
+            'm30_stoch_k', 'm30_stoch_d',
+            'm30_stoch_k_fast', 'm30_stoch_d_fast',
+            'm30_mfi',
+
+            # Volatility indicators with prefixes
+            'm30_atr_14',
+            'm30_bb_upper', 'm30_bb_lower', 'm30_bb_middle', 'm30_bb_width', 'm30_bb_percent_b',
+            'm30_donchian_high', 'm30_donchian_low', 'm30_donchian_middle',
+            'm30_keltner_upper', 'm30_keltner_lower', 'm30_keltner_middle',
+
+            # Volume indicators with prefixes
+            'm30_obv', 'm30_volume_oscillator', 'm30_cmf', 'm30_force_index', 'm30_vwap', 'm30_net_taker_flow',
+
+            # Price data
+            'open', 'high', 'low', 'close', 'volume'
         ]
 
         available_features = []
@@ -138,17 +213,34 @@ class DataPreparer:
             if col in required_features and col not in available_features:
                 available_features.append(col)
 
-        if 'atr_14' not in available_features and 'm30_atr_14' in df.columns:
-            df['atr_14'] = df['m30_atr_14']
-            available_features.append('atr_14')
-
+        # Handle prefixed/non-prefixed indicator pairs
         indicator_pairs = [
+            ('ema_5', 'm30_ema_5'),
+            ('ema_10', 'm30_ema_10'),
             ('ema_20', 'm30_ema_20'),
             ('rsi_14', 'm30_rsi_14'),
+            ('rsi_7', 'm30_rsi_7'),
             ('macd', 'm30_macd'),
             ('macd_signal', 'm30_macd_signal'),
             ('macd_histogram', 'm30_macd_histogram'),
-            ('adx', 'm30_adx')
+            ('macd_fast', 'm30_macd_fast'),
+            ('macd_fast_signal', 'm30_macd_fast_signal'),
+            ('macd_fast_histogram', 'm30_macd_fast_histogram'),
+            ('parabolic_sar', 'm30_parabolic_sar'),
+            ('adx', 'm30_adx'),
+            ('plus_di', 'm30_plus_di'),
+            ('minus_di', 'm30_minus_di'),
+            ('stoch_k', 'm30_stoch_k'),
+            ('stoch_d', 'm30_stoch_d'),
+            ('stoch_k_fast', 'm30_stoch_k_fast'),
+            ('stoch_d_fast', 'm30_stoch_d_fast'),
+            ('mfi', 'm30_mfi'),
+            ('atr_14', 'm30_atr_14'),
+            ('bb_width', 'm30_bb_width'),
+            ('bb_percent_b', 'm30_bb_percent_b'),
+            ('cmf', 'm30_cmf'),
+            ('vwap', 'm30_vwap'),
+            ('obv', 'm30_obv')
         ]
 
         for base, prefixed in indicator_pairs:

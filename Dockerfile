@@ -21,6 +21,8 @@ RUN mkdir -p /app/data /app/results/models /app/results/backtest /app/results/lo
 
 COPY *.py /app/
 COPY startup.sh /app/
+# Fix Windows line endings by removing \r
+RUN sed -i 's/\r$//' /app/startup.sh
 RUN chmod +x /app/startup.sh
 
 ENTRYPOINT ["/app/startup.sh"]
