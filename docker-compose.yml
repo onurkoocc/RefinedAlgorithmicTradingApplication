@@ -34,7 +34,7 @@ services:
               count: 1
               capabilities: [gpu]
         limits:
-          cpus: '4'
+          cpus: '8'
           memory: 32G
     shm_size: 8gb
     logging:

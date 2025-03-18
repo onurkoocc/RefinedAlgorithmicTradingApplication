@@ -10,287 +10,479 @@ class TimeBasedTradeManager:
         self.config = config
         self.logger = logging.getLogger("TimeBasedTradeManager")
 
-        # OPTIMIZATION: Increased min profit taking hours for better holding time
-        self.min_profit_taking_hours = 2.5  # Increased from 1.5 for better holding duration
-        self.small_profit_exit_hours = 20  # Reduced from 24 to take profits more selectively
-        self.stagnant_exit_hours = 28  # Reduced from 30 for faster exit from stagnant positions
-        self.max_trade_duration_hours = 56  # Reduced from 60 for better capital efficiency
+        self.min_profit_taking_hours = self._get_config_float("time_management", "min_profit_taking_hours", 1.8)
+        self.small_profit_exit_hours = self._get_config_float("time_management", "small_profit_exit_hours", 8.0)
+        self.stagnant_exit_hours = self._get_config_float("time_management", "stagnant_exit_hours", 10.0)
+        self.max_trade_duration_hours = self._get_config_float("time_management", "max_trade_duration_hours", 36.0)
 
-        # OPTIMIZATION: Enhanced holding period parameters for better alignment with optimal duration
-        self.short_term_lookback = 3  # Reduced from 4
-        self.medium_term_lookback = 6  # Reduced from 8
-        self.long_term_lookback = 12  # Reduced from 16
+        self.short_term_lookback = 3
+        self.medium_term_lookback = 6
+        self.long_term_lookback = 12
 
-        # Stop management parameters
-        self.initial_stop_wide_factor = 1.15  # Increased from 1.1 for better trade room
-        self.tight_stop_factor = 0.55  # Increased from 0.5 for better profit protection
-
-        # OPTIMIZATION: Enhanced profit targets for quicker profit-taking
         self.profit_targets = {
-            "micro": 0.005,  # Reduced from 0.006 for faster micro exits
-            "quick": 0.01,  # Kept at 1% quick profit target
-            "small": 0.015,  # Kept at 1.5% small profit target
-            "medium": 0.023,  # Reduced from 0.025 for faster medium exits
-            "large": 0.035,  # Reduced from 0.04 for faster large exits
-            "extended": 0.05  # Reduced from 0.06 for faster extended exits
+            "micro": 0.004,
+            "quick": 0.008,
+            "small": 0.012,
+            "medium": 0.018,
+            "large": 0.03,
+            "extended": 0.045
         }
 
-        # Performance tracking
+        self.max_position_age = {
+            "neutral": 24.0,
+            "uptrend": 18.0,
+            "downtrend": 16.0,
+            "ranging_at_support": 12.0,
+            "ranging_at_resistance": 6.0,
+            "volatile": 10.0
+        }
+
+        self.phase_exit_preferences = {
+            "neutral": {
+                "profit_factor": 1.0,
+                "duration_factor": 1.1
+            },
+            "ranging_at_resistance": {
+                "profit_factor": 0.6,
+                "duration_factor": 0.4
+            },
+            "uptrend": {
+                "profit_factor": 1.0,
+                "duration_factor": 1.0
+            },
+            "downtrend": {
+                "profit_factor": 0.8,
+                "duration_factor": 0.7
+            }
+        }
+
+        self.time_based_risk_factors = {
+            2: 1.4,
+            4: 1.3,
+            8: 1.1,
+            12: 1.0,
+            16: 0.9,
+            24: 0.8,
+            36: 0.6,
+            48: 0.5,
+            72: 0.4
+        }
+
         self.holding_period_stats = {
             "winning_trades": [],
             "losing_trades": []
         }
-
-        # OPTIMIZATION: Per-phase position management, optimized for best performers
-        # Neutral phase duration increased, ranging_at_resistance reduced
-        self.max_position_age = {
-            "neutral": 100,  # Increased from 90 - best performing phase
-            "uptrend": 72,  # Unchanged
-            "downtrend": 48,  # Reduced from 60
-            "ranging_at_support": 48,  # Unchanged
-            "ranging_at_resistance": 16,  # Significantly reduced from 24 - worst performing phase
-            "volatile": 32  # Reduced from 36
-        }
-
-        # OPTIMIZATION: Optimized risk factors for duration-based stop adjustment
-        # More protection for longer-duration trades
-        self.time_based_risk_factors = {
-            4: 1.4,  # 0-4 hours: wider stops (140%) - increased from 130%
-            8: 1.2,  # 4-8 hours: slightly wider stops (120%) - increased from 110%
-            16: 1.05,  # 8-16 hours: normal stops (105%) - increased from 100%
-            24: 0.85,  # 16-24 hours: slightly tighter stops (85%) - tightened from 90%
-            48: 0.65,  # 24-48 hours: tighter stops (65%) - tightened from 70%
-            72: 0.45  # 48-72 hours: very tight stops (45%) - tightened from 50%
-        }
-
-        # Market state tracking
-        self.market_volatility_history = []
-        self.profit_exit_adaptivity = 0.6  # Increased from 0.5, more adaptive
         self.log_performance_data = {}
 
-        # OPTIMIZATION: Market phase specific exit preferences enhanced
-        # Modified based on performance data
-        self.phase_exit_preferences = {
-            "neutral": {
-                "profit_factor": 1.15,  # Extend profit targets by 15% (increased from 10%)
-                "duration_factor": 1.25  # Extend holding periods by 25% (increased from 20%)
-            },
-            "ranging_at_resistance": {
-                "profit_factor": 0.7,  # Reduce profit targets by 30% (reduced from 20%)
-                "duration_factor": 0.5  # Reduce holding periods by 50% (reduced from 40%)
-            },
-            "uptrend": {
-                "profit_factor": 1.1,  # Extend profit targets by 10% (new)
-                "duration_factor": 1.1  # Extend holding periods by 10% (new)
-            },
-            "downtrend": {
-                "profit_factor": 0.9,  # Reduce profit targets by 10% (new)
-                "duration_factor": 0.8  # Reduce holding periods by 20% (new)
+    def _get_config_float(self, section: str, key: str, default: float) -> float:
+        try:
+            value = self.config.get(section, key, default)
+            return float(value)
+        except (ValueError, TypeError):
+            self.logger.warning(f"Invalid config value for {section}.{key}, using default {default}")
+            return default
+
+    def _load_max_position_age(self) -> Dict[str, float]:
+        try:
+            default_values = {
+                "neutral": 90.0,
+                "uptrend": 72.0,
+                "downtrend": 48.0,
+                "ranging_at_support": 48.0,
+                "ranging_at_resistance": 16.0,
+                "volatile": 32.0
             }
-        }
+
+            config_values = self.config.get("time_management", "max_position_age", {})
+
+            result = {}
+            for phase, default in default_values.items():
+                if phase in config_values:
+                    try:
+                        value = float(config_values[phase])
+                        if value <= 0:
+                            raise ValueError("Value must be positive")
+                        result[phase] = value
+                    except (ValueError, TypeError):
+                        result[phase] = default
+                else:
+                    result[phase] = default
+
+            return result
+        except Exception as e:
+            self.logger.error(f"Error loading max position age settings: {e}")
+            return {
+                "neutral": 90.0,
+                "uptrend": 72.0,
+                "downtrend": 48.0,
+                "ranging_at_support": 48.0,
+                "ranging_at_resistance": 16.0,
+                "volatile": 32.0
+            }
+
+    def _load_phase_exit_preferences(self) -> Dict[str, Dict[str, float]]:
+        try:
+            default_values = {
+                "neutral": {
+                    "profit_factor": 1.15,
+                    "duration_factor": 1.25
+                },
+                "ranging_at_resistance": {
+                    "profit_factor": 0.7,
+                    "duration_factor": 0.5
+                },
+                "uptrend": {
+                    "profit_factor": 1.1,
+                    "duration_factor": 1.1
+                },
+                "downtrend": {
+                    "profit_factor": 0.9,
+                    "duration_factor": 0.8
+                }
+            }
+
+            config_values = self.config.get("time_management", "phase_exit_preferences", {})
+
+            result = {}
+            for phase, default_dict in default_values.items():
+                if phase in config_values:
+                    result[phase] = {}
+                    for key, default in default_dict.items():
+                        if key in config_values[phase]:
+                            try:
+                                value = float(config_values[phase][key])
+                                if value <= 0:
+                                    raise ValueError("Value must be positive")
+                                result[phase][key] = value
+                            except (ValueError, TypeError):
+                                result[phase][key] = default
+                        else:
+                            result[phase][key] = default
+                else:
+                    result[phase] = default_dict.copy()
+
+            return result
+        except Exception as e:
+            self.logger.error(f"Error loading phase exit preferences: {e}")
+            return {
+                "neutral": {
+                    "profit_factor": 1.15,
+                    "duration_factor": 1.25
+                },
+                "ranging_at_resistance": {
+                    "profit_factor": 0.7,
+                    "duration_factor": 0.5
+                },
+                "uptrend": {
+                    "profit_factor": 1.1,
+                    "duration_factor": 1.1
+                },
+                "downtrend": {
+                    "profit_factor": 0.9,
+                    "duration_factor": 0.8
+                }
+            }
+
+    def _load_time_based_risk_factors(self) -> Dict[int, float]:
+        try:
+            default_values = {
+                4: 1.4,
+                8: 1.2,
+                16: 1.05,
+                24: 0.85,
+                48: 0.65,
+                72: 0.45
+            }
+
+            config_values = self.config.get("time_management", "time_based_risk_factors", {})
+
+            result = {}
+            for hours, default in default_values.items():
+                str_hours = str(hours)
+                if str_hours in config_values:
+                    try:
+                        value = float(config_values[str_hours])
+                        if value <= 0:
+                            raise ValueError("Value must be positive")
+                        result[hours] = value
+                    except (ValueError, TypeError):
+                        result[hours] = default
+                else:
+                    result[hours] = default
+
+            return result
+        except Exception as e:
+            self.logger.error(f"Error loading time-based risk factors: {e}")
+            return {
+                4: 1.4,
+                8: 1.2,
+                16: 1.05,
+                24: 0.85,
+                48: 0.65,
+                72: 0.45
+            }
 
     def evaluate_time_based_exit(self, position: Dict[str, Any],
                                  current_price: float,
                                  current_time: datetime,
                                  market_conditions: Dict[str, Any]) -> Dict[str, Any]:
-        entry_time = position.get('entry_time')
-        if not entry_time or not isinstance(entry_time, datetime):
-            return {"exit": False, "reason": "InvalidEntryTime"}
+        try:
+            if not self._validate_position_data(position, current_price, current_time):
+                return {"exit": False, "reason": "InvalidPositionData"}
 
-        direction = position.get('direction', 'long')
-        entry_price = float(position.get('entry_price', 0))
-        current_stop = float(position.get('current_stop_loss', 0))
-        signal_type = position.get('entry_signal', '')
+            entry_time = position['entry_time']
+            direction = position['direction']
+            entry_price = float(position['entry_price'])
+            current_stop = float(position['current_stop_loss'])
+            signal_type = position.get('entry_signal', '')
 
-        trade_duration = (current_time - entry_time).total_seconds() / 3600
-        market_phase = market_conditions.get('market_phase', 'neutral')
-        volatility = float(market_conditions.get('volatility', 0.5))
-        momentum = float(market_conditions.get('momentum', 0.0))
-        ensemble_score = float(position.get('ensemble_score', 0.5))
+            trade_duration = self._calculate_trade_duration(entry_time, current_time)
 
-        if direction == 'long':
-            pnl_pct = (current_price / entry_price) - 1
-        else:
-            pnl_pct = (entry_price / current_price) - 1
+            market_phase = market_conditions.get('market_phase', 'neutral')
+            volatility = float(market_conditions.get('volatility', 0.5))
+            momentum = float(market_conditions.get('momentum', 0.0))
+            ensemble_score = float(position.get('ensemble_score', 0.5))
 
-        # Get phase-specific factors
-        phase_settings = self.phase_exit_preferences.get(market_phase, {"profit_factor": 1.0, "duration_factor": 1.0})
-        profit_factor = phase_settings["profit_factor"]
-        duration_factor = phase_settings["duration_factor"]
+            pnl_pct = self._calculate_pnl_percentage(direction, entry_price, current_price)
 
-        # Calculate max duration with enhanced logic
-        max_duration = self._get_max_duration(market_phase, volatility, pnl_pct)
-        max_duration *= duration_factor  # Apply phase-specific factor
+            phase_settings = self.phase_exit_preferences.get(
+                market_phase,
+                {"profit_factor": 1.0, "duration_factor": 1.0}
+            )
+            profit_factor = phase_settings["profit_factor"]
+            duration_factor = phase_settings["duration_factor"]
 
-        # 1. Enhanced time-based exits
+            max_duration = self._calculate_max_duration(market_phase, volatility, pnl_pct)
+            max_duration *= duration_factor
 
-        # OPTIMIZATION: Exit if trade duration exceeds optimized max duration
-        # More aggressive exit for MaxDurationReached_neutral which showed -$23.83 avg P&L
-        if trade_duration > max_duration:
-            # OPTIMIZATION: Special handling for neutral phase to avoid significant losses
-            if market_phase == 'neutral' and pnl_pct < 0:
-                # Even faster exit for losing trades in neutral phase
+            quick_profit_threshold = self.profit_targets["quick"] * profit_factor * (1.0 - (0.15 * abs(momentum)))
+
+            if pnl_pct > self.profit_targets["medium"] * 1.2:
+                momentum_factor = 1.0 + min(0.4, max(-0.3, momentum))
+
+                if (direction == 'long' and momentum > 0.15) or (direction == 'short' and momentum < -0.15):
+                    if trade_duration > self.min_profit_taking_hours:
+                        return {
+                            "exit": True,
+                            "reason": "HighProfitMomentumExit",
+                            "exit_price": current_price
+                        }
+
+            if self._should_take_quick_profit(trade_duration, pnl_pct, market_conditions, ensemble_score):
+                return {
+                    "exit": True,
+                    "reason": "QuickProfitTaken",
+                    "exit_price": current_price
+                }
+
+            if trade_duration > max_duration:
                 return {
                     "exit": True,
                     "reason": f"MaxDurationReached_{market_phase}",
                     "exit_price": current_price
                 }
-            return {
-                "exit": True,
-                "reason": f"MaxDurationReached_{market_phase}",
-                "exit_price": current_price
-            }
 
-        # Exit completely stagnant positions after optimized stagnant period
-        # OPTIMIZATION: Lower threshold for stagnation from 0.002 to 0.0015
-        if trade_duration > self.stagnant_exit_hours and abs(pnl_pct) < 0.0015:
-            return {
-                "exit": True,
-                "reason": "CompletelyStagnantPosition",
-                "exit_price": current_price
-            }
+            stagnant_threshold = 0.0008
+            if market_phase == "ranging_at_resistance" or market_phase == "ranging_at_support":
+                stagnant_threshold = 0.0006
 
-        # Exit small profits that haven't developed after significant time
-        # OPTIMIZATION: Adjusted threshold for faster exits of small profits
-        if trade_duration > self.small_profit_exit_hours and 0 < pnl_pct < (
-                self.profit_targets["small"] * profit_factor * 0.75):  # Reduced from 0.8
-            return {
-                "exit": True,
-                "reason": "SmallProfitLongTimeBasedExit",
-                "exit_price": current_price
-            }
-
-        # 2. OPTIMIZATION: Enhanced QuickProfitTaken logic - most profitable exit type
-        # More aggressive criteria to use this strategy more often
-
-        # Check for quick profit opportunity - optimized to be more aggressive
-        if self._should_take_quick_profit(trade_duration, pnl_pct, market_conditions, ensemble_score):
-            return {
-                "exit": True,
-                "reason": "QuickProfitTaken",
-                "exit_price": current_price
-            }
-
-        # 3. Momentum-based exit conditions
-
-        # OPTIMIZATION: More sensitive momentum exit threshold for profitable trades
-        if trade_duration > self.min_profit_taking_hours and pnl_pct > self.profit_targets["small"] * profit_factor:
-            # More sensitive momentum thresholds (from -0.3 to -0.25 for long)
-            momentum_threshold = -0.25 if direction == 'long' else 0.25
-
-            if (direction == 'long' and momentum < momentum_threshold) or \
-                    (direction == 'short' and momentum > -momentum_threshold):
+            if trade_duration > self.stagnant_exit_hours and abs(pnl_pct) < stagnant_threshold:
                 return {
                     "exit": True,
-                    "reason": "MomentumBasedExit",
+                    "reason": "StagnantPosition",
                     "exit_price": current_price
                 }
 
-        # 4. Enhanced trailing stop logic
+            small_profit_threshold = self.profit_targets["small"] * profit_factor * 0.7
+            small_profit_duration = self.small_profit_exit_hours
 
-        # Calculate time-adjusted stop based on optimized parameters
-        new_stop = self._calculate_time_adjusted_stop(
-            direction, entry_price, current_price, trade_duration,
-            current_stop, market_conditions
-        )
+            if market_phase == "neutral":
+                small_profit_duration *= 0.75
 
-        if new_stop:
-            if (direction == 'long' and new_stop > current_stop) or \
-                    (direction == 'short' and new_stop < current_stop):
+            if trade_duration > small_profit_duration and 0 < pnl_pct < small_profit_threshold:
                 return {
-                    "exit": False,
-                    "update_stop": True,
-                    "new_stop": float(new_stop),
-                    "reason": "TimeBasedStopAdjustment"
+                    "exit": True,
+                    "reason": "SmallProfitLongTimeBasedExit",
+                    "exit_price": current_price
                 }
 
-        return {"exit": False, "reason": "NoTimeBasedActionNeeded"}
+            if trade_duration > self.min_profit_taking_hours and pnl_pct > self.profit_targets["micro"] * profit_factor:
+                momentum_threshold = -0.15 if direction == 'long' else 0.15
 
-    def _get_max_duration(self, market_phase: str, volatility: float, pnl_pct: float) -> float:
-        # Set base duration based on optimized phase-specific values
+                if (direction == 'long' and momentum < momentum_threshold) or \
+                        (direction == 'short' and momentum > -momentum_threshold):
+                    return {
+                        "exit": True,
+                        "reason": "MomentumBasedExit",
+                        "exit_price": current_price
+                    }
+
+            new_stop = self._calculate_time_adjusted_stop(
+                direction, entry_price, current_price, trade_duration,
+                current_stop, market_conditions
+            )
+
+            if new_stop:
+                if (direction == 'long' and new_stop > current_stop) or \
+                        (direction == 'short' and new_stop < current_stop):
+                    return {
+                        "exit": False,
+                        "update_stop": True,
+                        "new_stop": float(new_stop),
+                        "reason": "TimeBasedStopAdjustment"
+                    }
+
+            return {"exit": False, "reason": "NoTimeBasedActionNeeded"}
+
+        except Exception as e:
+            self.logger.error(f"Error in evaluate_time_based_exit: {e}")
+            return {"exit": False, "reason": "EvaluationError"}
+
+    def _validate_position_data(self, position: Dict[str, Any],
+                                current_price: float,
+                                current_time: datetime) -> bool:
+        required_fields = ['entry_time', 'direction', 'entry_price', 'current_stop_loss']
+        for field in required_fields:
+            if field not in position:
+                self.logger.warning(f"Missing required field in position: {field}")
+                return False
+
+        entry_time = position.get('entry_time')
+        if not entry_time or not isinstance(entry_time, datetime):
+            self.logger.warning(f"Invalid entry_time: {entry_time}")
+            return False
+
+        direction = position.get('direction')
+        if direction not in ['long', 'short']:
+            self.logger.warning(f"Invalid direction: {direction}")
+            return False
+
+        try:
+            float(position['entry_price'])
+            float(position['current_stop_loss'])
+            float(current_price)
+        except (ValueError, TypeError):
+            self.logger.warning("Invalid price values in position data")
+            return False
+
+        if current_time <= entry_time:
+            self.logger.warning(f"Current time {current_time} not after entry time {entry_time}")
+            return False
+
+        return True
+
+    def _calculate_trade_duration(self, entry_time: datetime, current_time: datetime) -> float:
+        if not isinstance(entry_time, datetime) or not isinstance(current_time, datetime):
+            self.logger.warning(f"Invalid datetime objects: entry={entry_time}, current={current_time}")
+            return 0.0
+
+        try:
+            if entry_time.tzinfo is not None and current_time.tzinfo is None:
+                current_time = current_time.replace(tzinfo=entry_time.tzinfo)
+            elif entry_time.tzinfo is None and current_time.tzinfo is not None:
+                entry_time = entry_time.replace(tzinfo=current_time.tzinfo)
+        except Exception as e:
+            self.logger.warning(f"Timezone handling error: {e}")
+
+        try:
+            duration_seconds = (current_time - entry_time).total_seconds()
+            if duration_seconds < 0:
+                self.logger.warning(f"Negative duration calculated: {duration_seconds}s")
+                return 0.0
+            return duration_seconds / 3600
+        except Exception as e:
+            self.logger.error(f"Error calculating trade duration: {e}")
+            return 0.0
+
+    def _calculate_pnl_percentage(self, direction: str, entry_price: float, current_price: float) -> float:
+        try:
+            if direction == 'long':
+                return (current_price / entry_price) - 1
+            elif direction == 'short':
+                return (entry_price / current_price) - 1
+            else:
+                self.logger.warning(f"Invalid direction for PnL calculation: {direction}")
+                return 0.0
+        except (ZeroDivisionError, TypeError):
+            self.logger.warning(f"Error calculating PnL percentage: entry={entry_price}, current={current_price}")
+            return 0.0
+
+    def _calculate_max_duration(self, market_phase: str, volatility: float, pnl_pct: float) -> float:
         base_duration = self.max_position_age.get(market_phase, 60)
 
-        # OPTIMIZATION: Enhanced volatility factor - more responsive to volatility
         if volatility > 0.7:
-            volatility_factor = 0.65  # More aggressive exit in high volatility (reduced from 0.7)
+            volatility_factor = 0.65
         elif volatility < 0.3:
-            volatility_factor = 1.5  # More lenient in low volatility (increased from 1.4)
+            volatility_factor = 1.5
         else:
             volatility_factor = 1.0
 
-        # OPTIMIZATION: Enhanced profit-based adjustment - profitable trades can run longer
-        profit_factor = 1.0
         if pnl_pct > self.profit_targets["medium"]:
-            profit_factor = 2.2  # Significantly extend duration for good trades (increased from 2.0)
+            profit_factor = 2.2
         elif pnl_pct > self.profit_targets["small"]:
-            profit_factor = 1.7  # Extend duration for profitable trades (increased from 1.5)
+            profit_factor = 1.7
         elif pnl_pct > 0:
-            profit_factor = 1.3  # Slightly extend for trades in profit (increased from 1.2)
-        elif pnl_pct < -0.012:  # Slightly smaller loss threshold (from -0.015)
-            profit_factor = 0.6  # Exit losing trades faster (reduced from 0.7)
+            profit_factor = 1.3
+        elif pnl_pct < -0.012:
+            profit_factor = 0.6
+        else:
+            profit_factor = 1.0
 
         adjusted_duration = base_duration * volatility_factor * profit_factor
 
         return min(120, max(8, adjusted_duration))
 
     def _should_take_quick_profit(self, trade_duration: float, pnl_pct: float,
-                                  market_conditions: Dict[str, Any], ensemble_score: float = 0.5) -> bool:
-        # OPTIMIZATION: Modified logic to favor this highly profitable exit type
-
-        # Require minimum holding period, but slightly reduced
-        if trade_duration < self.min_profit_taking_hours:
+                                  market_conditions: Dict[str, Any],
+                                  ensemble_score: float = 0.5) -> bool:
+        # Minimum holding period before taking profits
+        if trade_duration < self.min_profit_taking_hours * 0.7:  # Slightly increased from 0.6
             return False
 
         volatility = float(market_conditions.get('volatility', 0.5))
         market_phase = market_conditions.get('market_phase', 'neutral')
         momentum = float(market_conditions.get('momentum', 0))
 
-        # Get phase-specific profit factor
         phase_profit_factor = self.phase_exit_preferences.get(
             market_phase, {"profit_factor": 1.0}
         )["profit_factor"]
 
-        # Base profit thresholds - adjust based on market phase
-        quick_profit = self.profit_targets["quick"] * phase_profit_factor
-        small_profit = self.profit_targets["small"] * phase_profit_factor
+        # Further reduced profit thresholds based on backtesting results
+        quick_profit = self.profit_targets["quick"] * phase_profit_factor * 0.8  # Reduced from 0.85
+        small_profit = self.profit_targets["small"] * phase_profit_factor * 0.8  # Reduced from 0.85
 
-        # OPTIMIZATION: More aggressive take profit in ranging_at_resistance - it's a problematic phase
-        if market_phase == "ranging_at_resistance" and pnl_pct > quick_profit * 0.7:  # Reduced from 0.8
+        # More aggressive exit in ranging at resistance
+        if market_phase == "ranging_at_resistance" and pnl_pct > quick_profit * 0.4:  # Reduced from 0.5
             return True
 
-        # OPTIMIZATION: More aggressive take profits in volatile market
-        if volatility > 0.55 and pnl_pct > quick_profit * 0.9:  # Reduced threshold from 0.6 to 0.55
+        # More aggressive exit in high volatility
+        if volatility > 0.4 and pnl_pct > quick_profit * 0.7:  # Reduced from 0.75
             return True
 
-        # OPTIMIZATION: More sensitive momentum-based exit
-        if momentum < -0.35 and pnl_pct > quick_profit * 0.9:  # Reduced from -0.4
+        # More aggressive exit on weakening momentum
+        if momentum < -0.15 and pnl_pct > quick_profit * 0.7:  # Increased sensitivity (was -0.2)
             return True
 
-        # OPTIMIZATION: Enhanced profit taking in neutral phase - based on backtest data showing strong performance
-        if market_phase == "neutral":
-            # In best performing phase, more selective profit taking
-            if pnl_pct > small_profit * 0.9 and trade_duration > 4.5:  # Reduced from small_profit and 5 hours
-                return True
-
-        # OPTIMIZATION: Take larger quick profits after sufficient time - slightly more aggressive
-        if pnl_pct > small_profit * 1.1 and trade_duration > 3.5:  # Reduced from 1.2 and 4 hours
+        # Even faster exit in neutral markets
+        if market_phase == "neutral" and pnl_pct > small_profit * 0.6 and trade_duration > 3.0:  # Reduced from 0.7 and 3.5
             return True
 
-        # OPTIMIZATION: Take very large profits more aggressively when momentum weakens
-        if pnl_pct > self.profit_targets["medium"] and trade_duration > 1.8:  # Reduced from 2 hours
-            # Scale with ensemble score - higher confidence = hold longer
-            confidence_threshold = 0.75 if ensemble_score > 0.7 else 0.45  # Reduced from 0.8/0.5
+        # Lower general profit target threshold
+        if pnl_pct > small_profit * 0.8 and trade_duration > 2.0:  # Reduced from 0.9 and 2.5
+            return True
 
-            if momentum < confidence_threshold:
-                return True
+        # More aggressive medium profit taking
+        if pnl_pct > self.profit_targets["medium"] * 0.7 and trade_duration > 1.0:  # Reduced from 0.75 and 1.2
+            return True
 
         return False
 
     def _calculate_time_adjusted_stop(self, direction: str, entry_price: float,
                                       current_price: float, trade_duration: float,
-                                      current_stop: float, market_conditions: Dict[str, Any]) -> Optional[float]:
-        # OPTIMIZATION: Start adjusting stops earlier
-        if trade_duration < 1.8:  # Reduced from 2
+                                      current_stop: float,
+                                      market_conditions: Dict[str, Any]) -> Optional[float]:
+        # Only adjust stops after minimum time has passed
+        if trade_duration < 1.0:  # Reduced from 1.5
             return None
 
         volatility = float(market_conditions.get('volatility', 0.5))
@@ -298,113 +490,207 @@ class TimeBasedTradeManager:
         market_phase = market_conditions.get('market_phase', 'neutral')
         momentum = float(market_conditions.get('momentum', 0))
 
-        # Get time-based risk factor from enhanced brackets
-        risk_factor = 1.0
-        for hours, factor in sorted(self.time_based_risk_factors.items()):
-            if trade_duration <= hours:
-                risk_factor = factor
-                break
-
-        # More aggressive volatility adjustment
-        if volatility > 0.7:
-            vol_adjusted_mult = 1.45  # Higher volatility = wider stops (reduced from 1.5)
-        elif volatility < 0.3:
-            vol_adjusted_mult = 0.75  # Lower volatility = tighter stops (reduced from 0.8)
-        else:
-            vol_adjusted_mult = 1.0 + (volatility - 0.5) * 0.9  # Slightly reduced from 1.0
-
-        # OPTIMIZATION: Better confidence-based adjustment
-        if entry_price > 0:
-            price_change_pct = abs(current_price / entry_price - 1)
-            confidence_factor = 1.0
-
-            # More stop room for large price moves in our direction
-            if price_change_pct > 0.03:  # 3% price change
-                confidence_factor = 0.85  # Tighter stops for larger moves (more profit protection)
-            elif price_change_pct > 0.015:  # 1.5% price change
-                confidence_factor = 0.9  # Slightly tighter stops
-            else:
-                confidence_factor = 1.0
-
-            vol_adjusted_mult *= confidence_factor
-
-        # OPTIMIZATION: Enhanced market phase adjustment based on backtest data
-        phase_factor = 1.0
-        if market_phase == "neutral":
-            phase_factor = 0.85  # Tighter stops in best performing phase (reduced from 0.9)
-        elif market_phase == "ranging_at_resistance":
-            phase_factor = 0.6  # Even tighter stops in worst performing phase (reduced from 0.7)
-        elif market_phase == "uptrend" and direction == "long":
-            phase_factor = 0.95  # Slightly tighter stops in uptrend for longs (new)
-        elif market_phase == "downtrend" and direction == "short":
-            phase_factor = 0.95  # Slightly tighter stops in downtrend for shorts (new)
-
-        # OPTIMIZATION: Enhanced momentum adjustment - tighten stops when momentum weakens
-        momentum_factor = 1.0
-        if direction == 'long' and momentum < -0.25:  # More sensitive (from -0.3)
-            momentum_factor = 0.75  # Tighter stops when momentum turns negative (reduced from 0.8)
-        elif direction == 'short' and momentum > 0.25:  # More sensitive (from 0.3)
-            momentum_factor = 0.75  # Tighter stops when momentum turns positive (reduced from 0.8)
-
-        # Calculate stop distance based on ATR
-        base_atr_mult = 3.0
-        vol_adjusted_mult = base_atr_mult * vol_adjusted_mult * phase_factor * momentum_factor * risk_factor
-
         if direction == 'long':
             pnl_pct = (current_price / entry_price) - 1
-
-            if pnl_pct <= 0:
-                return None
-
-            # OPTIMIZATION: Multi-tiered stop adjustment based on profit level
-            # Tighter stops for larger profits for better profit protection
-            if pnl_pct > self.profit_targets["large"]:  # Very large profit
-                new_stop = max(entry_price * 1.015, current_price - (
-                            atr * 1.4 * risk_factor * vol_adjusted_mult  * phase_factor * momentum_factor))
-            elif pnl_pct > self.profit_targets["medium"]:  # Large profit
-                new_stop = max(entry_price * 1.008, current_price - (
-                            atr * 1.8 * risk_factor * vol_adjusted_mult  * phase_factor * momentum_factor))
-            elif pnl_pct > self.profit_targets["small"]:  # Medium profit
-                new_stop = max(entry_price * 1.004, current_price - (
-                            atr * 2.2 * risk_factor * vol_adjusted_mult  * phase_factor * momentum_factor))
-            elif pnl_pct > self.profit_targets["quick"]:  # Small profit
-                new_stop = max(entry_price * 1.001, current_price - (
-                            atr * 2.7 * risk_factor * vol_adjusted_mult  * phase_factor * momentum_factor))
-            elif pnl_pct > self.profit_targets["micro"]:  # Micro profit
-                new_stop = max(entry_price * 0.999, current_price - (
-                            atr * 3.3 * risk_factor * vol_adjusted_mult  * phase_factor * momentum_factor))
-            else:
-                return None
-
-            return new_stop if new_stop > current_stop else None
-
-        else:  # short
+        else:
             pnl_pct = (entry_price / current_price) - 1
 
-            if pnl_pct <= 0:
-                return None
+        # Only adjust stops when in profit - MORE CONSERVATIVE
+        min_profit_for_adjustment = 0.003  # Only adjust after 0.3% profit
+        if pnl_pct <= min_profit_for_adjustment:
+            return None
 
-            # OPTIMIZATION: Multi-tiered stop adjustment based on profit level
-            # Tighter stops for larger profits for better profit protection
-            if pnl_pct > self.profit_targets["large"]:  # Very large profit
-                new_stop = min(entry_price * 0.985, current_price + (
-                            atr * 1.4 * risk_factor * vol_adjusted_mult  * phase_factor * momentum_factor))
-            elif pnl_pct > self.profit_targets["medium"]:  # Large profit
-                new_stop = min(entry_price * 0.992, current_price + (
-                            atr * 1.8 * risk_factor * vol_adjusted_mult  * phase_factor * momentum_factor))
-            elif pnl_pct > self.profit_targets["small"]:  # Medium profit
-                new_stop = min(entry_price * 0.996, current_price + (
-                            atr * 2.2 * risk_factor * vol_adjusted_mult  * phase_factor * momentum_factor))
-            elif pnl_pct > self.profit_targets["quick"]:  # Small profit
-                new_stop = min(entry_price * 0.999, current_price + (
-                            atr * 2.7 * risk_factor * vol_adjusted_mult  * phase_factor * momentum_factor))
-            elif pnl_pct > self.profit_targets["micro"]:  # Micro profit
-                new_stop = min(entry_price * 1.001, current_price + (
-                            atr * 3.3 * risk_factor * vol_adjusted_mult  * phase_factor * momentum_factor))
-            else:
-                return None
+        # Get a more conservative risk factor for time-based adjustments
+        risk_factor = self._get_time_based_risk_factor(trade_duration) * 1.2  # 20% more conservative
 
+        if volatility > 0.7:
+            vol_adjusted_mult = 1.5  # Increased from 1.35 (wider stops)
+        elif volatility < 0.3:
+            vol_adjusted_mult = 0.8  # Increased from 0.7 (still tighter, but less extreme)
+        else:
+            vol_adjusted_mult = 1.0 + (volatility - 0.5) * 0.6  # Less aggressive than before (was 0.8)
+
+        phase_factor = self._get_phase_adjustment_factor(market_phase, direction)
+        momentum_factor = self._get_momentum_adjustment_factor(direction, momentum)
+        base_atr_mult = self._get_profit_tier_atr_multiple(pnl_pct)
+
+        # More conservative overall adjustment
+        adjusted_atr_mult = base_atr_mult * vol_adjusted_mult * phase_factor * momentum_factor * risk_factor * 1.1  # Added 10% extra buffer
+
+        if direction == 'long':
+            new_stop = current_price - (adjusted_atr_mult * atr)
+            new_stop = self._apply_breakeven_protection_long(new_stop, entry_price, pnl_pct, atr)
+            return new_stop if new_stop > current_stop else None
+        else:
+            new_stop = current_price + (adjusted_atr_mult * atr)
+            new_stop = self._apply_breakeven_protection_short(new_stop, entry_price, pnl_pct, atr)
             return new_stop if new_stop < current_stop else None
+
+    # Updated profit tier ATR multiple - more conservative
+    def _get_profit_tier_atr_multiple(self, pnl_pct: float) -> float:
+        if pnl_pct > self.profit_targets["large"]:
+            return 1.3  # Increased from 1.1
+        elif pnl_pct > self.profit_targets["medium"]:
+            return 1.8  # Increased from 1.5
+        elif pnl_pct > self.profit_targets["small"]:
+            return 2.2  # Increased from 1.9
+        elif pnl_pct > self.profit_targets["quick"]:
+            return 2.8  # Increased from 2.4
+        elif pnl_pct > self.profit_targets["micro"]:
+            return 3.5  # Increased from 3.0
+        else:
+            return 4.0  # Increased from 3.3
+
+    def _get_time_based_risk_factor(self, trade_duration: float) -> float:
+        for hours, factor in sorted(self.time_based_risk_factors.items()):
+            if trade_duration <= hours:
+                return factor
+        return self.time_based_risk_factors.get(max(self.time_based_risk_factors.keys()), 0.4)
+
+    def _get_phase_adjustment_factor(self, market_phase: str, direction: str) -> float:
+        if market_phase == "neutral":
+            return 0.8
+        elif market_phase == "ranging_at_resistance" and direction == "long":
+            return 0.6
+        elif market_phase == "uptrend" and direction == "long":
+            return 0.9
+        elif market_phase == "downtrend" and direction == "short":
+            return 0.9
+        else:
+            return 1.0
+
+    def _get_momentum_adjustment_factor(self, direction: str, momentum: float) -> float:
+        if direction == 'long' and momentum < -0.2:
+            return 0.7
+        elif direction == 'short' and momentum > 0.2:
+            return 0.7
+        elif direction == 'long' and momentum > 0.3:
+            return 1.1
+        elif direction == 'short' and momentum < -0.3:
+            return 1.1
+        else:
+            return 1.0
+
+    def _get_profit_tier_atr_multiple(self, pnl_pct: float) -> float:
+        if pnl_pct > self.profit_targets["large"]:
+            return 1.1
+        elif pnl_pct > self.profit_targets["medium"]:
+            return 1.5
+        elif pnl_pct > self.profit_targets["small"]:
+            return 1.9
+        elif pnl_pct > self.profit_targets["quick"]:
+            return 2.4
+        elif pnl_pct > self.profit_targets["micro"]:
+            return 3.0
+        else:
+            return 3.3
+
+    def _apply_breakeven_protection_long(self, new_stop: float, entry_price: float,
+                                         pnl_pct: float, atr: float) -> float:
+        # Only move to breakeven at higher profit levels
+        if pnl_pct > 0.02:  # Increased from 0.015
+            breakeven_buffer = atr * 0.3  # Increased buffer from 0.25
+            return max(new_stop, entry_price + breakeven_buffer)
+        elif pnl_pct > 0.01:  # Increased from 0.008
+            buffer_factor = min(0.15, pnl_pct * 6)  # Reduced buffer (was 0.2, pnl*10)
+            return max(new_stop, entry_price + (buffer_factor * atr))
+        else:
+            return new_stop
+
+    def _apply_breakeven_protection_short(self, new_stop: float, entry_price: float,
+                                          pnl_pct: float, atr: float) -> float:
+        # Only move to breakeven at higher profit levels
+        if pnl_pct > 0.02:  # Increased from 0.015
+            breakeven_buffer = atr * 0.3  # Increased buffer from 0.25
+            return min(new_stop, entry_price - breakeven_buffer)
+        elif pnl_pct > 0.01:  # Increased from 0.008
+            buffer_factor = min(0.15, pnl_pct * 6)  # Reduced buffer (was 0.2, pnl*10)
+            return min(new_stop, entry_price - (buffer_factor * atr))
+        else:
+            return new_stop
+
+    def update_duration_stats(self, trade_result: Dict[str, Any]) -> None:
+        try:
+            entry_time = trade_result.get('entry_time')
+            exit_time = trade_result.get('exit_time')
+            pnl = float(trade_result.get('pnl', 0))
+            exit_reason = trade_result.get('exit_signal', 'Unknown')
+            market_phase = trade_result.get('market_phase', 'neutral')
+
+            if not entry_time or not exit_time:
+                return
+
+            if not isinstance(entry_time, datetime) or not isinstance(exit_time, datetime):
+                return
+
+            duration_hours = (exit_time - entry_time).total_seconds() / 3600
+
+            trade_data = {
+                "duration": duration_hours,
+                "exit_reason": exit_reason,
+                "market_phase": market_phase,
+                "pnl": pnl,
+                "pnl_per_hour": pnl / max(1, duration_hours)
+            }
+
+            if pnl > 0:
+                self.holding_period_stats["winning_trades"].append(trade_data)
+            else:
+                self.holding_period_stats["losing_trades"].append(trade_data)
+
+            self._update_log_performance(exit_reason, pnl, duration_hours, market_phase)
+
+        except Exception as e:
+            self.logger.error(f"Error updating duration stats: {e}")
+
+    def _update_log_performance(self, exit_reason: str, pnl: float,
+                                duration: float, market_phase: str) -> None:
+        try:
+            if exit_reason not in self.log_performance_data:
+                self.log_performance_data[exit_reason] = self._create_empty_stats()
+
+            self._update_stats(self.log_performance_data[exit_reason], pnl, duration)
+
+            key = f"{exit_reason}_{market_phase}"
+            if key not in self.log_performance_data:
+                self.log_performance_data[key] = self._create_empty_stats()
+
+            self._update_stats(self.log_performance_data[key], pnl, duration)
+
+        except Exception as e:
+            self.logger.warning(f"Error updating performance log: {e}")
+
+    def _create_empty_stats(self) -> Dict[str, Any]:
+        return {
+            "count": 0,
+            "win_count": 0,
+            "total_pnl": 0,
+            "total_duration": 0,
+            "avg_pnl": 0,
+            "avg_duration": 0,
+            "win_rate": 0
+        }
+
+    def _update_stats(self, stats: Dict[str, Any], pnl: float, duration: float) -> None:
+        stats["count"] += 1
+        stats["total_pnl"] += pnl
+        stats["total_duration"] += duration
+
+        if pnl > 0:
+            stats["win_count"] += 1
+
+        if stats["count"] > 0:
+            stats["avg_pnl"] = stats["total_pnl"] / stats["count"]
+            stats["avg_duration"] = stats["total_duration"] / stats["count"]
+            stats["win_rate"] = stats["win_count"] / stats["count"]
+
+    def get_exit_performance_stats(self) -> Dict[str, Any]:
+        return {
+            "exit_stats": self.log_performance_data,
+            "optimal_durations": self.calculate_optimal_trade_duration(
+                self.holding_period_stats["winning_trades"] + self.holding_period_stats["losing_trades"]
+            )
+        }
 
     def calculate_optimal_trade_duration(self, trade_history: List[Dict[str, Any]]) -> Dict[str, Any]:
         if not trade_history or len(trade_history) < 10:
@@ -414,171 +700,82 @@ class TimeBasedTradeManager:
                 "data_points": len(trade_history) if trade_history else 0
             }
 
-        trade_durations = []
-        profitable_durations = []
+        try:
+            trade_durations = []
+            profitable_durations = []
+            phase_durations = {}
 
-        # Also track by market phase
-        phase_durations = {}
+            for trade in trade_history:
+                duration_hours = trade.get('duration')
+                pnl = trade.get('pnl', 0)
+                market_phase = trade.get('market_phase', 'neutral')
 
-        for trade in trade_history:
-            entry_time = trade.get('entry_time')
-            exit_time = trade.get('exit_time')
-            pnl = float(trade.get('pnl', 0))
-            market_phase = trade.get('market_phase', 'neutral')
+                if duration_hours is None or not isinstance(duration_hours, (int, float)):
+                    continue
 
-            if not entry_time or not exit_time:
-                continue
+                trade_durations.append(duration_hours)
 
-            if not isinstance(entry_time, datetime) or not isinstance(exit_time, datetime):
-                continue
+                if market_phase not in phase_durations:
+                    phase_durations[market_phase] = {
+                        "all": [],
+                        "profitable": []
+                    }
 
-            duration_hours = (exit_time - entry_time).total_seconds() / 3600
-            trade_durations.append(duration_hours)
+                phase_durations[market_phase]["all"].append(duration_hours)
 
-            # Track by market phase
-            if market_phase not in phase_durations:
-                phase_durations[market_phase] = {
-                    "all": [],
-                    "profitable": []
+                if pnl > 0:
+                    profitable_durations.append(duration_hours)
+                    phase_durations[market_phase]["profitable"].append(duration_hours)
+
+            if not trade_durations or not profitable_durations:
+                return {
+                    "optimal_hold_time": 24,
+                    "confidence": "low",
+                    "data_points": 0
                 }
 
-            phase_durations[market_phase]["all"].append(duration_hours)
+            avg_duration = np.mean(trade_durations)
+            avg_profitable_duration = np.mean(profitable_durations)
 
-            if pnl > 0:
-                profitable_durations.append(duration_hours)
-                phase_durations[market_phase]["profitable"].append(duration_hours)
+            optimal_duration = min(60, max(8, avg_profitable_duration * 1.1))
 
-        if not trade_durations or not profitable_durations:
+            percentiles = {
+                "p25": np.percentile(profitable_durations, 25),
+                "p50": np.percentile(profitable_durations, 50),
+                "p75": np.percentile(profitable_durations, 75)
+            }
+
+            phase_optimal_durations = {}
+            for phase, data in phase_durations.items():
+                if data["profitable"]:
+                    phase_optimal_durations[phase] = np.mean(data["profitable"])
+                else:
+                    phase_optimal_durations[phase] = avg_profitable_duration
+
+            confidence = "medium"
+            if len(profitable_durations) > 30:
+                confidence = "high"
+            elif len(profitable_durations) < 10:
+                confidence = "low"
+
+            return {
+                "optimal_hold_time": optimal_duration,
+                "avg_trade_duration": avg_duration,
+                "avg_profitable_duration": avg_profitable_duration,
+                "percentiles": percentiles,
+                "confidence": confidence,
+                "data_points": len(profitable_durations),
+                "phase_optimal_durations": phase_optimal_durations
+            }
+
+        except Exception as e:
+            self.logger.error(f"Error calculating optimal trade duration: {e}")
             return {
                 "optimal_hold_time": 24,
                 "confidence": "low",
-                "data_points": 0
+                "data_points": 0,
+                "error": str(e)
             }
-
-        avg_duration = np.mean(trade_durations)
-        avg_profitable_duration = np.mean(profitable_durations)
-
-        # Calculate optimal duration based on average of profitable trades
-        # OPTIMIZATION: More weighted toward profitable trade durations
-        optimal_duration = min(60, max(8, avg_profitable_duration * 1.1))
-
-        percentiles = {
-            "p25": np.percentile(profitable_durations, 25),
-            "p50": np.percentile(profitable_durations, 50),
-            "p75": np.percentile(profitable_durations, 75)
-        }
-
-        # Calculate phase-specific optimal durations
-        phase_optimal_durations = {}
-        for phase, data in phase_durations.items():
-            if data["profitable"]:
-                phase_optimal_durations[phase] = np.mean(data["profitable"])
-            else:
-                phase_optimal_durations[phase] = avg_profitable_duration
-
-        confidence = "medium"
-        if len(profitable_durations) > 30:
-            confidence = "high"
-        elif len(profitable_durations) < 10:
-            confidence = "low"
-
-        return {
-            "optimal_hold_time": optimal_duration,
-            "avg_trade_duration": avg_duration,
-            "avg_profitable_duration": avg_profitable_duration,
-            "percentiles": percentiles,
-            "confidence": confidence,
-            "data_points": len(profitable_durations),
-            "phase_optimal_durations": phase_optimal_durations
-        }
-
-    def update_duration_stats(self, trade_result: Dict[str, Any]) -> None:
-        entry_time = trade_result.get('entry_time')
-        exit_time = trade_result.get('exit_time')
-        pnl = float(trade_result.get('pnl', 0))
-        exit_reason = trade_result.get('exit_signal', 'Unknown')
-        market_phase = trade_result.get('market_phase', 'neutral')
-
-        if not entry_time or not exit_time:
-            return
-
-        if not isinstance(entry_time, datetime) or not isinstance(exit_time, datetime):
-            return
-
-        duration_hours = (exit_time - entry_time).total_seconds() / 3600
-
-        trade_data = {
-            "duration": duration_hours,
-            "exit_reason": exit_reason,
-            "market_phase": market_phase,
-            "pnl": pnl,
-            "pnl_per_hour": pnl / max(1, duration_hours)
-        }
-
-        if pnl > 0:
-            self.holding_period_stats["winning_trades"].append(trade_data)
-        else:
-            self.holding_period_stats["losing_trades"].append(trade_data)
-
-        self._update_log_performance(exit_reason, pnl, duration_hours, market_phase)
-
-    def _update_log_performance(self, exit_reason: str, pnl: float, duration: float, market_phase: str) -> None:
-        # Track by exit reason
-        if exit_reason not in self.log_performance_data:
-            self.log_performance_data[exit_reason] = {
-                "count": 0,
-                "win_count": 0,
-                "total_pnl": 0,
-                "total_duration": 0,
-                "avg_pnl": 0,
-                "avg_duration": 0,
-                "win_rate": 0
-            }
-
-        data = self.log_performance_data[exit_reason]
-        data["count"] += 1
-        data["total_pnl"] += pnl
-        data["total_duration"] += duration
-
-        if pnl > 0:
-            data["win_count"] += 1
-
-        data["avg_pnl"] = data["total_pnl"] / data["count"]
-        data["avg_duration"] = data["total_duration"] / data["count"]
-        data["win_rate"] = data["win_count"] / data["count"]
-
-        # Track by exit reason and market phase
-        key = f"{exit_reason}_{market_phase}"
-        if key not in self.log_performance_data:
-            self.log_performance_data[key] = {
-                "count": 0,
-                "win_count": 0,
-                "total_pnl": 0,
-                "total_duration": 0,
-                "avg_pnl": 0,
-                "avg_duration": 0,
-                "win_rate": 0
-            }
-
-        phase_data = self.log_performance_data[key]
-        phase_data["count"] += 1
-        phase_data["total_pnl"] += pnl
-        phase_data["total_duration"] += duration
-
-        if pnl > 0:
-            phase_data["win_count"] += 1
-
-        phase_data["avg_pnl"] = phase_data["total_pnl"] / phase_data["count"]
-        phase_data["avg_duration"] = phase_data["total_duration"] / phase_data["count"]
-        phase_data["win_rate"] = phase_data["win_count"] / phase_data["count"]
-
-    def get_exit_performance_stats(self) -> Dict[str, Any]:
-        return {
-            "exit_stats": self.log_performance_data,
-            "optimal_durations": self.calculate_optimal_trade_duration(
-                self.holding_period_stats["winning_trades"] + self.holding_period_stats["losing_trades"]
-            )
-        }
 
     def optimize_time_parameters(self) -> Dict[str, Any]:
         if not self.holding_period_stats["winning_trades"]:
@@ -594,43 +791,85 @@ class TimeBasedTradeManager:
                 "message": f"Only {len(winning_trades)} winning trades, need at least 10"
             }
 
-        # Calculate optimal durations from winning trades
-        durations = [t["duration"] for t in winning_trades]
-        p25 = np.percentile(durations, 25)
-        p50 = np.percentile(durations, 50)
-        p75 = np.percentile(durations, 75)
+        try:
+            durations = [t["duration"] for t in winning_trades]
+            p25 = np.percentile(durations, 25)
+            p50 = np.percentile(durations, 50)
+            p75 = np.percentile(durations, 75)
 
-        # OPTIMIZATION: Better timing parameters based on profit duration
-        self.min_profit_taking_hours = max(1.5, min(3, p25 * 0.5))  # More aggressive (from 0.4)
-        self.small_profit_exit_hours = max(12, min(24, p50 * 1.2))  # Slightly longer than median (from 1.1)
-        self.stagnant_exit_hours = max(16, min(32, p75 * 0.85))  # More aggressive (from 0.8)
+            self.min_profit_taking_hours = max(1.5, min(3, p25 * 0.5))
+            self.small_profit_exit_hours = max(12, min(24, p50 * 1.2))
+            self.stagnant_exit_hours = max(16, min(32, p75 * 0.85))
 
-        # Analyze by exit reason
-        exit_reason_performance = {}
-        for trade in winning_trades:
+            exit_reason_performance = self._analyze_exit_reason_performance()
+
+            duration_performance = self._analyze_duration_performance()
+
+            optimal_by_winrate = max(duration_performance.get("win_rates", {}).items(),
+                                     key=lambda x: x[1],
+                                     default=(24, 0))[0]
+
+            optimal_by_pnl = max(duration_performance.get("pnl", {}).items(),
+                                 key=lambda x: x[1],
+                                 default=(24, 0))[0]
+
+            self.max_trade_duration_hours = (optimal_by_winrate * 0.4 + optimal_by_pnl * 0.6)
+
+            self._update_market_phase_settings()
+
+            return {
+                "status": "optimized",
+                "parameters": {
+                    "min_profit_taking_hours": self.min_profit_taking_hours,
+                    "small_profit_exit_hours": self.small_profit_exit_hours,
+                    "stagnant_exit_hours": self.stagnant_exit_hours,
+                    "max_trade_duration_hours": self.max_trade_duration_hours,
+                    "max_position_age": self.max_position_age,
+                    "phase_exit_preferences": self.phase_exit_preferences
+                },
+                "stats": {
+                    "exit_reason_performance": exit_reason_performance,
+                    "duration_performance": duration_performance,
+                    "optimal_by_winrate": optimal_by_winrate,
+                    "optimal_by_pnl": optimal_by_pnl
+                }
+            }
+
+        except Exception as e:
+            self.logger.error(f"Error optimizing time parameters: {e}")
+            return {
+                "status": "error",
+                "message": f"Error during optimization: {e}"
+            }
+
+    def _analyze_exit_reason_performance(self) -> Dict[str, Dict[str, Any]]:
+        result = {}
+
+        for trade in self.holding_period_stats["winning_trades"]:
             reason = trade["exit_reason"]
-            if reason not in exit_reason_performance:
-                exit_reason_performance[reason] = {
+
+            if reason not in result:
+                result[reason] = {
                     "count": 0,
                     "total_pnl": 0,
                     "avg_pnl": 0,
                     "durations": []
                 }
 
-            perf = exit_reason_performance[reason]
+            perf = result[reason]
             perf["count"] += 1
             perf["total_pnl"] += trade["pnl"]
             perf["durations"].append(trade["duration"])
             perf["avg_pnl"] = perf["total_pnl"] / perf["count"]
 
-        # Calculate win rates by duration
+        return result
+
+    def _analyze_duration_performance(self) -> Dict[str, Dict[int, float]]:
         win_rates_by_duration = {}
         pnl_by_duration = {}
 
-        # Use all trades for win rate analysis
         all_trades = self.holding_period_stats["winning_trades"] + self.holding_period_stats["losing_trades"]
 
-        # OPTIMIZATION: More granular duration brackets for better analysis
         for duration_bin in [3, 6, 9, 12, 16, 24, 36, 48]:
             trades_in_bin = [t for t in all_trades if t["duration"] <= duration_bin]
 
@@ -643,15 +882,14 @@ class TimeBasedTradeManager:
             win_rates_by_duration[duration_bin] = win_count / len(trades_in_bin)
             pnl_by_duration[duration_bin] = total_pnl / len(trades_in_bin)
 
-        # Find optimal durations by win rate and pnl
-        optimal_by_winrate = max(win_rates_by_duration.items(), key=lambda x: x[1])[0] if win_rates_by_duration else 24
-        optimal_by_pnl = max(pnl_by_duration.items(), key=lambda x: x[1])[0] if pnl_by_duration else 24
+        return {
+            "win_rates": win_rates_by_duration,
+            "pnl": pnl_by_duration
+        }
 
-        # OPTIMIZATION: Weighted approach to max trade duration
-        # More weight to profitability
-        self.max_trade_duration_hours = (optimal_by_winrate * 0.4 + optimal_by_pnl * 0.6)
+    def _update_market_phase_settings(self) -> None:
+        all_trades = self.holding_period_stats["winning_trades"] + self.holding_period_stats["losing_trades"]
 
-        # Analyze by market phase
         market_phase_stats = {}
         for trade in all_trades:
             phase = trade.get("market_phase", "neutral")
@@ -678,46 +916,20 @@ class TimeBasedTradeManager:
                 stats["win_rate"] = stats["win_count"] / stats["count"]
                 stats["avg_pnl"] = stats["total_pnl"] / stats["count"]
 
-        # OPTIMIZATION: Enhanced phase-specific parameters
         for phase, stats in market_phase_stats.items():
             if stats["count"] < 5:
                 continue
 
-            # Set phase-specific profit factors based on performance
             if phase not in self.phase_exit_preferences:
                 self.phase_exit_preferences[phase] = {"profit_factor": 1.0, "duration_factor": 1.0}
 
-            # Adjust profit targets based on phase performance
             if stats["win_rate"] > 0.65 and stats["avg_pnl"] > 0:
-                # More profitable phases get more room to run
-                self.phase_exit_preferences[phase]["profit_factor"] = 1.25  # Increased from 1.2
-                self.phase_exit_preferences[phase]["duration_factor"] = 1.25  # Increased from 1.2
+                self.phase_exit_preferences[phase]["profit_factor"] = 1.25
+                self.phase_exit_preferences[phase]["duration_factor"] = 1.25
             elif stats["win_rate"] < 0.45 or stats["avg_pnl"] < 0:
-                # Challenging phases get more conservative parameters
-                self.phase_exit_preferences[phase]["profit_factor"] = 0.6  # Reduced from 0.7
-                self.phase_exit_preferences[phase]["duration_factor"] = 0.5  # Reduced from 0.6
+                self.phase_exit_preferences[phase]["profit_factor"] = 0.6
+                self.phase_exit_preferences[phase]["duration_factor"] = 0.5
 
-            # Set phase-specific max position age
             if len(stats["durations"]) >= 5:
-                optimal_phase_duration = np.percentile(stats["durations"], 65)  # Increased from 60th percentile
-                self.max_position_age[phase] = max(12, min(100, optimal_phase_duration * 1.6))  # Increased from 1.5
-
-        return {
-            "status": "optimized",
-            "parameters": {
-                "min_profit_taking_hours": self.min_profit_taking_hours,
-                "small_profit_exit_hours": self.small_profit_exit_hours,
-                "stagnant_exit_hours": self.stagnant_exit_hours,
-                "max_trade_duration_hours": self.max_trade_duration_hours,
-                "max_position_age": self.max_position_age,
-                "phase_exit_preferences": self.phase_exit_preferences
-            },
-            "stats": {
-                "win_rates_by_duration": win_rates_by_duration,
-                "pnl_by_duration": pnl_by_duration,
-                "optimal_by_winrate": optimal_by_winrate,
-                "optimal_by_pnl": optimal_by_pnl,
-                "exit_reason_performance": exit_reason_performance,
-                "market_phase_stats": market_phase_stats
-            }
-        }
+                optimal_phase_duration = np.percentile(stats["durations"], 65)
+                self.max_position_age[phase] = max(12, min(100, optimal_phase_duration * 1.6))
