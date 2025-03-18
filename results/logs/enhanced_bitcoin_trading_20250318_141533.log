@@ -1,0 +1,648 @@
+2025-03-18 14:15:33,845 - __main__ - INFO - Logging initialized. Log file: /app/results/logs/enhanced_bitcoin_trading_20250318_141533.log
+2025-03-18 14:15:34,100 - root - INFO - GPU settings configured for 1 GPU(s): GPU 0: /physical_device:GPU:0
+2025-03-18 14:15:34,103 - __main__ - INFO - Enhanced Bitcoin Trading System
+2025-03-18 14:15:34,104 - __main__ - INFO - Mode: backtest
+2025-03-18 14:15:34,104 - __main__ - INFO - Data folder: /app/data
+2025-03-18 14:15:34,105 - __main__ - INFO - Output folder: /app/results
+2025-03-18 14:15:34,105 - root - INFO - Fetching 30m data...
+2025-03-18 14:15:34,106 - DataManager - INFO - Fetching 30m data...
+2025-03-18 14:15:34,107 - DataManager - INFO - Fetching 30m data from Binance API (extended)
+2025-03-18 14:15:55,069 - DataManager - INFO - Fetched 25000 30m candles and saved to /app/data/btc_30m.csv
+2025-03-18 14:15:55,071 - root - INFO - Data fetched: 25000 30m candles
+2025-03-18 14:15:55,072 - root - INFO - Creating features with advanced feature engineering...
+2025-03-18 14:15:55,074 - FeatureEngineer - INFO - Available columns in input data: ['open', 'high', 'low', 'close', 'volume', 'turnover', 'taker_buy_base_asset_volume', 'taker_buy_quote_asset_volume']
+2025-03-18 14:15:55,074 - FeatureEngineer - INFO - Processing data in chunks of size 2000
+2025-03-18 14:16:09,890 - FeatureEngineer - INFO - Processed 25000 rows with 83 features
+2025-03-18 14:16:09,891 - root - INFO - Features created: 25000 rows, 83 columns
+2025-03-18 14:16:09,892 - root - INFO - Setting up enhanced backtesting...
+2025-03-18 14:16:09,900 - DataPreparer - INFO - Loaded scaler from /app/results/models/feature_scaler.pkl
+2025-03-18 14:16:09,909 - DataPreparer - INFO - Loaded feature list with 35 features
+2025-03-18 14:16:09,916 - DataPreparer - INFO - Loaded feature importance for 35 features
+2025-03-18 14:16:09,919 - TradingModel - INFO - Found 1 GPU(s)
+2025-03-18 14:16:09,920 - TradingModel - INFO - GPU 0: /physical_device:GPU:0
+2025-03-18 14:16:09,920 - TradingModel - INFO - Available system memory: 49.29 GB
+2025-03-18 14:16:09,926 - TradingModel - INFO - Loaded feature importance from /app/results/models/feature_importance.json
+2025-03-18 14:16:09,929 - root - INFO - Running enhanced walk-forward backtest with optimized exit strategies...
+2025-03-18 14:16:09,929 - BacktestEngine - INFO - Starting walk-forward backtest with 30 iteration(s)
+2025-03-18 14:16:09,930 - BacktestEngine - INFO - Iteration 1/30 | StartIdx=0
+2025-03-18 14:16:11,927 - DataPreparer - INFO - Selected 35 features using importance method
+2025-03-18 14:16:11,928 - DataPreparer - INFO - Using 35 features for model training
+2025-03-18 14:16:16,134 - DataPreparer - INFO - Saved scaler to /app/results/models/feature_scaler.pkl
+2025-03-18 14:16:16,138 - DataPreparer - INFO - Saved feature list to /app/results/models/feature_list.json
+2025-03-18 14:16:16,140 - DataPreparer - INFO - Saved feature importance to /app/results/models/feature_importance.json
+2025-03-18 14:16:16,222 - BacktestEngine - INFO - Iteration 1: training model on 3449 sample(s)
+2025-03-18 14:16:16,223 - TradingModel - INFO - Training data shape: (3449, 72, 35), labels shape: (3449,)
+2025-03-18 14:16:16,224 - TradingModel - INFO - Validation data shape: (1479, 72, 35), labels shape: (1479,)
+2025-03-18 14:16:16,255 - TradingModel - INFO - Building ensemble trading model architecture
+2025-03-18 14:16:17,235 - EnsembleModel - INFO - Training transformer_model (1/2)
+2025-03-18 14:17:16,637 - EnsembleModel - INFO - Updated ensemble weights: [1.]
+2025-03-18 14:17:16,775 - EnsembleModel - INFO - Training lstm_cnn_model (2/2)
+2025-03-18 14:17:33,835 - EnsembleModel - INFO - Updated ensemble weights: [0.56918121 0.43081879]
+2025-03-18 14:17:34,223 - EnsembleModel - INFO - Saved model 0 to /app/results/models/best_model.keras_ensemble_0.keras
+2025-03-18 14:17:34,327 - EnsembleModel - INFO - Saved model 1 to /app/results/models/best_model.keras_ensemble_1.keras
+2025-03-18 14:17:34,404 - BacktestEngine - INFO - Predicting on test data of length 928
+2025-03-18 14:18:47,624 - BacktestEngine - INFO - Signal statistics: Buy: 0, Sell: 54, NoTrade: 874
+2025-03-18 14:18:47,626 - BacktestEngine - INFO - Simulation completed with 12 trades
+2025-03-18 14:18:47,916 - BacktestEngine - INFO - Iteration 2/30 | StartIdx=500
+2025-03-18 14:18:49,919 - DataPreparer - INFO - Selected 35 features using importance method
+2025-03-18 14:18:49,920 - DataPreparer - INFO - Using 35 features for model training
+2025-03-18 14:18:54,114 - DataPreparer - INFO - Saved scaler to /app/results/models/feature_scaler.pkl
+2025-03-18 14:18:54,121 - DataPreparer - INFO - Saved feature list to /app/results/models/feature_list.json
+2025-03-18 14:18:54,126 - DataPreparer - INFO - Saved feature importance to /app/results/models/feature_importance.json
+2025-03-18 14:18:54,223 - BacktestEngine - INFO - Using adaptive training with 1972 weighted validation samples
+2025-03-18 14:18:54,224 - BacktestEngine - INFO - Iteration 2: training model on 3449 sample(s)
+2025-03-18 14:18:54,225 - TradingModel - INFO - Training data shape: (3449, 72, 35), labels shape: (3449,)
+2025-03-18 14:18:54,225 - TradingModel - INFO - Validation data shape: (1972, 72, 35), labels shape: (1972,)
+2025-03-18 14:18:54,265 - TradingModel - INFO - Building ensemble trading model architecture
+2025-03-18 14:18:54,530 - EnsembleModel - INFO - Training transformer_model (1/2)
+2025-03-18 14:19:47,410 - EnsembleModel - INFO - Updated ensemble weights: [1.]
+2025-03-18 14:19:47,758 - EnsembleModel - INFO - Training lstm_cnn_model (2/2)
+2025-03-18 14:20:05,580 - EnsembleModel - INFO - Updated ensemble weights: [0.51460874 0.48539126]
+2025-03-18 14:20:06,110 - EnsembleModel - INFO - Saved model 0 to /app/results/models/best_model.keras_ensemble_0.keras
+2025-03-18 14:20:06,179 - EnsembleModel - INFO - Saved model 1 to /app/results/models/best_model.keras_ensemble_1.keras
+2025-03-18 14:20:06,242 - BacktestEngine - INFO - Predicting on test data of length 928
+2025-03-18 14:21:19,736 - BacktestEngine - INFO - Signal statistics: Buy: 0, Sell: 41, NoTrade: 887
+2025-03-18 14:21:19,738 - BacktestEngine - INFO - Simulation completed with 9 trades
+2025-03-18 14:21:20,206 - BacktestEngine - INFO - Iteration 3/30 | StartIdx=1000
+2025-03-18 14:21:22,337 - DataPreparer - INFO - Selected 35 features using importance method
+2025-03-18 14:21:22,339 - DataPreparer - INFO - Using 35 features for model training
+2025-03-18 14:21:26,572 - DataPreparer - INFO - Saved scaler to /app/results/models/feature_scaler.pkl
+2025-03-18 14:21:26,575 - DataPreparer - INFO - Saved feature list to /app/results/models/feature_list.json
+2025-03-18 14:21:26,578 - DataPreparer - INFO - Saved feature importance to /app/results/models/feature_importance.json
+2025-03-18 14:21:26,659 - BacktestEngine - INFO - Using adaptive training with 1972 weighted validation samples
+2025-03-18 14:21:26,660 - BacktestEngine - INFO - Iteration 3: training model on 3449 sample(s)
+2025-03-18 14:21:26,660 - TradingModel - INFO - Training data shape: (3449, 72, 35), labels shape: (3449,)
+2025-03-18 14:21:26,661 - TradingModel - INFO - Validation data shape: (1972, 72, 35), labels shape: (1972,)
+2025-03-18 14:21:26,696 - TradingModel - INFO - Building ensemble trading model architecture
+2025-03-18 14:21:26,980 - EnsembleModel - INFO - Training transformer_model (1/2)
+2025-03-18 14:21:54,579 - EnsembleModel - INFO - Updated ensemble weights: [1.]
+2025-03-18 14:21:55,144 - EnsembleModel - INFO - Training lstm_cnn_model (2/2)
+2025-03-18 14:22:05,908 - EnsembleModel - INFO - Updated ensemble weights: [0.27586767 0.72413233]
+2025-03-18 14:22:06,674 - EnsembleModel - INFO - Saved model 0 to /app/results/models/best_model.keras_ensemble_0.keras
+2025-03-18 14:22:06,758 - EnsembleModel - INFO - Saved model 1 to /app/results/models/best_model.keras_ensemble_1.keras
+2025-03-18 14:22:06,824 - BacktestEngine - INFO - Predicting on test data of length 928
+2025-03-18 14:23:20,919 - BacktestEngine - INFO - Signal statistics: Buy: 0, Sell: 49, NoTrade: 879
+2025-03-18 14:23:20,920 - BacktestEngine - INFO - Simulation completed with 29 trades
+2025-03-18 14:23:21,640 - BacktestEngine - INFO - Current metrics - Win Rate: 0.00, Profit Factor: 0.00
+2025-03-18 14:23:21,641 - BacktestEngine - INFO - Iteration 4/30 | StartIdx=1500
+2025-03-18 14:23:23,661 - DataPreparer - INFO - Selected 35 features using importance method
+2025-03-18 14:23:23,662 - DataPreparer - INFO - Using 35 features for model training
+2025-03-18 14:23:27,980 - DataPreparer - INFO - Saved scaler to /app/results/models/feature_scaler.pkl
+2025-03-18 14:23:27,984 - DataPreparer - INFO - Saved feature list to /app/results/models/feature_list.json
+2025-03-18 14:23:27,988 - DataPreparer - INFO - Saved feature importance to /app/results/models/feature_importance.json
+2025-03-18 14:23:28,060 - BacktestEngine - INFO - Iteration 4: training model on 3449 sample(s)
+2025-03-18 14:23:28,060 - TradingModel - INFO - Training data shape: (3449, 72, 35), labels shape: (3449,)
+2025-03-18 14:23:28,061 - TradingModel - INFO - Validation data shape: (1479, 72, 35), labels shape: (1479,)
+2025-03-18 14:23:28,090 - TradingModel - INFO - Building ensemble trading model architecture
+2025-03-18 14:23:28,379 - EnsembleModel - INFO - Training transformer_model (1/2)
+2025-03-18 14:24:04,056 - EnsembleModel - INFO - Updated ensemble weights: [1.]
+2025-03-18 14:24:04,846 - EnsembleModel - INFO - Training lstm_cnn_model (2/2)
+2025-03-18 14:24:15,298 - EnsembleModel - INFO - Updated ensemble weights: [0.34574909 0.65425091]
+2025-03-18 14:24:16,285 - EnsembleModel - INFO - Saved model 0 to /app/results/models/best_model.keras_ensemble_0.keras
+2025-03-18 14:24:16,376 - EnsembleModel - INFO - Saved model 1 to /app/results/models/best_model.keras_ensemble_1.keras
+2025-03-18 14:24:16,442 - BacktestEngine - INFO - Predicting on test data of length 928
+2025-03-18 14:25:32,132 - BacktestEngine - INFO - Signal statistics: Buy: 0, Sell: 37, NoTrade: 891
+2025-03-18 14:25:32,133 - BacktestEngine - INFO - Simulation completed with 15 trades
+2025-03-18 14:25:33,131 - BacktestEngine - INFO - Iteration 5/30 | StartIdx=2000
+2025-03-18 14:25:35,216 - DataPreparer - INFO - Selected 35 features using importance method
+2025-03-18 14:25:35,216 - DataPreparer - INFO - Using 35 features for model training
+2025-03-18 14:25:39,834 - DataPreparer - INFO - Saved scaler to /app/results/models/feature_scaler.pkl
+2025-03-18 14:25:39,839 - DataPreparer - INFO - Saved feature list to /app/results/models/feature_list.json
+2025-03-18 14:25:39,843 - DataPreparer - INFO - Saved feature importance to /app/results/models/feature_importance.json
+2025-03-18 14:25:39,912 - BacktestEngine - INFO - Iteration 5: training model on 3449 sample(s)
+2025-03-18 14:25:39,913 - TradingModel - INFO - Training data shape: (3449, 72, 35), labels shape: (3449,)
+2025-03-18 14:25:39,913 - TradingModel - INFO - Validation data shape: (1479, 72, 35), labels shape: (1479,)
+2025-03-18 14:25:39,942 - TradingModel - INFO - Building ensemble trading model architecture
+2025-03-18 14:25:40,286 - EnsembleModel - INFO - Training transformer_model (1/2)
+2025-03-18 14:26:09,414 - EnsembleModel - INFO - Updated ensemble weights: [1.]
+2025-03-18 14:26:10,461 - EnsembleModel - INFO - Training lstm_cnn_model (2/2)
+2025-03-18 14:26:23,984 - EnsembleModel - INFO - Updated ensemble weights: [0.55379261 0.44620739]
+2025-03-18 14:26:25,197 - EnsembleModel - INFO - Saved model 0 to /app/results/models/best_model.keras_ensemble_0.keras
+2025-03-18 14:26:25,276 - EnsembleModel - INFO - Saved model 1 to /app/results/models/best_model.keras_ensemble_1.keras
+2025-03-18 14:26:25,343 - BacktestEngine - INFO - Predicting on test data of length 928
+2025-03-18 14:27:42,820 - BacktestEngine - INFO - Signal statistics: Buy: 15, Sell: 0, NoTrade: 913
+2025-03-18 14:27:42,821 - BacktestEngine - INFO - Simulation completed with 12 trades
+2025-03-18 14:27:44,110 - BacktestEngine - INFO - Iteration 6/30 | StartIdx=2500
+2025-03-18 14:27:46,243 - DataPreparer - INFO - Selected 35 features using importance method
+2025-03-18 14:27:46,244 - DataPreparer - INFO - Using 35 features for model training
+2025-03-18 14:27:50,659 - DataPreparer - INFO - Saved scaler to /app/results/models/feature_scaler.pkl
+2025-03-18 14:27:50,662 - DataPreparer - INFO - Saved feature list to /app/results/models/feature_list.json
+2025-03-18 14:27:50,665 - DataPreparer - INFO - Saved feature importance to /app/results/models/feature_importance.json
+2025-03-18 14:27:50,736 - BacktestEngine - INFO - Using adaptive training with 1972 weighted validation samples
+2025-03-18 14:27:50,737 - BacktestEngine - INFO - Iteration 6: training model on 3449 sample(s)
+2025-03-18 14:27:50,738 - TradingModel - INFO - Training data shape: (3449, 72, 35), labels shape: (3449,)
+2025-03-18 14:27:50,738 - TradingModel - INFO - Validation data shape: (1972, 72, 35), labels shape: (1972,)
+2025-03-18 14:27:50,771 - TradingModel - INFO - Building ensemble trading model architecture
+2025-03-18 14:27:51,065 - EnsembleModel - INFO - Training transformer_model (1/2)
+2025-03-18 14:28:23,028 - EnsembleModel - INFO - Updated ensemble weights: [1.]
+2025-03-18 14:28:24,348 - EnsembleModel - INFO - Training lstm_cnn_model (2/2)
+2025-03-18 14:28:36,105 - EnsembleModel - INFO - Updated ensemble weights: [0.27222526 0.72777474]
+2025-03-18 14:28:37,594 - EnsembleModel - INFO - Saved model 0 to /app/results/models/best_model.keras_ensemble_0.keras
+2025-03-18 14:28:37,680 - EnsembleModel - INFO - Saved model 1 to /app/results/models/best_model.keras_ensemble_1.keras
+2025-03-18 14:28:37,745 - BacktestEngine - INFO - Predicting on test data of length 928
+2025-03-18 14:29:50,410 - BacktestEngine - INFO - Signal statistics: Buy: 0, Sell: 26, NoTrade: 902
+2025-03-18 14:29:50,412 - BacktestEngine - INFO - Simulation completed with 22 trades
+2025-03-18 14:29:51,887 - BacktestEngine - INFO - Current metrics - Win Rate: 0.00, Profit Factor: 0.00
+2025-03-18 14:29:51,888 - BacktestEngine - INFO - Iteration 7/30 | StartIdx=3000
+2025-03-18 14:29:53,966 - DataPreparer - INFO - Selected 35 features using importance method
+2025-03-18 14:29:53,966 - DataPreparer - INFO - Using 35 features for model training
+2025-03-18 14:29:58,230 - DataPreparer - INFO - Saved scaler to /app/results/models/feature_scaler.pkl
+2025-03-18 14:29:58,238 - DataPreparer - INFO - Saved feature list to /app/results/models/feature_list.json
+2025-03-18 14:29:58,246 - DataPreparer - INFO - Saved feature importance to /app/results/models/feature_importance.json
+2025-03-18 14:29:58,314 - BacktestEngine - INFO - Using adaptive training with 1972 weighted validation samples
+2025-03-18 14:29:58,315 - BacktestEngine - INFO - Iteration 7: training model on 3449 sample(s)
+2025-03-18 14:29:58,316 - TradingModel - INFO - Training data shape: (3449, 72, 35), labels shape: (3449,)
+2025-03-18 14:29:58,317 - TradingModel - INFO - Validation data shape: (1972, 72, 35), labels shape: (1972,)
+2025-03-18 14:29:58,350 - TradingModel - INFO - Building ensemble trading model architecture
+2025-03-18 14:29:58,654 - EnsembleModel - INFO - Training transformer_model (1/2)
+2025-03-18 14:30:31,417 - EnsembleModel - INFO - Updated ensemble weights: [1.]
+2025-03-18 14:30:32,928 - EnsembleModel - INFO - Training lstm_cnn_model (2/2)
+2025-03-18 14:30:51,413 - EnsembleModel - INFO - Updated ensemble weights: [0.35931275 0.64068725]
+2025-03-18 14:30:53,226 - EnsembleModel - INFO - Saved model 0 to /app/results/models/best_model.keras_ensemble_0.keras
+2025-03-18 14:30:53,310 - EnsembleModel - INFO - Saved model 1 to /app/results/models/best_model.keras_ensemble_1.keras
+2025-03-18 14:30:53,370 - BacktestEngine - INFO - Predicting on test data of length 928
+2025-03-18 14:32:02,929 - BacktestEngine - INFO - Signal statistics: Buy: 3, Sell: 0, NoTrade: 925
+2025-03-18 14:32:02,931 - BacktestEngine - INFO - Simulation completed with 4 trades
+2025-03-18 14:32:04,608 - BacktestEngine - INFO - Iteration 8/30 | StartIdx=3500
+2025-03-18 14:32:06,696 - DataPreparer - INFO - Selected 35 features using importance method
+2025-03-18 14:32:06,697 - DataPreparer - INFO - Using 35 features for model training
+2025-03-18 14:32:10,865 - DataPreparer - INFO - Saved scaler to /app/results/models/feature_scaler.pkl
+2025-03-18 14:32:10,868 - DataPreparer - INFO - Saved feature list to /app/results/models/feature_list.json
+2025-03-18 14:32:10,871 - DataPreparer - INFO - Saved feature importance to /app/results/models/feature_importance.json
+2025-03-18 14:32:10,946 - BacktestEngine - INFO - Using adaptive training with 1972 weighted validation samples
+2025-03-18 14:32:10,947 - BacktestEngine - INFO - Iteration 8: training model on 3449 sample(s)
+2025-03-18 14:32:10,947 - TradingModel - INFO - Training data shape: (3449, 72, 35), labels shape: (3449,)
+2025-03-18 14:32:10,948 - TradingModel - INFO - Validation data shape: (1972, 72, 35), labels shape: (1972,)
+2025-03-18 14:32:10,981 - TradingModel - INFO - Building ensemble trading model architecture
+2025-03-18 14:32:11,261 - EnsembleModel - INFO - Training transformer_model (1/2)
+2025-03-18 14:32:43,597 - EnsembleModel - INFO - Updated ensemble weights: [1.]
+2025-03-18 14:32:45,412 - EnsembleModel - INFO - Training lstm_cnn_model (2/2)
+2025-03-18 14:32:58,128 - EnsembleModel - INFO - Updated ensemble weights: [0.51850578 0.48149422]
+2025-03-18 14:33:00,113 - EnsembleModel - INFO - Saved model 0 to /app/results/models/best_model.keras_ensemble_0.keras
+2025-03-18 14:33:00,212 - EnsembleModel - INFO - Saved model 1 to /app/results/models/best_model.keras_ensemble_1.keras
+2025-03-18 14:33:00,281 - BacktestEngine - INFO - Predicting on test data of length 928
+2025-03-18 14:34:23,304 - BacktestEngine - INFO - Signal statistics: Buy: 0, Sell: 49, NoTrade: 879
+2025-03-18 14:34:23,305 - BacktestEngine - INFO - Simulation completed with 33 trades
+2025-03-18 14:34:25,468 - BacktestEngine - INFO - Iteration 9/30 | StartIdx=4000
+2025-03-18 14:34:27,781 - DataPreparer - INFO - Selected 35 features using importance method
+2025-03-18 14:34:27,781 - DataPreparer - INFO - Using 35 features for model training
+2025-03-18 14:34:32,075 - DataPreparer - INFO - Saved scaler to /app/results/models/feature_scaler.pkl
+2025-03-18 14:34:32,079 - DataPreparer - INFO - Saved feature list to /app/results/models/feature_list.json
+2025-03-18 14:34:32,082 - DataPreparer - INFO - Saved feature importance to /app/results/models/feature_importance.json
+2025-03-18 14:34:32,160 - BacktestEngine - INFO - Using adaptive training with 1972 weighted validation samples
+2025-03-18 14:34:32,160 - BacktestEngine - INFO - Iteration 9: training model on 3449 sample(s)
+2025-03-18 14:34:32,161 - TradingModel - INFO - Training data shape: (3449, 72, 35), labels shape: (3449,)
+2025-03-18 14:34:32,161 - TradingModel - INFO - Validation data shape: (1972, 72, 35), labels shape: (1972,)
+2025-03-18 14:34:32,196 - TradingModel - INFO - Building ensemble trading model architecture
+2025-03-18 14:34:32,524 - EnsembleModel - INFO - Training transformer_model (1/2)
+2025-03-18 14:35:02,238 - EnsembleModel - INFO - Updated ensemble weights: [1.]
+2025-03-18 14:35:04,428 - EnsembleModel - INFO - Training lstm_cnn_model (2/2)
+2025-03-18 14:35:17,416 - EnsembleModel - INFO - Updated ensemble weights: [0.442889 0.557111]
+2025-03-18 14:35:19,667 - EnsembleModel - INFO - Saved model 0 to /app/results/models/best_model.keras_ensemble_0.keras
+2025-03-18 14:35:19,740 - EnsembleModel - INFO - Saved model 1 to /app/results/models/best_model.keras_ensemble_1.keras
+2025-03-18 14:35:19,804 - BacktestEngine - INFO - Predicting on test data of length 928
+2025-03-18 14:36:31,299 - BacktestEngine - INFO - Signal statistics: Buy: 4, Sell: 0, NoTrade: 924
+2025-03-18 14:36:31,300 - BacktestEngine - INFO - Simulation completed with 4 trades
+2025-03-18 14:36:33,816 - BacktestEngine - INFO - Current metrics - Win Rate: 0.00, Profit Factor: 0.00
+2025-03-18 14:36:33,817 - BacktestEngine - INFO - Iteration 10/30 | StartIdx=4500
+2025-03-18 14:36:36,152 - DataPreparer - INFO - Selected 35 features using importance method
+2025-03-18 14:36:36,153 - DataPreparer - INFO - Using 35 features for model training
+2025-03-18 14:36:40,492 - DataPreparer - INFO - Saved scaler to /app/results/models/feature_scaler.pkl
+2025-03-18 14:36:40,496 - DataPreparer - INFO - Saved feature list to /app/results/models/feature_list.json
+2025-03-18 14:36:40,501 - DataPreparer - INFO - Saved feature importance to /app/results/models/feature_importance.json
+2025-03-18 14:36:40,578 - BacktestEngine - INFO - Using adaptive training with 1972 weighted validation samples
+2025-03-18 14:36:40,579 - BacktestEngine - INFO - Iteration 10: training model on 3449 sample(s)
+2025-03-18 14:36:40,580 - TradingModel - INFO - Training data shape: (3449, 72, 35), labels shape: (3449,)
+2025-03-18 14:36:40,580 - TradingModel - INFO - Validation data shape: (1972, 72, 35), labels shape: (1972,)
+2025-03-18 14:36:40,612 - TradingModel - INFO - Building ensemble trading model architecture
+2025-03-18 14:36:40,890 - EnsembleModel - INFO - Training transformer_model (1/2)
+2025-03-18 14:37:19,813 - EnsembleModel - INFO - Updated ensemble weights: [1.]
+2025-03-18 14:37:22,113 - EnsembleModel - INFO - Training lstm_cnn_model (2/2)
+2025-03-18 14:37:33,515 - EnsembleModel - INFO - Updated ensemble weights: [0.47651278 0.52348722]
+2025-03-18 14:37:35,976 - EnsembleModel - INFO - Saved model 0 to /app/results/models/best_model.keras_ensemble_0.keras
+2025-03-18 14:37:36,053 - EnsembleModel - INFO - Saved model 1 to /app/results/models/best_model.keras_ensemble_1.keras
+2025-03-18 14:37:36,126 - BacktestEngine - INFO - Predicting on test data of length 928
+2025-03-18 14:38:46,592 - BacktestEngine - INFO - Signal statistics: Buy: 0, Sell: 29, NoTrade: 899
+2025-03-18 14:38:46,594 - BacktestEngine - INFO - Simulation completed with 18 trades
+2025-03-18 14:38:49,106 - BacktestEngine - INFO - Iteration 11/30 | StartIdx=5000
+2025-03-18 14:38:51,192 - DataPreparer - INFO - Selected 35 features using importance method
+2025-03-18 14:38:51,193 - DataPreparer - INFO - Using 35 features for model training
+2025-03-18 14:38:55,323 - DataPreparer - INFO - Saved scaler to /app/results/models/feature_scaler.pkl
+2025-03-18 14:38:55,326 - DataPreparer - INFO - Saved feature list to /app/results/models/feature_list.json
+2025-03-18 14:38:55,330 - DataPreparer - INFO - Saved feature importance to /app/results/models/feature_importance.json
+2025-03-18 14:38:55,400 - BacktestEngine - INFO - Using adaptive training with 1972 weighted validation samples
+2025-03-18 14:38:55,401 - BacktestEngine - INFO - Iteration 11: training model on 3449 sample(s)
+2025-03-18 14:38:55,402 - TradingModel - INFO - Training data shape: (3449, 72, 35), labels shape: (3449,)
+2025-03-18 14:38:55,403 - TradingModel - INFO - Validation data shape: (1972, 72, 35), labels shape: (1972,)
+2025-03-18 14:38:55,437 - TradingModel - INFO - Building ensemble trading model architecture
+2025-03-18 14:38:55,727 - EnsembleModel - INFO - Training transformer_model (1/2)
+2025-03-18 14:39:33,720 - EnsembleModel - INFO - Updated ensemble weights: [1.]
+2025-03-18 14:39:36,310 - EnsembleModel - INFO - Training lstm_cnn_model (2/2)
+2025-03-18 14:39:46,846 - EnsembleModel - INFO - Updated ensemble weights: [0.63444965 0.36555035]
+2025-03-18 14:39:49,533 - EnsembleModel - INFO - Saved model 0 to /app/results/models/best_model.keras_ensemble_0.keras
+2025-03-18 14:39:49,627 - EnsembleModel - INFO - Saved model 1 to /app/results/models/best_model.keras_ensemble_1.keras
+2025-03-18 14:39:49,696 - BacktestEngine - INFO - Predicting on test data of length 928
+2025-03-18 14:41:02,201 - BacktestEngine - INFO - Signal statistics: Buy: 0, Sell: 36, NoTrade: 892
+2025-03-18 14:41:02,203 - BacktestEngine - INFO - Simulation completed with 10 trades
+2025-03-18 14:41:04,967 - BacktestEngine - INFO - Iteration 12/30 | StartIdx=5500
+2025-03-18 14:41:07,033 - DataPreparer - INFO - Selected 35 features using importance method
+2025-03-18 14:41:07,034 - DataPreparer - INFO - Using 35 features for model training
+2025-03-18 14:41:11,150 - DataPreparer - INFO - Saved scaler to /app/results/models/feature_scaler.pkl
+2025-03-18 14:41:11,154 - DataPreparer - INFO - Saved feature list to /app/results/models/feature_list.json
+2025-03-18 14:41:11,157 - DataPreparer - INFO - Saved feature importance to /app/results/models/feature_importance.json
+2025-03-18 14:41:11,229 - BacktestEngine - INFO - Using adaptive training with 1972 weighted validation samples
+2025-03-18 14:41:11,230 - BacktestEngine - INFO - Iteration 12: training model on 3449 sample(s)
+2025-03-18 14:41:11,230 - TradingModel - INFO - Training data shape: (3449, 72, 35), labels shape: (3449,)
+2025-03-18 14:41:11,231 - TradingModel - INFO - Validation data shape: (1972, 72, 35), labels shape: (1972,)
+2025-03-18 14:41:11,265 - TradingModel - INFO - Building ensemble trading model architecture
+2025-03-18 14:41:11,562 - EnsembleModel - INFO - Training transformer_model (1/2)
+2025-03-18 14:41:38,693 - EnsembleModel - INFO - Updated ensemble weights: [1.]
+2025-03-18 14:41:41,446 - EnsembleModel - INFO - Training lstm_cnn_model (2/2)
+2025-03-18 14:41:54,310 - EnsembleModel - INFO - Updated ensemble weights: [0.40013852 0.59986148]
+2025-03-18 14:41:57,314 - EnsembleModel - INFO - Saved model 0 to /app/results/models/best_model.keras_ensemble_0.keras
+2025-03-18 14:41:57,435 - EnsembleModel - INFO - Saved model 1 to /app/results/models/best_model.keras_ensemble_1.keras
+2025-03-18 14:41:57,499 - BacktestEngine - INFO - Predicting on test data of length 928
+2025-03-18 14:43:10,010 - BacktestEngine - INFO - Signal statistics: Buy: 0, Sell: 30, NoTrade: 898
+2025-03-18 14:43:10,011 - BacktestEngine - INFO - Simulation completed with 22 trades
+2025-03-18 14:43:12,935 - BacktestEngine - INFO - Current metrics - Win Rate: 0.00, Profit Factor: 0.00
+2025-03-18 14:43:12,935 - BacktestEngine - INFO - Iteration 13/30 | StartIdx=6000
+2025-03-18 14:43:14,978 - DataPreparer - INFO - Selected 35 features using importance method
+2025-03-18 14:43:14,979 - DataPreparer - INFO - Using 35 features for model training
+2025-03-18 14:43:19,095 - DataPreparer - INFO - Saved scaler to /app/results/models/feature_scaler.pkl
+2025-03-18 14:43:19,102 - DataPreparer - INFO - Saved feature list to /app/results/models/feature_list.json
+2025-03-18 14:43:19,109 - DataPreparer - INFO - Saved feature importance to /app/results/models/feature_importance.json
+2025-03-18 14:43:19,177 - BacktestEngine - INFO - Iteration 13: training model on 3449 sample(s)
+2025-03-18 14:43:19,178 - TradingModel - INFO - Training data shape: (3449, 72, 35), labels shape: (3449,)
+2025-03-18 14:43:19,178 - TradingModel - INFO - Validation data shape: (1479, 72, 35), labels shape: (1479,)
+2025-03-18 14:43:19,206 - TradingModel - INFO - Building ensemble trading model architecture
+2025-03-18 14:43:19,499 - EnsembleModel - INFO - Training transformer_model (1/2)
+2025-03-18 14:43:53,704 - EnsembleModel - INFO - Updated ensemble weights: [1.]
+2025-03-18 14:43:56,803 - EnsembleModel - INFO - Training lstm_cnn_model (2/2)
+2025-03-18 14:44:06,954 - EnsembleModel - INFO - Updated ensemble weights: [0.47898073 0.52101927]
+2025-03-18 14:44:10,312 - EnsembleModel - INFO - Saved model 0 to /app/results/models/best_model.keras_ensemble_0.keras
+2025-03-18 14:44:10,401 - EnsembleModel - INFO - Saved model 1 to /app/results/models/best_model.keras_ensemble_1.keras
+2025-03-18 14:44:10,467 - BacktestEngine - INFO - Predicting on test data of length 928
+2025-03-18 14:45:20,215 - BacktestEngine - INFO - Signal statistics: Buy: 0, Sell: 24, NoTrade: 904
+2025-03-18 14:45:20,217 - BacktestEngine - INFO - Simulation completed with 16 trades
+2025-03-18 14:45:23,426 - BacktestEngine - INFO - Iteration 14/30 | StartIdx=6500
+2025-03-18 14:45:25,463 - DataPreparer - INFO - Selected 35 features using importance method
+2025-03-18 14:45:25,464 - DataPreparer - INFO - Using 35 features for model training
+2025-03-18 14:45:29,626 - DataPreparer - INFO - Saved scaler to /app/results/models/feature_scaler.pkl
+2025-03-18 14:45:29,629 - DataPreparer - INFO - Saved feature list to /app/results/models/feature_list.json
+2025-03-18 14:45:29,631 - DataPreparer - INFO - Saved feature importance to /app/results/models/feature_importance.json
+2025-03-18 14:45:29,705 - BacktestEngine - INFO - Iteration 14: training model on 3449 sample(s)
+2025-03-18 14:45:29,706 - TradingModel - INFO - Training data shape: (3449, 72, 35), labels shape: (3449,)
+2025-03-18 14:45:29,706 - TradingModel - INFO - Validation data shape: (1479, 72, 35), labels shape: (1479,)
+2025-03-18 14:45:29,732 - TradingModel - INFO - Building ensemble trading model architecture
+2025-03-18 14:45:30,027 - EnsembleModel - INFO - Training transformer_model (1/2)
+2025-03-18 14:46:05,636 - EnsembleModel - INFO - Updated ensemble weights: [1.]
+2025-03-18 14:46:08,904 - EnsembleModel - INFO - Training lstm_cnn_model (2/2)
+2025-03-18 14:46:19,603 - EnsembleModel - INFO - Updated ensemble weights: [0.60938858 0.39061142]
+2025-03-18 14:46:23,059 - EnsembleModel - INFO - Saved model 0 to /app/results/models/best_model.keras_ensemble_0.keras
+2025-03-18 14:46:23,130 - EnsembleModel - INFO - Saved model 1 to /app/results/models/best_model.keras_ensemble_1.keras
+2025-03-18 14:46:23,192 - BacktestEngine - INFO - Predicting on test data of length 928
+2025-03-18 14:47:34,268 - BacktestEngine - INFO - Signal statistics: Buy: 2, Sell: 0, NoTrade: 926
+2025-03-18 14:47:34,269 - BacktestEngine - INFO - Simulation completed with 2 trades
+2025-03-18 14:47:37,714 - BacktestEngine - INFO - Iteration 15/30 | StartIdx=7000
+2025-03-18 14:47:39,757 - DataPreparer - INFO - Selected 35 features using importance method
+2025-03-18 14:47:39,757 - DataPreparer - INFO - Using 35 features for model training
+2025-03-18 14:47:43,857 - DataPreparer - INFO - Saved scaler to /app/results/models/feature_scaler.pkl
+2025-03-18 14:47:43,861 - DataPreparer - INFO - Saved feature list to /app/results/models/feature_list.json
+2025-03-18 14:47:43,864 - DataPreparer - INFO - Saved feature importance to /app/results/models/feature_importance.json
+2025-03-18 14:47:43,928 - BacktestEngine - INFO - Iteration 15: training model on 3449 sample(s)
+2025-03-18 14:47:43,929 - TradingModel - INFO - Training data shape: (3449, 72, 35), labels shape: (3449,)
+2025-03-18 14:47:43,930 - TradingModel - INFO - Validation data shape: (1479, 72, 35), labels shape: (1479,)
+2025-03-18 14:47:43,960 - TradingModel - INFO - Building ensemble trading model architecture
+2025-03-18 14:47:44,249 - EnsembleModel - INFO - Training transformer_model (1/2)
+2025-03-18 14:48:11,054 - EnsembleModel - INFO - Updated ensemble weights: [1.]
+2025-03-18 14:48:14,601 - EnsembleModel - INFO - Training lstm_cnn_model (2/2)
+2025-03-18 14:48:26,681 - EnsembleModel - INFO - Updated ensemble weights: [0.52666882 0.47333118]
+2025-03-18 14:48:30,309 - EnsembleModel - INFO - Saved model 0 to /app/results/models/best_model.keras_ensemble_0.keras
+2025-03-18 14:48:30,404 - EnsembleModel - INFO - Saved model 1 to /app/results/models/best_model.keras_ensemble_1.keras
+2025-03-18 14:48:30,472 - BacktestEngine - INFO - Predicting on test data of length 928
+2025-03-18 14:49:43,666 - BacktestEngine - INFO - Signal statistics: Buy: 0, Sell: 42, NoTrade: 886
+2025-03-18 14:49:43,667 - BacktestEngine - INFO - Simulation completed with 30 trades
+2025-03-18 14:49:47,332 - BacktestEngine - INFO - Current metrics - Win Rate: 0.00, Profit Factor: 0.00
+2025-03-18 14:49:47,333 - BacktestEngine - INFO - Iteration 16/30 | StartIdx=7500
+2025-03-18 14:49:49,393 - DataPreparer - INFO - Selected 35 features using importance method
+2025-03-18 14:49:49,394 - DataPreparer - INFO - Using 35 features for model training
+2025-03-18 14:49:53,584 - DataPreparer - INFO - Saved scaler to /app/results/models/feature_scaler.pkl
+2025-03-18 14:49:53,587 - DataPreparer - INFO - Saved feature list to /app/results/models/feature_list.json
+2025-03-18 14:49:53,590 - DataPreparer - INFO - Saved feature importance to /app/results/models/feature_importance.json
+2025-03-18 14:49:53,662 - BacktestEngine - INFO - Using adaptive training with 1972 weighted validation samples
+2025-03-18 14:49:53,663 - BacktestEngine - INFO - Iteration 16: training model on 3449 sample(s)
+2025-03-18 14:49:53,664 - TradingModel - INFO - Training data shape: (3449, 72, 35), labels shape: (3449,)
+2025-03-18 14:49:53,665 - TradingModel - INFO - Validation data shape: (1972, 72, 35), labels shape: (1972,)
+2025-03-18 14:49:53,698 - TradingModel - INFO - Building ensemble trading model architecture
+2025-03-18 14:49:53,987 - EnsembleModel - INFO - Training transformer_model (1/2)
+2025-03-18 14:50:30,744 - EnsembleModel - INFO - Updated ensemble weights: [1.]
+2025-03-18 14:50:34,521 - EnsembleModel - INFO - Training lstm_cnn_model (2/2)
+2025-03-18 14:50:47,574 - EnsembleModel - INFO - Updated ensemble weights: [0.3967055 0.6032945]
+2025-03-18 14:50:51,601 - EnsembleModel - INFO - Saved model 0 to /app/results/models/best_model.keras_ensemble_0.keras
+2025-03-18 14:50:51,708 - EnsembleModel - INFO - Saved model 1 to /app/results/models/best_model.keras_ensemble_1.keras
+2025-03-18 14:50:51,773 - BacktestEngine - INFO - Predicting on test data of length 928
+2025-03-18 14:52:00,937 - BacktestEngine - INFO - Signal statistics: Buy: 1, Sell: 0, NoTrade: 927
+2025-03-18 14:52:00,939 - BacktestEngine - INFO - Simulation completed with 2 trades
+2025-03-18 14:52:04,848 - BacktestEngine - INFO - Iteration 17/30 | StartIdx=8000
+2025-03-18 14:52:06,919 - DataPreparer - INFO - Selected 35 features using importance method
+2025-03-18 14:52:06,920 - DataPreparer - INFO - Using 35 features for model training
+2025-03-18 14:52:11,334 - DataPreparer - INFO - Saved scaler to /app/results/models/feature_scaler.pkl
+2025-03-18 14:52:11,337 - DataPreparer - INFO - Saved feature list to /app/results/models/feature_list.json
+2025-03-18 14:52:11,340 - DataPreparer - INFO - Saved feature importance to /app/results/models/feature_importance.json
+2025-03-18 14:52:11,407 - BacktestEngine - INFO - Using adaptive training with 1972 weighted validation samples
+2025-03-18 14:52:11,408 - BacktestEngine - INFO - Iteration 17: training model on 3449 sample(s)
+2025-03-18 14:52:11,409 - TradingModel - INFO - Training data shape: (3449, 72, 35), labels shape: (3449,)
+2025-03-18 14:52:11,409 - TradingModel - INFO - Validation data shape: (1972, 72, 35), labels shape: (1972,)
+2025-03-18 14:52:11,442 - TradingModel - INFO - Building ensemble trading model architecture
+2025-03-18 14:52:11,740 - EnsembleModel - INFO - Training transformer_model (1/2)
+2025-03-18 14:52:40,533 - EnsembleModel - INFO - Updated ensemble weights: [1.]
+2025-03-18 14:52:44,514 - EnsembleModel - INFO - Training lstm_cnn_model (2/2)
+2025-03-18 14:52:56,959 - EnsembleModel - INFO - Updated ensemble weights: [0.47514135 0.52485865]
+2025-03-18 14:53:01,185 - EnsembleModel - INFO - Saved model 0 to /app/results/models/best_model.keras_ensemble_0.keras
+2025-03-18 14:53:01,294 - EnsembleModel - INFO - Saved model 1 to /app/results/models/best_model.keras_ensemble_1.keras
+2025-03-18 14:53:01,357 - BacktestEngine - INFO - Predicting on test data of length 928
+2025-03-18 14:54:09,291 - BacktestEngine - INFO - Signal statistics: Buy: 1, Sell: 0, NoTrade: 927
+2025-03-18 14:54:09,295 - BacktestEngine - INFO - Simulation completed with 2 trades
+2025-03-18 14:54:13,417 - BacktestEngine - INFO - Iteration 18/30 | StartIdx=8500
+2025-03-18 14:54:15,444 - DataPreparer - INFO - Selected 35 features using importance method
+2025-03-18 14:54:15,445 - DataPreparer - INFO - Using 35 features for model training
+2025-03-18 14:54:19,598 - DataPreparer - INFO - Saved scaler to /app/results/models/feature_scaler.pkl
+2025-03-18 14:54:19,605 - DataPreparer - INFO - Saved feature list to /app/results/models/feature_list.json
+2025-03-18 14:54:19,611 - DataPreparer - INFO - Saved feature importance to /app/results/models/feature_importance.json
+2025-03-18 14:54:19,682 - BacktestEngine - INFO - Using adaptive training with 1972 weighted validation samples
+2025-03-18 14:54:19,683 - BacktestEngine - INFO - Iteration 18: training model on 3449 sample(s)
+2025-03-18 14:54:19,683 - TradingModel - INFO - Training data shape: (3449, 72, 35), labels shape: (3449,)
+2025-03-18 14:54:19,684 - TradingModel - INFO - Validation data shape: (1972, 72, 35), labels shape: (1972,)
+2025-03-18 14:54:19,724 - TradingModel - INFO - Building ensemble trading model architecture
+2025-03-18 14:54:19,992 - EnsembleModel - INFO - Training transformer_model (1/2)
+2025-03-18 14:55:00,213 - EnsembleModel - INFO - Updated ensemble weights: [1.]
+2025-03-18 14:55:04,441 - EnsembleModel - INFO - Training lstm_cnn_model (2/2)
+2025-03-18 14:55:17,857 - EnsembleModel - INFO - Updated ensemble weights: [0.50842703 0.49157297]
+2025-03-18 14:55:22,242 - EnsembleModel - INFO - Saved model 0 to /app/results/models/best_model.keras_ensemble_0.keras
+2025-03-18 14:55:22,344 - EnsembleModel - INFO - Saved model 1 to /app/results/models/best_model.keras_ensemble_1.keras
+2025-03-18 14:55:22,407 - BacktestEngine - INFO - Predicting on test data of length 928
+2025-03-18 14:56:34,942 - BacktestEngine - INFO - Signal statistics: Buy: 11, Sell: 6, NoTrade: 911
+2025-03-18 14:56:34,944 - BacktestEngine - INFO - Simulation completed with 10 trades
+2025-03-18 14:56:39,378 - BacktestEngine - INFO - Current metrics - Win Rate: 0.00, Profit Factor: 0.00
+2025-03-18 14:56:39,382 - BacktestEngine - INFO - Iteration 19/30 | StartIdx=9000
+2025-03-18 14:56:41,474 - DataPreparer - INFO - Selected 35 features using importance method
+2025-03-18 14:56:41,484 - DataPreparer - INFO - Using 35 features for model training
+2025-03-18 14:56:45,595 - DataPreparer - INFO - Saved scaler to /app/results/models/feature_scaler.pkl
+2025-03-18 14:56:45,601 - DataPreparer - INFO - Saved feature list to /app/results/models/feature_list.json
+2025-03-18 14:56:45,607 - DataPreparer - INFO - Saved feature importance to /app/results/models/feature_importance.json
+2025-03-18 14:56:45,674 - BacktestEngine - INFO - Using adaptive training with 1972 weighted validation samples
+2025-03-18 14:56:45,675 - BacktestEngine - INFO - Iteration 19: training model on 3449 sample(s)
+2025-03-18 14:56:45,675 - TradingModel - INFO - Training data shape: (3449, 72, 35), labels shape: (3449,)
+2025-03-18 14:56:45,675 - TradingModel - INFO - Validation data shape: (1972, 72, 35), labels shape: (1972,)
+2025-03-18 14:56:45,705 - TradingModel - INFO - Building ensemble trading model architecture
+2025-03-18 14:56:45,973 - EnsembleModel - INFO - Training transformer_model (1/2)
+2025-03-18 14:57:20,279 - EnsembleModel - INFO - Updated ensemble weights: [1.]
+2025-03-18 14:57:24,726 - EnsembleModel - INFO - Training lstm_cnn_model (2/2)
+2025-03-18 14:57:35,509 - EnsembleModel - INFO - Updated ensemble weights: [0.36400576 0.63599424]
+2025-03-18 14:57:40,113 - EnsembleModel - INFO - Saved model 0 to /app/results/models/best_model.keras_ensemble_0.keras
+2025-03-18 14:57:40,206 - EnsembleModel - INFO - Saved model 1 to /app/results/models/best_model.keras_ensemble_1.keras
+2025-03-18 14:57:40,274 - BacktestEngine - INFO - Predicting on test data of length 928
+2025-03-18 14:58:53,172 - BacktestEngine - INFO - Signal statistics: Buy: 0, Sell: 49, NoTrade: 879
+2025-03-18 14:58:53,173 - BacktestEngine - INFO - Simulation completed with 39 trades
+2025-03-18 14:58:57,741 - BacktestEngine - INFO - Iteration 20/30 | StartIdx=9500
+2025-03-18 14:58:59,765 - DataPreparer - INFO - Selected 35 features using importance method
+2025-03-18 14:58:59,766 - DataPreparer - INFO - Using 35 features for model training
+2025-03-18 14:59:04,099 - DataPreparer - INFO - Saved scaler to /app/results/models/feature_scaler.pkl
+2025-03-18 14:59:04,103 - DataPreparer - INFO - Saved feature list to /app/results/models/feature_list.json
+2025-03-18 14:59:04,106 - DataPreparer - INFO - Saved feature importance to /app/results/models/feature_importance.json
+2025-03-18 14:59:04,175 - BacktestEngine - INFO - Using adaptive training with 1972 weighted validation samples
+2025-03-18 14:59:04,176 - BacktestEngine - INFO - Iteration 20: training model on 3449 sample(s)
+2025-03-18 14:59:04,176 - TradingModel - INFO - Training data shape: (3449, 72, 35), labels shape: (3449,)
+2025-03-18 14:59:04,177 - TradingModel - INFO - Validation data shape: (1972, 72, 35), labels shape: (1972,)
+2025-03-18 14:59:04,211 - TradingModel - INFO - Building ensemble trading model architecture
+2025-03-18 14:59:04,500 - EnsembleModel - INFO - Training transformer_model (1/2)
+2025-03-18 14:59:44,647 - EnsembleModel - INFO - Updated ensemble weights: [1.]
+2025-03-18 14:59:49,235 - EnsembleModel - INFO - Training lstm_cnn_model (2/2)
+2025-03-18 15:00:01,812 - EnsembleModel - INFO - Updated ensemble weights: [0.5608287 0.4391713]
+2025-03-18 15:00:06,718 - EnsembleModel - INFO - Saved model 0 to /app/results/models/best_model.keras_ensemble_0.keras
+2025-03-18 15:00:06,821 - EnsembleModel - INFO - Saved model 1 to /app/results/models/best_model.keras_ensemble_1.keras
+2025-03-18 15:00:06,887 - BacktestEngine - INFO - Predicting on test data of length 928
+2025-03-18 15:01:20,081 - BacktestEngine - INFO - Signal statistics: Buy: 0, Sell: 36, NoTrade: 892
+2025-03-18 15:01:20,082 - BacktestEngine - INFO - Simulation completed with 26 trades
+2025-03-18 15:01:24,843 - BacktestEngine - INFO - Iteration 21/30 | StartIdx=10000
+2025-03-18 15:01:26,950 - DataPreparer - INFO - Selected 35 features using importance method
+2025-03-18 15:01:26,951 - DataPreparer - INFO - Using 35 features for model training
+2025-03-18 15:01:31,251 - DataPreparer - INFO - Saved scaler to /app/results/models/feature_scaler.pkl
+2025-03-18 15:01:31,254 - DataPreparer - INFO - Saved feature list to /app/results/models/feature_list.json
+2025-03-18 15:01:31,258 - DataPreparer - INFO - Saved feature importance to /app/results/models/feature_importance.json
+2025-03-18 15:01:31,330 - BacktestEngine - INFO - Using adaptive training with 1972 weighted validation samples
+2025-03-18 15:01:31,330 - BacktestEngine - INFO - Iteration 21: training model on 3449 sample(s)
+2025-03-18 15:01:31,331 - TradingModel - INFO - Training data shape: (3449, 72, 35), labels shape: (3449,)
+2025-03-18 15:01:31,332 - TradingModel - INFO - Validation data shape: (1972, 72, 35), labels shape: (1972,)
+2025-03-18 15:01:31,362 - TradingModel - INFO - Building ensemble trading model architecture
+2025-03-18 15:01:31,632 - EnsembleModel - INFO - Training transformer_model (1/2)
+2025-03-18 15:02:05,064 - EnsembleModel - INFO - Updated ensemble weights: [1.]
+2025-03-18 15:02:10,002 - EnsembleModel - INFO - Training lstm_cnn_model (2/2)
+2025-03-18 15:02:20,953 - EnsembleModel - INFO - Updated ensemble weights: [0.52093231 0.47906769]
+2025-03-18 15:02:25,990 - EnsembleModel - INFO - Saved model 0 to /app/results/models/best_model.keras_ensemble_0.keras
+2025-03-18 15:02:26,075 - EnsembleModel - INFO - Saved model 1 to /app/results/models/best_model.keras_ensemble_1.keras
+2025-03-18 15:02:26,135 - BacktestEngine - INFO - Predicting on test data of length 928
+2025-03-18 15:03:38,771 - BacktestEngine - INFO - Signal statistics: Buy: 0, Sell: 30, NoTrade: 898
+2025-03-18 15:03:38,772 - BacktestEngine - INFO - Simulation completed with 22 trades
+2025-03-18 15:03:43,843 - BacktestEngine - INFO - Current metrics - Win Rate: 0.00, Profit Factor: 0.00
+2025-03-18 15:03:43,844 - BacktestEngine - INFO - Iteration 22/30 | StartIdx=10500
+2025-03-18 15:03:45,898 - DataPreparer - INFO - Selected 35 features using importance method
+2025-03-18 15:03:45,899 - DataPreparer - INFO - Using 35 features for model training
+2025-03-18 15:03:50,164 - DataPreparer - INFO - Saved scaler to /app/results/models/feature_scaler.pkl
+2025-03-18 15:03:50,172 - DataPreparer - INFO - Saved feature list to /app/results/models/feature_list.json
+2025-03-18 15:03:50,180 - DataPreparer - INFO - Saved feature importance to /app/results/models/feature_importance.json
+2025-03-18 15:03:50,251 - BacktestEngine - INFO - Using adaptive training with 1972 weighted validation samples
+2025-03-18 15:03:50,252 - BacktestEngine - INFO - Iteration 22: training model on 3449 sample(s)
+2025-03-18 15:03:50,253 - TradingModel - INFO - Training data shape: (3449, 72, 35), labels shape: (3449,)
+2025-03-18 15:03:50,253 - TradingModel - INFO - Validation data shape: (1972, 72, 35), labels shape: (1972,)
+2025-03-18 15:03:50,284 - TradingModel - INFO - Building ensemble trading model architecture
+2025-03-18 15:03:50,557 - EnsembleModel - INFO - Training transformer_model (1/2)
+2025-03-18 15:04:18,646 - EnsembleModel - INFO - Updated ensemble weights: [1.]
+2025-03-18 15:04:23,744 - EnsembleModel - INFO - Training lstm_cnn_model (2/2)
+2025-03-18 15:04:34,230 - EnsembleModel - INFO - Updated ensemble weights: [0.46581039 0.53418961]
+2025-03-18 15:04:39,701 - EnsembleModel - INFO - Saved model 0 to /app/results/models/best_model.keras_ensemble_0.keras
+2025-03-18 15:04:39,803 - EnsembleModel - INFO - Saved model 1 to /app/results/models/best_model.keras_ensemble_1.keras
+2025-03-18 15:04:39,873 - BacktestEngine - INFO - Predicting on test data of length 928
+2025-03-18 15:05:48,049 - BacktestEngine - INFO - Signal statistics: Buy: 6, Sell: 0, NoTrade: 922
+2025-03-18 15:05:48,050 - BacktestEngine - INFO - Simulation completed with 4 trades
+2025-03-18 15:05:53,381 - BacktestEngine - INFO - Iteration 23/30 | StartIdx=11000
+2025-03-18 15:05:55,436 - DataPreparer - INFO - Selected 35 features using importance method
+2025-03-18 15:05:55,437 - DataPreparer - INFO - Using 35 features for model training
+2025-03-18 15:05:59,846 - DataPreparer - INFO - Saved scaler to /app/results/models/feature_scaler.pkl
+2025-03-18 15:05:59,852 - DataPreparer - INFO - Saved feature list to /app/results/models/feature_list.json
+2025-03-18 15:05:59,858 - DataPreparer - INFO - Saved feature importance to /app/results/models/feature_importance.json
+2025-03-18 15:05:59,932 - BacktestEngine - INFO - Using adaptive training with 1972 weighted validation samples
+2025-03-18 15:05:59,933 - BacktestEngine - INFO - Iteration 23: training model on 3449 sample(s)
+2025-03-18 15:05:59,933 - TradingModel - INFO - Training data shape: (3449, 72, 35), labels shape: (3449,)
+2025-03-18 15:05:59,934 - TradingModel - INFO - Validation data shape: (1972, 72, 35), labels shape: (1972,)
+2025-03-18 15:05:59,966 - TradingModel - INFO - Building ensemble trading model architecture
+2025-03-18 15:06:00,293 - EnsembleModel - INFO - Training transformer_model (1/2)
+2025-03-18 15:06:29,424 - EnsembleModel - INFO - Updated ensemble weights: [1.]
+2025-03-18 15:06:34,751 - EnsembleModel - INFO - Training lstm_cnn_model (2/2)
+2025-03-18 15:06:47,896 - EnsembleModel - INFO - Updated ensemble weights: [0.48282765 0.51717235]
+2025-03-18 15:06:53,496 - EnsembleModel - INFO - Saved model 0 to /app/results/models/best_model.keras_ensemble_0.keras
+2025-03-18 15:06:53,597 - EnsembleModel - INFO - Saved model 1 to /app/results/models/best_model.keras_ensemble_1.keras
+2025-03-18 15:06:53,664 - BacktestEngine - INFO - Predicting on test data of length 928
+2025-03-18 15:08:02,009 - BacktestEngine - INFO - Signal statistics: Buy: 0, Sell: 0, NoTrade: 928
+2025-03-18 15:08:02,009 - BacktestEngine - INFO - Simulation completed with 0 trades
+2025-03-18 15:08:07,560 - BacktestEngine - INFO - Iteration 24/30 | StartIdx=11500
+2025-03-18 15:08:09,602 - DataPreparer - INFO - Selected 35 features using importance method
+2025-03-18 15:08:09,603 - DataPreparer - INFO - Using 35 features for model training
+2025-03-18 15:08:14,065 - DataPreparer - INFO - Saved scaler to /app/results/models/feature_scaler.pkl
+2025-03-18 15:08:14,067 - DataPreparer - INFO - Saved feature list to /app/results/models/feature_list.json
+2025-03-18 15:08:14,070 - DataPreparer - INFO - Saved feature importance to /app/results/models/feature_importance.json
+2025-03-18 15:08:14,141 - BacktestEngine - INFO - Using adaptive training with 1972 weighted validation samples
+2025-03-18 15:08:14,141 - BacktestEngine - INFO - Iteration 24: training model on 3449 sample(s)
+2025-03-18 15:08:14,142 - TradingModel - INFO - Training data shape: (3449, 72, 35), labels shape: (3449,)
+2025-03-18 15:08:14,142 - TradingModel - INFO - Validation data shape: (1972, 72, 35), labels shape: (1972,)
+2025-03-18 15:08:14,171 - TradingModel - INFO - Building ensemble trading model architecture
+2025-03-18 15:08:14,457 - EnsembleModel - INFO - Training transformer_model (1/2)
+2025-03-18 15:08:48,942 - EnsembleModel - INFO - Updated ensemble weights: [1.]
+2025-03-18 15:08:54,576 - EnsembleModel - INFO - Training lstm_cnn_model (2/2)
+2025-03-18 15:09:08,445 - EnsembleModel - INFO - Updated ensemble weights: [0.43577672 0.56422328]
+2025-03-18 15:09:14,355 - EnsembleModel - INFO - Saved model 0 to /app/results/models/best_model.keras_ensemble_0.keras
+2025-03-18 15:09:14,447 - EnsembleModel - INFO - Saved model 1 to /app/results/models/best_model.keras_ensemble_1.keras
+2025-03-18 15:09:14,508 - BacktestEngine - INFO - Predicting on test data of length 928
+2025-03-18 15:10:26,635 - BacktestEngine - INFO - Signal statistics: Buy: 0, Sell: 25, NoTrade: 903
+2025-03-18 15:10:26,636 - BacktestEngine - INFO - Simulation completed with 9 trades
+2025-03-18 15:10:32,445 - BacktestEngine - INFO - Current metrics - Win Rate: 0.00, Profit Factor: 0.00
+2025-03-18 15:10:32,446 - BacktestEngine - INFO - Iteration 25/30 | StartIdx=12000
+2025-03-18 15:10:34,526 - DataPreparer - INFO - Selected 35 features using importance method
+2025-03-18 15:10:34,527 - DataPreparer - INFO - Using 35 features for model training
+2025-03-18 15:10:39,104 - DataPreparer - INFO - Saved scaler to /app/results/models/feature_scaler.pkl
+2025-03-18 15:10:39,109 - DataPreparer - INFO - Saved feature list to /app/results/models/feature_list.json
+2025-03-18 15:10:39,113 - DataPreparer - INFO - Saved feature importance to /app/results/models/feature_importance.json
+2025-03-18 15:10:39,189 - BacktestEngine - INFO - Using adaptive training with 1972 weighted validation samples
+2025-03-18 15:10:39,190 - BacktestEngine - INFO - Iteration 25: training model on 3449 sample(s)
+2025-03-18 15:10:39,191 - TradingModel - INFO - Training data shape: (3449, 72, 35), labels shape: (3449,)
+2025-03-18 15:10:39,191 - TradingModel - INFO - Validation data shape: (1972, 72, 35), labels shape: (1972,)
+2025-03-18 15:10:39,224 - TradingModel - INFO - Building ensemble trading model architecture
+2025-03-18 15:10:39,527 - EnsembleModel - INFO - Training transformer_model (1/2)
+2025-03-18 15:11:20,129 - EnsembleModel - INFO - Updated ensemble weights: [1.]
+2025-03-18 15:11:26,114 - EnsembleModel - INFO - Training lstm_cnn_model (2/2)
+2025-03-18 15:11:36,727 - EnsembleModel - INFO - Updated ensemble weights: [0.53778334 0.46221666]
+2025-03-18 15:11:42,806 - EnsembleModel - INFO - Saved model 0 to /app/results/models/best_model.keras_ensemble_0.keras
+2025-03-18 15:11:42,943 - EnsembleModel - INFO - Saved model 1 to /app/results/models/best_model.keras_ensemble_1.keras
+2025-03-18 15:11:43,021 - BacktestEngine - INFO - Predicting on test data of length 928
+2025-03-18 15:12:53,841 - BacktestEngine - INFO - Signal statistics: Buy: 1, Sell: 0, NoTrade: 927
+2025-03-18 15:12:53,842 - BacktestEngine - INFO - Simulation completed with 1 trades
+2025-03-18 15:12:59,955 - BacktestEngine - INFO - Iteration 26/30 | StartIdx=12500
+2025-03-18 15:13:02,062 - DataPreparer - INFO - Selected 35 features using importance method
+2025-03-18 15:13:02,063 - DataPreparer - INFO - Using 35 features for model training
+2025-03-18 15:13:06,352 - DataPreparer - INFO - Saved scaler to /app/results/models/feature_scaler.pkl
+2025-03-18 15:13:06,355 - DataPreparer - INFO - Saved feature list to /app/results/models/feature_list.json
+2025-03-18 15:13:06,358 - DataPreparer - INFO - Saved feature importance to /app/results/models/feature_importance.json
+2025-03-18 15:13:06,429 - BacktestEngine - INFO - Using adaptive training with 1972 weighted validation samples
+2025-03-18 15:13:06,430 - BacktestEngine - INFO - Iteration 26: training model on 3449 sample(s)
+2025-03-18 15:13:06,431 - TradingModel - INFO - Training data shape: (3449, 72, 35), labels shape: (3449,)
+2025-03-18 15:13:06,431 - TradingModel - INFO - Validation data shape: (1972, 72, 35), labels shape: (1972,)
+2025-03-18 15:13:06,463 - TradingModel - INFO - Building ensemble trading model architecture
+2025-03-18 15:13:06,744 - EnsembleModel - INFO - Training transformer_model (1/2)
+2025-03-18 15:13:39,057 - EnsembleModel - INFO - Updated ensemble weights: [1.]
+2025-03-18 15:13:45,412 - EnsembleModel - INFO - Training lstm_cnn_model (2/2)
+2025-03-18 15:13:58,630 - EnsembleModel - INFO - Updated ensemble weights: [0.52267712 0.47732288]
+2025-03-18 15:14:05,200 - EnsembleModel - INFO - Saved model 0 to /app/results/models/best_model.keras_ensemble_0.keras
+2025-03-18 15:14:05,283 - EnsembleModel - INFO - Saved model 1 to /app/results/models/best_model.keras_ensemble_1.keras
+2025-03-18 15:14:05,347 - BacktestEngine - INFO - Predicting on test data of length 928
+2025-03-18 15:15:19,355 - BacktestEngine - INFO - Signal statistics: Buy: 0, Sell: 34, NoTrade: 894
+2025-03-18 15:15:19,356 - BacktestEngine - INFO - Simulation completed with 17 trades
+2025-03-18 15:15:25,888 - BacktestEngine - INFO - Iteration 27/30 | StartIdx=13000
+2025-03-18 15:15:28,063 - DataPreparer - INFO - Selected 35 features using importance method
+2025-03-18 15:15:28,063 - DataPreparer - INFO - Using 35 features for model training
+2025-03-18 15:15:32,613 - DataPreparer - INFO - Saved scaler to /app/results/models/feature_scaler.pkl
+2025-03-18 15:15:32,620 - DataPreparer - INFO - Saved feature list to /app/results/models/feature_list.json
+2025-03-18 15:15:32,627 - DataPreparer - INFO - Saved feature importance to /app/results/models/feature_importance.json
+2025-03-18 15:15:32,702 - BacktestEngine - INFO - Using adaptive training with 1972 weighted validation samples
+2025-03-18 15:15:32,702 - BacktestEngine - INFO - Iteration 27: training model on 3449 sample(s)
+2025-03-18 15:15:32,703 - TradingModel - INFO - Training data shape: (3449, 72, 35), labels shape: (3449,)
+2025-03-18 15:15:32,703 - TradingModel - INFO - Validation data shape: (1972, 72, 35), labels shape: (1972,)
+2025-03-18 15:15:32,737 - TradingModel - INFO - Building ensemble trading model architecture
+2025-03-18 15:15:33,041 - EnsembleModel - INFO - Training transformer_model (1/2)
+2025-03-18 15:16:10,584 - EnsembleModel - INFO - Updated ensemble weights: [1.]
+2025-03-18 15:16:17,316 - EnsembleModel - INFO - Training lstm_cnn_model (2/2)
+2025-03-18 15:16:33,603 - EnsembleModel - INFO - Updated ensemble weights: [0.44195105 0.55804895]
+2025-03-18 15:16:40,533 - EnsembleModel - INFO - Saved model 0 to /app/results/models/best_model.keras_ensemble_0.keras
+2025-03-18 15:16:40,642 - EnsembleModel - INFO - Saved model 1 to /app/results/models/best_model.keras_ensemble_1.keras
+2025-03-18 15:16:40,719 - BacktestEngine - INFO - Predicting on test data of length 928
+2025-03-18 15:17:55,603 - BacktestEngine - INFO - Signal statistics: Buy: 0, Sell: 41, NoTrade: 887
+2025-03-18 15:17:55,605 - BacktestEngine - INFO - Simulation completed with 20 trades
+2025-03-18 15:18:02,163 - BacktestEngine - INFO - Current metrics - Win Rate: 0.00, Profit Factor: 0.00
+2025-03-18 15:18:02,165 - BacktestEngine - INFO - Iteration 28/30 | StartIdx=13500
+2025-03-18 15:18:04,231 - DataPreparer - INFO - Selected 35 features using importance method
+2025-03-18 15:18:04,233 - DataPreparer - INFO - Using 35 features for model training
+2025-03-18 15:18:08,586 - DataPreparer - INFO - Saved scaler to /app/results/models/feature_scaler.pkl
+2025-03-18 15:18:08,593 - DataPreparer - INFO - Saved feature list to /app/results/models/feature_list.json
+2025-03-18 15:18:08,599 - DataPreparer - INFO - Saved feature importance to /app/results/models/feature_importance.json
+2025-03-18 15:18:08,667 - BacktestEngine - INFO - Using adaptive training with 1972 weighted validation samples
+2025-03-18 15:18:08,668 - BacktestEngine - INFO - Iteration 28: training model on 3449 sample(s)
+2025-03-18 15:18:08,669 - TradingModel - INFO - Training data shape: (3449, 72, 35), labels shape: (3449,)
+2025-03-18 15:18:08,670 - TradingModel - INFO - Validation data shape: (1972, 72, 35), labels shape: (1972,)
+2025-03-18 15:18:08,703 - TradingModel - INFO - Building ensemble trading model architecture
+2025-03-18 15:18:08,983 - EnsembleModel - INFO - Training transformer_model (1/2)
+2025-03-18 15:18:36,444 - EnsembleModel - INFO - Updated ensemble weights: [1.]
+2025-03-18 15:18:43,223 - EnsembleModel - INFO - Training lstm_cnn_model (2/2)
+2025-03-18 15:18:56,298 - EnsembleModel - INFO - Updated ensemble weights: [0.4218086 0.5781914]
+2025-03-18 15:19:03,205 - EnsembleModel - INFO - Saved model 0 to /app/results/models/best_model.keras_ensemble_0.keras
+2025-03-18 15:19:03,302 - EnsembleModel - INFO - Saved model 1 to /app/results/models/best_model.keras_ensemble_1.keras
+2025-03-18 15:19:03,363 - BacktestEngine - INFO - Predicting on test data of length 928
+2025-03-18 15:20:14,388 - BacktestEngine - INFO - Signal statistics: Buy: 19, Sell: 0, NoTrade: 909
+2025-03-18 15:20:14,389 - BacktestEngine - INFO - Simulation completed with 15 trades
+2025-03-18 15:20:21,612 - BacktestEngine - INFO - Iteration 29/30 | StartIdx=14000
+2025-03-18 15:20:23,898 - DataPreparer - INFO - Selected 35 features using importance method
+2025-03-18 15:20:23,899 - DataPreparer - INFO - Using 35 features for model training
+2025-03-18 15:20:28,320 - DataPreparer - INFO - Saved scaler to /app/results/models/feature_scaler.pkl
+2025-03-18 15:20:28,326 - DataPreparer - INFO - Saved feature list to /app/results/models/feature_list.json
+2025-03-18 15:20:28,332 - DataPreparer - INFO - Saved feature importance to /app/results/models/feature_importance.json
+2025-03-18 15:20:28,404 - BacktestEngine - INFO - Using adaptive training with 1972 weighted validation samples
+2025-03-18 15:20:28,405 - BacktestEngine - INFO - Iteration 29: training model on 3449 sample(s)
+2025-03-18 15:20:28,406 - TradingModel - INFO - Training data shape: (3449, 72, 35), labels shape: (3449,)
+2025-03-18 15:20:28,407 - TradingModel - INFO - Validation data shape: (1972, 72, 35), labels shape: (1972,)
+2025-03-18 15:20:28,442 - TradingModel - INFO - Building ensemble trading model architecture
+2025-03-18 15:20:28,759 - EnsembleModel - INFO - Training transformer_model (1/2)
+2025-03-18 15:20:56,433 - EnsembleModel - INFO - Updated ensemble weights: [1.]
+2025-03-18 15:21:03,458 - EnsembleModel - INFO - Training lstm_cnn_model (2/2)
+2025-03-18 15:21:17,976 - EnsembleModel - INFO - Updated ensemble weights: [0.46978943 0.53021057]
+2025-03-18 15:21:24,824 - EnsembleModel - INFO - Saved model 0 to /app/results/models/best_model.keras_ensemble_0.keras
+2025-03-18 15:21:24,929 - EnsembleModel - INFO - Saved model 1 to /app/results/models/best_model.keras_ensemble_1.keras
+2025-03-18 15:21:25,072 - BacktestEngine - INFO - Predicting on test data of length 928
+2025-03-18 15:22:33,194 - BacktestEngine - INFO - Signal statistics: Buy: 12, Sell: 0, NoTrade: 916
+2025-03-18 15:22:33,195 - BacktestEngine - INFO - Simulation completed with 5 trades
+2025-03-18 15:22:40,196 - BacktestEngine - INFO - Iteration 30/30 | StartIdx=14500
+2025-03-18 15:22:42,255 - DataPreparer - INFO - Selected 35 features using importance method
+2025-03-18 15:22:42,256 - DataPreparer - INFO - Using 35 features for model training
+2025-03-18 15:22:46,359 - DataPreparer - INFO - Saved scaler to /app/results/models/feature_scaler.pkl
+2025-03-18 15:22:46,366 - DataPreparer - INFO - Saved feature list to /app/results/models/feature_list.json
+2025-03-18 15:22:46,372 - DataPreparer - INFO - Saved feature importance to /app/results/models/feature_importance.json
+2025-03-18 15:22:46,446 - BacktestEngine - INFO - Using adaptive training with 1972 weighted validation samples
+2025-03-18 15:22:46,447 - BacktestEngine - INFO - Iteration 30: training model on 3449 sample(s)
+2025-03-18 15:22:46,448 - TradingModel - INFO - Training data shape: (3449, 72, 35), labels shape: (3449,)
+2025-03-18 15:22:46,448 - TradingModel - INFO - Validation data shape: (1972, 72, 35), labels shape: (1972,)
+2025-03-18 15:22:46,480 - TradingModel - INFO - Building ensemble trading model architecture
+2025-03-18 15:22:46,775 - EnsembleModel - INFO - Training transformer_model (1/2)
+2025-03-18 15:23:20,068 - EnsembleModel - INFO - Updated ensemble weights: [1.]
+2025-03-18 15:23:27,161 - EnsembleModel - INFO - Training lstm_cnn_model (2/2)
+2025-03-18 15:23:38,002 - EnsembleModel - INFO - Updated ensemble weights: [0.57369199 0.42630801]
+2025-03-18 15:23:45,292 - EnsembleModel - INFO - Saved model 0 to /app/results/models/best_model.keras_ensemble_0.keras
+2025-03-18 15:23:45,389 - EnsembleModel - INFO - Saved model 1 to /app/results/models/best_model.keras_ensemble_1.keras
+2025-03-18 15:23:45,455 - BacktestEngine - INFO - Predicting on test data of length 928
+2025-03-18 15:24:53,558 - BacktestEngine - INFO - Signal statistics: Buy: 7, Sell: 0, NoTrade: 921
+2025-03-18 15:24:53,559 - BacktestEngine - INFO - Simulation completed with 7 trades
+2025-03-18 15:25:00,873 - BacktestEngine - INFO - Current metrics - Win Rate: 0.00, Profit Factor: 0.00
+2025-03-18 15:25:00,940 - BacktestEngine - INFO - Exported 417 trades to /app/results/backtest/trade_details_20250318_152500.csv
+2025-03-18 15:25:00,941 - BacktestEngine - INFO - Exported summary to /app/results/backtest/trade_summary_20250318_152500.txt
+2025-03-18 15:25:00,965 - BacktestEngine - INFO - Exported time analysis to /app/results/backtest/time_analysis_20250318_152500.txt
+2025-03-18 15:25:00,980 - BacktestEngine - INFO - Exported drawdown analysis to /app/results/backtest/drawdown_analysis_20250318_152500.txt
+2025-03-18 15:25:00,988 - BacktestEngine - INFO - Exported monthly performance analysis to /app/results/backtest/monthly_performance_20250318_152500.txt
+2025-03-18 15:25:00,988 - BacktestEngine - INFO - Walk-forward complete. Produced 31 results
+2025-03-18 15:25:00,989 - root - INFO - 
+Enhanced Backtest Results Summary:
+2025-03-18 15:25:00,990 - root - INFO - Final Equity: $6773.55
+2025-03-18 15:25:00,991 - root - INFO - Total Return: -32.26%
+2025-03-18 15:25:00,992 - root - INFO - Total Trades: 417
+2025-03-18 15:25:00,992 - root - INFO - Win Rate: 52.04%
+2025-03-18 15:25:00,993 - root - INFO - Profit Factor: 0.52
+2025-03-18 15:25:00,993 - root - INFO - Max Drawdown: 34.87%
+2025-03-18 15:25:00,993 - root - INFO - Sharpe Ratio: -4.96
+2025-03-18 15:25:01,033 - root - INFO - Backtest results saved to /app/results/backtest/enhanced_backtest_results_20250318_152500.csv
+2025-03-18 15:25:01,034 - __main__ - INFO - Enhanced backtesting completed
+2025-03-18 15:25:08,181 - __main__ - INFO - Process completed successfully

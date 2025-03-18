@@ -1,0 +1,625 @@
+Time-Based Trading Analysis
+==========================
+
+Exit Type Performance
+--------------------
+PartialExit_14pct:
+  Count: 3
+  Win Rate: 100.0%
+  Avg PnL: $1.62
+  Avg Duration: 2.5h
+  Total PnL: $4.86
+
+PartialExit_14pct_neutral:
+  Count: 1
+  Win Rate: 100.0%
+  Avg PnL: $2.98
+  Avg Duration: 0.5h
+  Total PnL: $2.98
+
+QuickProfitTaken:
+  Count: 371
+  Win Rate: 100.0%
+  Avg PnL: $27.80
+  Avg Duration: 3.0h
+  Total PnL: $10314.90
+
+QuickProfitTaken_neutral:
+  Count: 45
+  Win Rate: 100.0%
+  Avg PnL: $29.36
+  Avg Duration: 2.9h
+  Total PnL: $1321.29
+
+SmallProfitLongTimeBasedExit:
+  Count: 16
+  Win Rate: 50.0%
+  Avg PnL: $4.29
+  Avg Duration: 9.6h
+  Total PnL: $68.66
+
+SmallProfitLongTimeBasedExit_ranging_at_resistance:
+  Count: 7
+  Win Rate: 42.9%
+  Avg PnL: $1.54
+  Avg Duration: 8.8h
+  Total PnL: $10.77
+
+PartialExit_18pct:
+  Count: 10
+  Win Rate: 100.0%
+  Avg PnL: $14.95
+  Avg Duration: 0.6h
+  Total PnL: $149.51
+
+PartialExit_18pct_neutral:
+  Count: 2
+  Win Rate: 100.0%
+  Avg PnL: $12.29
+  Avg Duration: 0.5h
+  Total PnL: $24.57
+
+PartialExit_14pct_ranging_at_resistance:
+  Count: 1
+  Win Rate: 100.0%
+  Avg PnL: $0.53
+  Avg Duration: 1.0h
+  Total PnL: $0.53
+
+PartialExit_14pct_ranging_at_support:
+  Count: 1
+  Win Rate: 100.0%
+  Avg PnL: $1.36
+  Avg Duration: 6.0h
+  Total PnL: $1.36
+
+SmallProfitLongTimeBasedExit_ranging_at_support:
+  Count: 4
+  Win Rate: 75.0%
+  Avg PnL: $12.84
+  Avg Duration: 10.8h
+  Total PnL: $51.37
+
+QuickProfitTaken_ranging_at_support:
+  Count: 90
+  Win Rate: 100.0%
+  Avg PnL: $30.46
+  Avg Duration: 3.1h
+  Total PnL: $2741.15
+
+MaxDurationReached_ranging_at_resistance:
+  Count: 6
+  Win Rate: 0.0%
+  Avg PnL: $-54.71
+  Avg Duration: 9.3h
+  Total PnL: $-328.28
+
+MaxDurationReached_ranging_at_resistance_ranging_at_resistance:
+  Count: 4
+  Win Rate: 0.0%
+  Avg PnL: $-35.69
+  Avg Duration: 8.0h
+  Total PnL: $-142.76
+
+StopLoss:
+  Count: 71
+  Win Rate: 4.2%
+  Avg PnL: $-83.68
+  Avg Duration: 3.2h
+  Total PnL: $-5941.45
+
+StopLoss_uptrend:
+  Count: 5
+  Win Rate: 0.0%
+  Avg PnL: $-121.30
+  Avg Duration: 5.3h
+  Total PnL: $-606.51
+
+QuickProfitTaken_uptrend:
+  Count: 82
+  Win Rate: 100.0%
+  Avg PnL: $25.31
+  Avg Duration: 2.8h
+  Total PnL: $2075.07
+
+StagnantPosition:
+  Count: 2
+  Win Rate: 0.0%
+  Avg PnL: $-11.81
+  Avg Duration: 14.8h
+  Total PnL: $-23.63
+
+StagnantPosition_uptrend:
+  Count: 1
+  Win Rate: 0.0%
+  Avg PnL: $-9.84
+  Avg Duration: 18.5h
+  Total PnL: $-9.84
+
+PartialExit_15pct:
+  Count: 69
+  Win Rate: 100.0%
+  Avg PnL: $6.00
+  Avg Duration: 1.0h
+  Total PnL: $414.05
+
+PartialExit_15pct_ranging_at_resistance:
+  Count: 18
+  Win Rate: 100.0%
+  Avg PnL: $4.29
+  Avg Duration: 0.9h
+  Total PnL: $77.27
+
+QuickProfitTaken_ranging_at_resistance:
+  Count: 112
+  Win Rate: 100.0%
+  Avg PnL: $23.48
+  Avg Duration: 3.2h
+  Total PnL: $2629.78
+
+StagnantPosition_ranging_at_support:
+  Count: 1
+  Win Rate: 0.0%
+  Avg PnL: $-13.79
+  Avg Duration: 11.0h
+  Total PnL: $-13.79
+
+StopLoss_ranging_at_support:
+  Count: 22
+  Win Rate: 4.5%
+  Avg PnL: $-84.28
+  Avg Duration: 3.2h
+  Total PnL: $-1854.12
+
+MaxDurationReached_neutral:
+  Count: 152
+  Win Rate: 1.3%
+  Avg PnL: $-55.54
+  Avg Duration: 7.2h
+  Total PnL: $-8442.72
+
+MaxDurationReached_neutral_uptrend:
+  Count: 29
+  Win Rate: 0.0%
+  Avg PnL: $-50.28
+  Avg Duration: 7.5h
+  Total PnL: $-1458.20
+
+PartialExit_12pct:
+  Count: 160
+  Win Rate: 96.2%
+  Avg PnL: $1.69
+  Avg Duration: 1.7h
+  Total PnL: $269.63
+
+PartialExit_12pct_ranging_at_resistance:
+  Count: 54
+  Win Rate: 94.4%
+  Avg PnL: $1.27
+  Avg Duration: 2.0h
+  Total PnL: $68.48
+
+PartialExit_12pct_uptrend:
+  Count: 22
+  Win Rate: 100.0%
+  Avg PnL: $2.03
+  Avg Duration: 0.8h
+  Total PnL: $44.65
+
+MaxDurationReached_ranging_at_resistance_uptrend:
+  Count: 2
+  Win Rate: 0.0%
+  Avg PnL: $-92.76
+  Avg Duration: 12.0h
+  Total PnL: $-185.51
+
+SmallProfitLongTimeBasedExit_uptrend:
+  Count: 3
+  Win Rate: 33.3%
+  Avg PnL: $3.28
+  Avg Duration: 9.8h
+  Total PnL: $9.85
+
+PartialExit_12pct_neutral:
+  Count: 21
+  Win Rate: 100.0%
+  Avg PnL: $2.22
+  Avg Duration: 1.4h
+  Total PnL: $46.69
+
+StopLoss_neutral:
+  Count: 10
+  Win Rate: 0.0%
+  Avg PnL: $-93.44
+  Avg Duration: 3.0h
+  Total PnL: $-934.41
+
+PartialExit_18pct_ranging_at_resistance:
+  Count: 4
+  Win Rate: 100.0%
+  Avg PnL: $13.96
+  Avg Duration: 0.6h
+  Total PnL: $55.85
+
+OverboughtExit:
+  Count: 6
+  Win Rate: 100.0%
+  Avg PnL: $53.82
+  Avg Duration: 1.2h
+  Total PnL: $322.95
+
+OverboughtExit_ranging_at_resistance:
+  Count: 2
+  Win Rate: 100.0%
+  Avg PnL: $54.86
+  Avg Duration: 1.0h
+  Total PnL: $109.71
+
+PartialExit_15pct_neutral:
+  Count: 7
+  Win Rate: 100.0%
+  Avg PnL: $11.43
+  Avg Duration: 0.8h
+  Total PnL: $80.01
+
+SmallProfitLongTimeBasedExit_neutral:
+  Count: 1
+  Win Rate: 0.0%
+  Avg PnL: $-8.94
+  Avg Duration: 9.0h
+  Total PnL: $-8.94
+
+StopLoss_ranging_at_resistance:
+  Count: 25
+  Win Rate: 4.0%
+  Avg PnL: $-66.98
+  Avg Duration: 3.0h
+  Total PnL: $-1674.40
+
+QuickProfitTaken_downtrend:
+  Count: 42
+  Win Rate: 100.0%
+  Avg PnL: $36.85
+  Avg Duration: 2.8h
+  Total PnL: $1547.60
+
+OverboughtExit_neutral:
+  Count: 2
+  Win Rate: 100.0%
+  Avg PnL: $82.37
+  Avg Duration: 1.0h
+  Total PnL: $164.75
+
+MaxDurationReached_ranging_at_support:
+  Count: 5
+  Win Rate: 0.0%
+  Avg PnL: $-57.59
+  Avg Duration: 6.2h
+  Total PnL: $-287.94
+
+MaxDurationReached_ranging_at_support_uptrend:
+  Count: 4
+  Win Rate: 0.0%
+  Avg PnL: $-55.46
+  Avg Duration: 6.1h
+  Total PnL: $-221.85
+
+PartialExit_15pct_uptrend:
+  Count: 19
+  Win Rate: 100.0%
+  Avg PnL: $4.68
+  Avg Duration: 1.4h
+  Total PnL: $89.01
+
+PartialExit_12pct_ranging_at_support:
+  Count: 45
+  Win Rate: 93.3%
+  Avg PnL: $1.46
+  Avg Duration: 1.7h
+  Total PnL: $65.57
+
+PartialExit_15pct_ranging_at_support:
+  Count: 17
+  Win Rate: 100.0%
+  Avg PnL: $5.55
+  Avg Duration: 1.0h
+  Total PnL: $94.40
+
+EndOfTest:
+  Count: 6
+  Win Rate: 16.7%
+  Avg PnL: $-18.45
+  Avg Duration: 3.1h
+  Total PnL: $-110.72
+
+EndOfTest_ranging_at_support:
+  Count: 2
+  Win Rate: 50.0%
+  Avg PnL: $-22.58
+  Avg Duration: 2.0h
+  Total PnL: $-45.16
+
+PartialExit_12pct_downtrend:
+  Count: 18
+  Win Rate: 100.0%
+  Avg PnL: $2.46
+  Avg Duration: 2.0h
+  Total PnL: $44.25
+
+MaxDurationReached_neutral_neutral:
+  Count: 17
+  Win Rate: 0.0%
+  Avg PnL: $-70.29
+  Avg Duration: 7.5h
+  Total PnL: $-1194.89
+
+MaxDurationReached_downtrend:
+  Count: 3
+  Win Rate: 0.0%
+  Avg PnL: $-132.02
+  Avg Duration: 8.5h
+  Total PnL: $-396.06
+
+MaxDurationReached_downtrend_uptrend:
+  Count: 1
+  Win Rate: 0.0%
+  Avg PnL: $-154.48
+  Avg Duration: 10.5h
+  Total PnL: $-154.48
+
+MaxDurationReached_neutral_ranging_at_resistance:
+  Count: 37
+  Win Rate: 5.4%
+  Avg PnL: $-41.89
+  Avg Duration: 6.7h
+  Total PnL: $-1549.82
+
+MaxDurationReached_neutral_ranging_at_support:
+  Count: 49
+  Win Rate: 0.0%
+  Avg PnL: $-46.82
+  Avg Duration: 7.0h
+  Total PnL: $-2294.20
+
+MaxDurationReached_downtrend_downtrend:
+  Count: 2
+  Win Rate: 0.0%
+  Avg PnL: $-120.79
+  Avg Duration: 7.5h
+  Total PnL: $-241.58
+
+PartialExit_18pct_ranging_at_support:
+  Count: 2
+  Win Rate: 100.0%
+  Avg PnL: $20.67
+  Avg Duration: 0.5h
+  Total PnL: $41.33
+
+PartialExit_18pct_downtrend:
+  Count: 1
+  Win Rate: 100.0%
+  Avg PnL: $23.51
+  Avg Duration: 0.5h
+  Total PnL: $23.51
+
+StopLoss_downtrend:
+  Count: 9
+  Win Rate: 11.1%
+  Avg PnL: $-96.89
+  Avg Duration: 2.7h
+  Total PnL: $-872.01
+
+MaxDurationReached_uptrend:
+  Count: 10
+  Win Rate: 0.0%
+  Avg PnL: $-34.53
+  Avg Duration: 6.8h
+  Total PnL: $-345.34
+
+MaxDurationReached_uptrend_ranging_at_support:
+  Count: 2
+  Win Rate: 0.0%
+  Avg PnL: $-111.07
+  Avg Duration: 8.8h
+  Total PnL: $-222.13
+
+MaxDurationReached_uptrend_uptrend:
+  Count: 7
+  Win Rate: 0.0%
+  Avg PnL: $-17.11
+  Avg Duration: 6.1h
+  Total PnL: $-119.79
+
+PartialExit_20pct:
+  Count: 1
+  Win Rate: 100.0%
+  Avg PnL: $23.89
+  Avg Duration: 0.5h
+  Total PnL: $23.89
+
+PartialExit_20pct_neutral:
+  Count: 1
+  Win Rate: 100.0%
+  Avg PnL: $23.89
+  Avg Duration: 0.5h
+  Total PnL: $23.89
+
+PartialExit_15pct_downtrend:
+  Count: 8
+  Win Rate: 100.0%
+  Avg PnL: $9.17
+  Avg Duration: 0.6h
+  Total PnL: $73.36
+
+EndOfTest_uptrend:
+  Count: 2
+  Win Rate: 0.0%
+  Avg PnL: $-28.39
+  Avg Duration: 2.5h
+  Total PnL: $-56.77
+
+OversoldExit:
+  Count: 2
+  Win Rate: 100.0%
+  Avg PnL: $64.94
+  Avg Duration: 1.0h
+  Total PnL: $129.89
+
+OversoldExit_ranging_at_support:
+  Count: 1
+  Win Rate: 100.0%
+  Avg PnL: $93.78
+  Avg Duration: 1.0h
+  Total PnL: $93.78
+
+MaxDurationReached_neutral_downtrend:
+  Count: 20
+  Win Rate: 0.0%
+  Avg PnL: $-97.28
+  Avg Duration: 7.8h
+  Total PnL: $-1945.60
+
+SmallProfitLongTimeBasedExit_downtrend:
+  Count: 1
+  Win Rate: 100.0%
+  Avg PnL: $5.62
+  Avg Duration: 11.0h
+  Total PnL: $5.62
+
+EndOfTest_neutral:
+  Count: 2
+  Win Rate: 0.0%
+  Avg PnL: $-4.39
+  Avg Duration: 4.8h
+  Total PnL: $-8.78
+
+MomentumBasedExit:
+  Count: 5
+  Win Rate: 100.0%
+  Avg PnL: $6.76
+  Avg Duration: 3.9h
+  Total PnL: $33.79
+
+MomentumBasedExit_uptrend:
+  Count: 2
+  Win Rate: 100.0%
+  Avg PnL: $6.62
+  Avg Duration: 3.5h
+  Total PnL: $13.24
+
+MomentumBasedExit_ranging_at_support:
+  Count: 1
+  Win Rate: 100.0%
+  Avg PnL: $8.99
+  Avg Duration: 4.0h
+  Total PnL: $8.99
+
+MomentumBasedExit_downtrend:
+  Count: 1
+  Win Rate: 100.0%
+  Avg PnL: $5.41
+  Avg Duration: 6.5h
+  Total PnL: $5.41
+
+OversoldExit_downtrend:
+  Count: 1
+  Win Rate: 100.0%
+  Avg PnL: $36.11
+  Avg Duration: 1.0h
+  Total PnL: $36.11
+
+MaxDurationReached_ranging_at_support_neutral:
+  Count: 1
+  Win Rate: 0.0%
+  Avg PnL: $-66.09
+  Avg Duration: 6.5h
+  Total PnL: $-66.09
+
+OverboughtExit_uptrend:
+  Count: 2
+  Win Rate: 100.0%
+  Avg PnL: $24.24
+  Avg Duration: 1.5h
+  Total PnL: $48.49
+
+PartialExit_18pct_uptrend:
+  Count: 1
+  Win Rate: 100.0%
+  Avg PnL: $4.25
+  Avg Duration: 0.5h
+  Total PnL: $4.25
+
+MaxDurationReached_uptrend_neutral:
+  Count: 1
+  Win Rate: 0.0%
+  Avg PnL: $-3.41
+  Avg Duration: 8.0h
+  Total PnL: $-3.41
+
+MomentumBasedExit_ranging_at_resistance:
+  Count: 1
+  Win Rate: 100.0%
+  Avg PnL: $6.15
+  Avg Duration: 2.0h
+  Total PnL: $6.15
+
+Optimal Trade Duration
+---------------------
+Optimal Hold Time: 8.0h
+Confidence: high
+Data Points: 635
+Avg Trade Duration: 3.6h
+Avg Profitable Duration: 2.5h
+Profitable Duration Percentiles: 25%=1.0h, 50%=1.5h, 75%=3.5h
+
+Optimal Durations by Market Phase
+-------------------------------
+neutral: 2.1h
+ranging_at_resistance: 2.7h
+ranging_at_support: 2.6h
+uptrend: 2.3h
+downtrend: 2.4h
+
+Intraday Performance Analysis
+---------------------------
+Performance by Hour of Day:
+Hour   Count  Win Rate   Avg PnL    Total PnL 
+--------------------------------------------------
+00:00  40         87.5%  $    5.04  $  201.76
+01:00  36         69.4%  $  -18.87  $ -679.47
+02:00  34         64.7%  $   -8.18  $ -278.21
+03:00  22         59.1%  $   -9.50  $ -208.94
+04:00  45         66.7%  $   -4.24  $ -190.82
+05:00  40         62.5%  $   -6.94  $ -277.47
+06:00  38         71.1%  $   -4.43  $ -168.30
+07:00  39         76.9%  $    5.64  $  219.80
+08:00  39         64.1%  $   -7.92  $ -308.90
+09:00  47         74.5%  $   -4.22  $ -198.57
+10:00  48         70.8%  $   -3.98  $ -191.04
+11:00  32         78.1%  $   -2.89  $  -92.56
+12:00  37         62.2%  $  -12.79  $ -473.16
+13:00  40         70.0%  $   -1.83  $  -73.25
+14:00  38         73.7%  $   -3.77  $ -143.31
+15:00  37         78.4%  $   10.14  $  375.08
+16:00  29         69.0%  $  -15.34  $ -444.82
+17:00  50         64.0%  $  -15.35  $ -767.58
+18:00  35         77.1%  $   15.28  $  534.73
+19:00  29         79.3%  $   -5.30  $ -153.79
+20:00  38         68.4%  $    1.60  $   60.98
+21:00  44         63.6%  $  -19.53  $ -859.16
+22:00  42         69.0%  $   -4.78  $ -200.70
+23:00  19         84.2%  $    9.14  $  173.72
+
+Best Hour: 18:00 (Avg PnL: $15.28, Win Rate: 77.1%)
+Worst Hour: 21:00 (Avg PnL: $-19.53, Win Rate: 63.6%)
+
+Performance by Day of Week:
+Day        Count  Win Rate   Avg PnL    Total PnL 
+-------------------------------------------------------
+Monday     108        67.6%  $   -8.61  $ -929.88
+Tuesday    164        73.2%  $   -4.45  $ -730.05
+Wednesday  130        69.2%  $   -4.76  $ -619.28
+Thursday   122        74.6%  $   -1.32  $ -161.02
+Friday     132        76.5%  $   -3.54  $ -466.74
+Saturday   120        56.7%  $   -9.85  $-1182.01
+Sunday     122        75.4%  $   -0.45  $  -54.99

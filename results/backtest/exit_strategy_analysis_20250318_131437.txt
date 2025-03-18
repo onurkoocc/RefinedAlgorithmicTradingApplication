@@ -1,0 +1,150 @@
+Enhanced Exit Strategy Analysis
+==============================
+
+Exit Strategy Performance
+-----------------------
+Total trades analyzed: 898
+Total partial exits executed: 243
+Total quick profit exits executed: 371
+
+Exit Strategy Performance by Type:
+  OverboughtExit:
+    Count: 6
+    Win Rate: 100.0%
+    Avg P&L: $53.82
+    Total P&L: $322.95
+
+  QuickProfitTaken:
+    Count: 371
+    Win Rate: 100.0%
+    Avg P&L: $27.80
+    Total P&L: $10314.90
+
+  PartialExit_18pct:
+    Count: 10
+    Win Rate: 100.0%
+    Avg P&L: $14.95
+    Total P&L: $149.51
+
+  PartialExit_15pct:
+    Count: 69
+    Win Rate: 100.0%
+    Avg P&L: $6.00
+    Total P&L: $414.05
+
+  SmallProfitLongTimeBasedExit:
+    Count: 16
+    Win Rate: 50.0%
+    Avg P&L: $4.29
+    Total P&L: $68.66
+
+  PartialExit_12pct:
+    Count: 160
+    Win Rate: 96.2%
+    Avg P&L: $1.69
+    Total P&L: $269.63
+
+  EndOfTest:
+    Count: 6
+    Win Rate: 16.7%
+    Avg P&L: $-18.45
+    Total P&L: $-110.72
+
+  MaxDurationReached_uptrend:
+    Count: 10
+    Win Rate: 0.0%
+    Avg P&L: $-34.53
+    Total P&L: $-345.34
+
+  MaxDurationReached_ranging_at_resistance:
+    Count: 6
+    Win Rate: 0.0%
+    Avg P&L: $-54.71
+    Total P&L: $-328.28
+
+  MaxDurationReached_neutral:
+    Count: 152
+    Win Rate: 1.3%
+    Avg P&L: $-55.54
+    Total P&L: $-8442.72
+
+  StopLoss:
+    Count: 71
+    Win Rate: 4.2%
+    Avg P&L: $-83.68
+    Total P&L: $-5941.45
+
+  MaxDurationReached_ranging_at_support:
+    Count: 5
+    Win Rate: 0.0%
+    Avg P&L: $-57.59
+    Total P&L: $-287.94
+
+  MomentumBasedExit:
+    Count: 5
+    Win Rate: 100.0%
+    Avg P&L: $6.76
+    Total P&L: $33.79
+
+Top Performing Exit Strategies
+----------------------------
+1. OverboughtExit: $53.82 avg P&L, 100.0% win rate
+2. QuickProfitTaken: $27.80 avg P&L, 100.0% win rate
+3. PartialExit_18pct: $14.95 avg P&L, 100.0% win rate
+4. MomentumBasedExit: $6.76 avg P&L, 100.0% win rate
+5. PartialExit_15pct: $6.00 avg P&L, 100.0% win rate
+
+Market Phase Performance
+-----------------------
+neutral: 26648 occurrences
+ranging_at_resistance: 383 occurrences
+ranging_at_support: 376 occurrences
+uptrend: 281 occurrences
+downtrend: 152 occurrences
+
+Top Performing Market Phases
+--------------------------
+1. downtrend
+2. ranging_at_support
+3. ranging_at_resistance
+
+Trading Timing Analysis
+----------------------
+Average trade holding time: 3.35 hours
+
+Exit Strategy Recommendations
+---------------------------
+1. Prioritize these exit strategies:
+   1. OverboughtExit: $53.82 avg P&L
+   2. QuickProfitTaken: $27.80 avg P&L
+   3. PartialExit_18pct: $14.95 avg P&L
+
+2. Avoid or modify these exit strategies:
+   1. StopLoss: $-83.68 avg P&L
+   2. MaxDurationReached_ranging_at_support: $-57.59 avg P&L
+   3. MaxDurationReached_neutral: $-55.54 avg P&L
+
+3. Time-based recommendations:
+   - Consider longer holding periods for winning trades
+
+4. Market phase strategy recommendations:
+   - Increase position size during downtrend phase
+   - Increase position size during ranging_at_support phase
+
+5. Partial exit optimization:
+   - Prioritize PartialExit_20pct partial exit strategy
+
+6. Advanced exit optimization strategy:
+   - Implement dynamic partial exits based on market volatility
+   - Use trailing stops that adapt to price momentum
+   - Consider market regime when setting profit targets
+
+Multi-timeframe Exit Confirmation Strategy
+---------------------------------------
+1. Primary timeframe exit signals should be confirmed with:
+   - Momentum indicators on higher timeframe (e.g., 4h MACD for 30m trades)
+   - Support/resistance levels on lower timeframe (e.g., 5m price action)
+2. Exit strategy matrix:
+   - Strong trend: Use trailing stops only
+   - Ranging market: Use fixed take-profit levels
+   - Mixed signals: Use partial exits at key levels
