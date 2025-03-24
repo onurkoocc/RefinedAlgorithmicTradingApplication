@@ -35,7 +35,7 @@ services:
               capabilities: [gpu]
         limits:
           cpus: '8'
-          memory: 32G
+          memory: 48G
     shm_size: 8gb
     logging:
       driver: "json-file"

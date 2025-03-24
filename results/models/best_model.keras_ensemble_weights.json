@@ -1,1 +1,0 @@
-{"weights": [0.5736919900802583, 0.4263080099197417], "metrics": [{"model_name": "transformer_model", "val_avg_return": 0.006256350179009026, "val_win_rate": 0.666243654822335, "val_profit_factor": 4.1520985808125275}, {"model_name": "lstm_cnn_model", "val_avg_return": 0.0061783611850181105, "val_win_rate": 0.6408629441624365, "val_profit_factor": 2.8629127724597505}]}

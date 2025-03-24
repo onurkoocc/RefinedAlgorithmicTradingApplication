@@ -5,19 +5,15 @@ import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import Input, Model
 from tensorflow.keras import layers
-from tensorflow.keras.layers import Dense, BatchNormalization, LSTM, Conv1D, Dropout, Lambda
+from tensorflow.keras.layers import Dense, BatchNormalization, LSTM, Dropout, Lambda
 from tensorflow.keras.layers import Add, Activation, LayerNormalization, GlobalAveragePooling1D
 from tensorflow.keras.layers import Concatenate, TimeDistributed, Multiply, Attention, Bidirectional, GRU, Layer
-from tensorflow.keras.optimizers import Adam, AdamW
-from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint, Callback, ReduceLROnPlateau
-from tensorflow.keras.mixed_precision import set_global_policy
+from tensorflow.keras.optimizers import AdamW
 from tensorflow.keras.regularizers import l2
 import pickle
 import json
 from pathlib import Path
-import platform
-import psutil
-import math
+from datetime import datetime
 
 
 class SoftmaxLayer(Layer):
@@ -29,44 +25,48 @@ class SoftmaxLayer(Layer):
         return tf.nn.softmax(inputs, axis=self.axis)
 
 
-class GradientNoiseCallback(tf.keras.callbacks.Callback):
-    def __init__(self, start_epoch=5, noise_stddev=1e-4, decay_rate=0.55):
-        super().__init__()
-        self.start_epoch = start_epoch
-        self.initial_stddev = noise_stddev
-        self.decay_rate = decay_rate
-        self.noise_stddev = noise_stddev
-
-    def on_epoch_begin(self, epoch, logs=None):
-        if epoch >= self.start_epoch:
-            self.noise_stddev = self.initial_stddev * ((1.0 / (1.0 + self.decay_rate * (epoch - self.start_epoch))))
-
-    def on_batch_end(self, batch, logs=None):
-        if hasattr(self.model.optimizer, 'get_weights') and hasattr(self.model.optimizer, 'set_weights'):
-            weights = self.model.optimizer.get_weights()
-            for i in range(len(weights)):
-                noise = np.random.normal(0, self.noise_stddev, weights[i].shape)
-                weights[i] = weights[i] + noise
-            self.model.optimizer.set_weights(weights)
-
-
-class TradeMetricCallback(Callback):
-    def __init__(self, X_val, y_val, fwd_returns_val, threshold_pct=0.4):
+class OptimizedGrowthMetricCallback(tf.keras.callbacks.Callback):
+    def __init__(
+            self,
+            X_val,
+            y_val,
+            fwd_returns_val,
+            monthly_target=0.08,
+            threshold_pct=0.4,
+            model_idx=None,
+            transaction_cost=0.001,
+            drawdown_weight=1.2,
+            avg_return_weight=1.0,
+            consistency_weight=0.8,
+            fixed_threshold=None
+    ):
         super().__init__()
         self.X_val = X_val
         self.y_val = y_val
         self.fwd_returns_val = fwd_returns_val
         self.threshold_pct = threshold_pct
+        self.model_idx = model_idx
+        self.monthly_target = monthly_target
+        self.transaction_cost = transaction_cost
+        self.drawdown_weight = drawdown_weight
+        self.avg_return_weight = avg_return_weight
+        self.consistency_weight = consistency_weight
+        self.fixed_threshold = fixed_threshold
+        self.trade_periods_per_month = 1440
         self.best_metrics = {
-            'val_avg_return': -np.inf,
-            'val_win_rate': 0.0,
-            'val_profit_factor': 0.0,
-            'trades': 0
+            'growth_score': -np.inf,
+            'monthly_growth': 0.0,
+            'val_sharpe': 0.0,
+            'val_sortino': 0.0,
+            'val_calmar': 0.0,
+            'max_drawdown': 1.0,
+            'trades_per_month': 0
         }
+        self.historical_returns = []
+        self.threshold_history = []
 
     def on_epoch_end(self, epoch, logs=None):
         logs = logs or {}
-
         if len(self.X_val) == 0:
             self._update_logs_with_defaults(logs)
             return
@@ -74,52 +74,62 @@ class TradeMetricCallback(Callback):
         try:
             batch_size = min(len(self.X_val), 256)
             y_pred = self.model.predict(self.X_val, verbose=0, batch_size=batch_size)
-
             y_pred = np.nan_to_num(y_pred, nan=0.0, posinf=0.0, neginf=0.0)
 
-            sorted_preds = np.sort(np.abs(y_pred).flatten())
-            if len(sorted_preds) > 0:
-                threshold_idx = max(1, int(len(sorted_preds) * (1 - self.threshold_pct)))
-                threshold = sorted_preds[threshold_idx]
-                threshold = max(threshold, 0.0004)
+            if self.fixed_threshold is not None:
+                threshold = self.fixed_threshold
             else:
-                threshold = 0.0007
+                sorted_preds = np.sort(np.abs(y_pred).flatten())
+                threshold_idx = max(1, int(len(sorted_preds) * (1 - self.threshold_pct)))
+                threshold = sorted_preds[threshold_idx] if len(sorted_preds) > threshold_idx else 0.0007
+                threshold = max(threshold, 0.0004)
+
+            self.threshold_history.append(threshold)
 
             trade_indices = np.where(np.abs(y_pred) > threshold)[0]
-
             if len(trade_indices) == 0:
                 self._update_logs_with_defaults(logs)
                 return
 
-            self._calculate_trade_metrics(trade_indices, y_pred, logs, epoch)
+            self._calculate_enhanced_metrics(trade_indices, y_pred, logs, epoch)
 
         except Exception as e:
-            print(f"Error in TradeMetricCallback: {e}")
+            print(f"Error in OptimizedGrowthMetricCallback: {e}")
             import traceback
             print(traceback.format_exc())
             self._update_logs_with_defaults(logs)
 
     def _update_logs_with_defaults(self, logs):
-        logs['val_avg_return'] = 0.0
+        logs['growth_score'] = 0.0
+        logs['monthly_growth'] = 0.0
+        logs['val_sharpe'] = 0.0
+        logs['val_sortino'] = 0.0
+        logs['val_calmar'] = 0.0
+        logs['max_drawdown'] = 1.0
         logs['val_win_rate'] = 0.0
         logs['val_profit_factor'] = 0.0
-        logs['val_sharpe'] = 0.0
-        logs['val_trades'] = 0
+        logs['val_trades_per_month'] = 0
+        logs['consistency_score'] = 0.0
 
-    def _calculate_trade_metrics(self, trade_indices, y_pred, logs, epoch):
+        if self.model_idx is not None:
+            logs[f'growth_score_model_{self.model_idx}'] = 0.0
+
+    def _calculate_enhanced_metrics(self, trade_indices, y_pred, logs, epoch):
         trade_returns = []
         win_count = 0
         profit_sum = 0
         loss_sum = 0
+
+        equity_curve = [1.0]
+        trade_timestamps = []
 
         for idx in trade_indices:
             if idx >= len(self.fwd_returns_val):
                 continue
 
             actual_return = float(self.fwd_returns_val[idx])
-            pred_direction = np.sign(y_pred[idx][0]) if y_pred[idx].size > 1 else np.sign(y_pred[idx])
-
-            trade_return = float(pred_direction * actual_return)
+            pred_direction = np.sign(y_pred[idx].flatten()[0])
+            trade_return = float(pred_direction * actual_return) - self.transaction_cost
             trade_returns.append(trade_return)
 
             if trade_return > 0:
@@ -128,1076 +138,574 @@ class TradeMetricCallback(Callback):
             else:
                 loss_sum += abs(trade_return)
 
+            equity_curve.append(equity_curve[-1] * (1.0 + trade_return))
+            trade_timestamps.append(idx)
+
         n_trades = len(trade_returns)
-        if n_trades > 0:
-            avg_return = sum(trade_returns) / n_trades
-            win_rate = win_count / n_trades
-            profit_factor = profit_sum / max(loss_sum, 1e-10)
-        else:
-            avg_return, win_rate, profit_factor = 0.0, 0.0, 0.0
-
-        if len(trade_returns) > 1:
-            returns_std = max(np.std(trade_returns), 1e-10)
-        else:
-            returns_std = 1.0
-
-        sharpe_ratio = (avg_return / returns_std) * np.sqrt(365 * 24)
-
-        logs['val_avg_return'] = float(avg_return)
-        logs['val_win_rate'] = float(win_rate)
-        logs['val_profit_factor'] = float(profit_factor)
-        logs['val_sharpe'] = float(sharpe_ratio)
-        logs['val_trades'] = n_trades
-
-        if avg_return > self.best_metrics['val_avg_return']:
-            self.best_metrics = {
-                'val_avg_return': avg_return,
-                'val_win_rate': win_rate,
-                'val_profit_factor': profit_factor,
-                'trades': n_trades,
-                'epoch': epoch
-            }
-
-        if epoch % 5 == 0 or epoch == 0:
-            print(f"\nTrading Metrics - Trades: {n_trades}, "
-                  f"Win Rate: {win_rate:.2f}, Avg Return: {float(avg_return):.4f}, "
-                  f"Profit Factor: {float(profit_factor):.2f}, Sharpe: {float(sharpe_ratio):.2f}")
-
-
-class FeatureImportanceCallback(Callback):
-    def __init__(self, X_train, feature_names=None):
-        super().__init__()
-        self.X_train = X_train
-        self.feature_names = feature_names
-        self.importance_scores = None
-
-    def on_epoch_end(self, epoch, logs=None):
-        if epoch % 10 != 0 or epoch == 0:
+        if n_trades == 0:
+            self._update_logs_with_defaults(logs)
             return
 
-        try:
-            baseline_pred = self.model.predict(self.X_train[:100], verbose=0)
+        avg_return = sum(trade_returns) / n_trades
+        win_rate = win_count / n_trades
+        profit_factor = profit_sum / max(loss_sum, 1e-10)
 
-            importance = []
+        daily_equity = [equity_curve[0]]
+        periods_per_day = 48
 
-            n_features = self.X_train.shape[2]
-            check_features = min(n_features, 10)
+        for i in range(1, (len(equity_curve) // periods_per_day) + 1):
+            day_end = min(i * periods_per_day, len(equity_curve) - 1)
+            daily_equity.append(equity_curve[day_end])
 
-            for i in range(check_features):
-                X_permuted = self.X_train[:100].copy()
-                feature_vals = X_permuted[:, :, i].flatten()
-                np.random.shuffle(feature_vals)
-                X_permuted[:, :, i] = feature_vals.reshape(X_permuted[:, :, i].shape)
+        if len(equity_curve) % periods_per_day != 0:
+            daily_equity.append(equity_curve[-1])
 
-                permuted_pred = self.model.predict(X_permuted, verbose=0)
+        daily_returns = []
+        for i in range(1, len(daily_equity)):
+            daily_returns.append(np.log(daily_equity[i] / daily_equity[i - 1]))
 
-                importance.append(np.mean((baseline_pred - permuted_pred) ** 2))
+        if len(daily_returns) > 1:
+            returns_mean = np.mean(daily_returns)
+            returns_std = max(np.std(daily_returns), 1e-10)
+            down_returns = np.array([r for r in daily_returns if r < 0])
+            downside_std = np.std(down_returns) if len(down_returns) > 1 else returns_std
 
-            self.importance_scores = np.array(importance)
-            if np.sum(self.importance_scores) > 0:
-                self.importance_scores = self.importance_scores / np.sum(self.importance_scores)
+            sharpe_ratio = returns_mean / returns_std * np.sqrt(365)
+            sortino_ratio = returns_mean / max(downside_std, 1e-10) * np.sqrt(365)
+        else:
+            returns_std = max(np.std(trade_returns), 1e-10)
+            down_returns = np.array([r for r in trade_returns if r < 0])
+            downside_std = np.std(down_returns) if len(down_returns) > 1 else returns_std
 
-            if self.feature_names and len(self.feature_names) == n_features:
-                top_idx = np.argsort(self.importance_scores)[-3:][::-1]
-                feature_info = ", ".join([f"{self.feature_names[i]}: {self.importance_scores[i]:.4f}" for i in top_idx])
-                print(f"Top features: {feature_info}")
+            trades_per_year = (n_trades / len(self.X_val)) * self.trade_periods_per_month * 12
+            sharpe_ratio = avg_return / returns_std * np.sqrt(trades_per_year)
+            sortino_ratio = avg_return / max(downside_std, 1e-10) * np.sqrt(trades_per_year)
 
-        except Exception as e:
-            print(f"Error calculating feature importance: {e}")
+        drawdowns = []
+        peak = 1.0
+        for value in equity_curve:
+            peak = max(peak, value)
+            drawdown = (peak - value) / peak
+            drawdowns.append(drawdown)
+
+        max_drawdown = max(drawdowns)
+        calmar_ratio = ((equity_curve[-1] / equity_curve[0]) - 1) / max(max_drawdown, 0.01)
+
+        consecutive_losses = 0
+        max_consecutive_losses = 0
+        consecutive_wins = 0
+        max_consecutive_wins = 0
+
+        for i in range(1, len(equity_curve)):
+            if equity_curve[i] > equity_curve[i - 1]:
+                consecutive_wins += 1
+                consecutive_losses = 0
+            else:
+                consecutive_losses += 1
+                consecutive_wins = 0
+
+            max_consecutive_losses = max(max_consecutive_losses, consecutive_losses)
+            max_consecutive_wins = max(max_consecutive_wins, consecutive_wins)
+
+        trades_per_period = n_trades / len(self.X_val)
+        trades_per_month = trades_per_period * self.trade_periods_per_month
+
+        growth_factor = (1.0 + avg_return) ** trades_per_month
+        monthly_growth = growth_factor - 1.0
+
+        returns_sequence = np.array(trade_returns)
+        rolling_returns = []
+        window_size = min(10, len(returns_sequence))
+
+        for i in range(len(returns_sequence) - window_size + 1):
+            rolling_returns.append(np.mean(returns_sequence[i:i + window_size]))
+
+        consistency_score = 1.0 / (np.std(rolling_returns) + 1e-10)
+
+        recovery_periods = []
+        in_drawdown = False
+        drawdown_start = 0
+        drawdown_threshold = 0.03
+        recovery_threshold = 0.01
+
+        for i, dd in enumerate(drawdowns):
+            if not in_drawdown and dd > drawdown_threshold:
+                in_drawdown = True
+                drawdown_start = i
+            elif in_drawdown and dd < recovery_threshold:
+                in_drawdown = False
+                recovery_periods.append(i - drawdown_start)
+
+        avg_recovery = np.mean(recovery_periods) if recovery_periods else n_trades
+        recovery_efficiency = n_trades / max(avg_recovery, 1.0)
+
+        growth_distance = min(2.0, monthly_growth / self.monthly_target)
+
+        dd_penalty_factor = 6.0
+        dd_penalty = 1.0 - min(1.0, max_drawdown * dd_penalty_factor)
+
+        self.drawdown_weight = 1.2
+
+        growth_score = (
+                               self.avg_return_weight * growth_distance +
+                               self.drawdown_weight * dd_penalty +
+                               self.consistency_weight * min(3.0, consistency_score)
+                       ) / (self.avg_return_weight + self.drawdown_weight + self.consistency_weight)
+
+        growth_score *= (0.4 + 0.6 * min(1.0, profit_factor / 2.0))
+
+        consecutive_loss_penalty = min(0.3, max_consecutive_losses * 0.05)
+        growth_score *= (1.0 - consecutive_loss_penalty)
+
+        growth_score *= (0.65 + 0.35 * min(1.0, recovery_efficiency))
+
+        if trades_per_month < 20:
+            growth_score *= 0.75
+        if max_drawdown > 0.20:
+            growth_score *= 0.5
+        elif max_drawdown > 0.15:
+            growth_score *= 0.75
+
+        logs['growth_score'] = float(growth_score)
+        logs['monthly_growth'] = float(monthly_growth)
+        logs['val_sharpe'] = float(sharpe_ratio)
+        logs['val_sortino'] = float(sortino_ratio)
+        logs['val_calmar'] = float(calmar_ratio)
+        logs['max_drawdown'] = float(max_drawdown)
+        logs['val_win_rate'] = float(win_rate)
+        logs['val_profit_factor'] = float(profit_factor)
+        logs['val_trades_per_month'] = float(trades_per_month)
+        logs['consistency_score'] = float(consistency_score)
+        logs['recovery_efficiency'] = float(recovery_efficiency)
+        logs['max_consecutive_losses'] = float(max_consecutive_losses)
+
+        if self.model_idx is not None:
+            logs[f'growth_score_model_{self.model_idx}'] = float(growth_score)
+
+        self.historical_returns.append({
+            'epoch': epoch,
+            'growth_score': growth_score,
+            'monthly_growth': monthly_growth,
+            'max_drawdown': max_drawdown,
+            'trades_per_month': trades_per_month,
+            'sharpe': sharpe_ratio,
+            'sortino': sortino_ratio,
+            'threshold': self.threshold_history[-1] if self.threshold_history else 0.0,
+            'consecutive_losses': max_consecutive_losses
+        })
+
+        if growth_score > self.best_metrics['growth_score']:
+            self.best_metrics.update({
+                'growth_score': growth_score,
+                'monthly_growth': monthly_growth,
+                'val_sharpe': sharpe_ratio,
+                'val_sortino': sortino_ratio,
+                'val_calmar': calmar_ratio,
+                'max_drawdown': max_drawdown,
+                'trades_per_month': trades_per_month,
+                'epoch': epoch,
+                'max_consecutive_losses': max_consecutive_losses
+            })
+
+        if epoch % 5 == 0 or epoch == 0:
+            print(f"\nGrowth Metrics - Epoch {epoch}")
+            print(f"Growth Score: {growth_score:.4f}, Monthly Growth: {monthly_growth * 100:.2f}%")
+            print(f"Trades/Month: {trades_per_month:.1f}, Win Rate: {win_rate:.2f}, Profit Factor: {profit_factor:.2f}")
+            print(f"Sharpe: {sharpe_ratio:.2f}, Sortino: {sortino_ratio:.2f}, Calmar: {calmar_ratio:.2f}")
+            print(f"Max Drawdown: {max_drawdown * 100:.2f}%, Consistency: {consistency_score:.2f}")
+            print(f"Max Consecutive Losses: {max_consecutive_losses}")
+
+            if monthly_growth >= self.monthly_target:
+                print(f"✅ On track for target growth of {self.monthly_target * 100:.1f}% monthly")
+            else:
+                print(f"⚠️ Below target growth of {self.monthly_target * 100:.1f}% monthly")
+
+            if max_drawdown > 0.12:
+                print(f"⚠️ High drawdown risk: {max_drawdown * 100:.1f}%")
 
 
-class EnsembleModel:
+class NoisySequence(tf.keras.utils.Sequence):
+    def __init__(self, X, y, batch_size, noise_level=0.015, data_augmentation=True, **kwargs):
+        super().__init__(**kwargs)
+        self.X = X
+        self.y = y
+        self.batch_size = batch_size
+        self.noise_level = noise_level
+        self.std_dev = np.std(X, axis=(0, 1))
+        self.data_augmentation = data_augmentation
+        self.indices = np.arange(len(self.X))
+        np.random.shuffle(self.indices)
+
+    def __len__(self):
+        return len(self.X) // self.batch_size
+
+    def __getitem__(self, idx):
+        batch_indices = self.indices[idx * self.batch_size:(idx + 1) * self.batch_size]
+        batch_X = self.X[batch_indices]
+        batch_y = self.y[batch_indices]
+
+        noise = np.random.normal(0, self.noise_level * self.std_dev, batch_X.shape)
+        batch_X = batch_X + noise
+
+        if self.data_augmentation:
+            for i in range(len(batch_X)):
+                if np.random.random() < 0.4:
+                    start = np.random.randint(0, batch_X.shape[1] // 4)
+                    batch_X[i] = np.roll(batch_X[i], shift=start, axis=0)
+
+            mask_prob = 0.25
+            mask = np.random.random(batch_X.shape) > mask_prob
+            batch_X = batch_X * mask
+
+        return batch_X, batch_y
+
+    def on_epoch_end(self):
+        np.random.shuffle(self.indices)
+
+
+class OptimizedHybridModel:
     def __init__(self, config, input_shape, feature_names=None):
         self.config = config
         self.input_shape = input_shape
         self.feature_names = feature_names
-        self.models = []
-        self.weights = []
+        self.model = None
+        self.logger = logging.getLogger("OptimizedHybridModel")
         self.training_metrics = []
-        self.logger = logging.getLogger("EnsembleModel")
 
-    def build_ensemble(self, num_models=3):
-        self.models = []
+        # Best parameters from optimization
+        self.best_params = {
+            "projection_size": 96,
+            "transformer_heads": 8,
+            "transformer_dropout": 0.31,
+            "recurrent_units": 60,
+            "recurrent_dropout": 0.11,
+            "dropout": 0.2,
+            "dense_units1": 68,
+            "dense_units2": 18,
+            "l2_lambda": 3.058656666978529e-05,
+            "learning_rate": 5.4120091907504824e-05,
+            "epochs": 15
+        }
 
-        # Create diverse model architectures
-        transformer_model = self._build_transformer_model()
-        lstm_cnn_model = self._build_lstm_cnn_model()
-
-        self.models = [transformer_model, lstm_cnn_model]
-        self.weights = [0.5, 0.5]
-
-        return self.models
-
-    def _build_transformer_model(self):
-        inputs = Input(shape=self.input_shape, dtype=tf.float32, name="transformer_input")
-
-        # Initial normalization
+    def build_model(self):
+        inputs = Input(shape=self.input_shape, dtype=tf.float32, name="hybrid_input")
         x = BatchNormalization(momentum=0.99, epsilon=1e-5)(inputs)
 
-        # Project input to d_model=128 to match transformer encoder units
-        x = Dense(128, activation='relu')(x)
+        # First stage: transformer with optimized parameters
+        projection_size = self.best_params["projection_size"]
+        transformer_heads = self.best_params["transformer_heads"]
+        transformer_dropout = self.best_params["transformer_dropout"]
 
-        # Generate positional encoding for d_model=128
-        pos_encoding = self._positional_encoding(self.input_shape[0], 128)
-        pos_encoding_layer = tf.keras.layers.Lambda(
-            lambda x: x + tf.cast(pos_encoding, x.dtype),
-            output_shape=lambda input_shape: input_shape,
-            name="pos_encoding"
-        )
-        x = pos_encoding_layer(x)
+        x = Dense(projection_size, activation='linear')(x)
 
-        # Transformer encoder blocks with consistent units=128
-        for i in range(3):
-            x = self._transformer_encoder_layer(x, units=128, num_heads=8, dropout=0.1, name=f"transformer_{i}")
+        # Apply position encoding
+        pos_encoding = self._positional_encoding(self.input_shape[0], projection_size)
+        x = Lambda(lambda x: x + tf.cast(pos_encoding, x.dtype))(x)
 
-        # Global context extraction
-        x = GlobalAveragePooling1D()(x)
+        # Transformer encoder layers
+        for i in range(2):
+            x = self._transformer_encoder_layer(x, units=projection_size,
+                                                num_heads=transformer_heads,
+                                                dropout=transformer_dropout,
+                                                name=f"hybrid_transformer_{i}")
 
-        # Output projection
-        x = Dense(64, activation='relu', kernel_regularizer=l2(1e-6))(x)
-        x = BatchNormalization()(x)
-        x = Dropout(0.15)(x)
+        # Second stage: GRU
+        recurrent_units = self.best_params["recurrent_units"]
+        recurrent_dropout = self.best_params["recurrent_dropout"]
+        dropout_rate = self.best_params["dropout"]
 
-        outputs = Dense(1, activation='tanh', kernel_regularizer=l2(1e-6), dtype=tf.float32)(x)
+        recurrent_out = GRU(recurrent_units, return_sequences=True,
+                            recurrent_dropout=recurrent_dropout)(x)
+        recurrent_out = BatchNormalization()(recurrent_out)
+        recurrent_out = Dropout(dropout_rate)(recurrent_out)
+        x = recurrent_out
 
-        model = Model(inputs, outputs, name="transformer_model")
-
-        optimizer = tf.keras.optimizers.Adam(learning_rate=3e-4)
-
-        model.compile(
-            optimizer=optimizer,
-            loss=self._direction_enhanced_mse,
-            metrics=['mae']
-        )
-
-        return model
-
-    def _build_lstm_cnn_model(self):
-        inputs = Input(shape=self.input_shape, dtype=tf.float32, name="lstm_cnn_input")
-
-        # Initial normalization
-        x = BatchNormalization(momentum=0.99, epsilon=1e-5)(inputs)
-
-        # CNN feature extraction
-        conv1 = Conv1D(filters=64, kernel_size=3, padding='same', activation='relu')(x)
-        conv2 = Conv1D(filters=64, kernel_size=5, padding='same', activation='relu')(x)
-
-        # Combine CNN features
-        x = Concatenate()([conv1, conv2])
-        x = BatchNormalization()(x)
-        x = Dropout(0.15)(x)
-
-        # LSTM processing
-        x = LSTM(128, return_sequences=True, recurrent_dropout=0)(x)
-        x = BatchNormalization()(x)
-
-        # Self-attention layer
+        # Final attention mechanism
         attention_score = Dense(1, activation='tanh')(x)
         attention_weights = SoftmaxLayer(axis=1)(attention_score)
-        x = Multiply()([x, attention_weights])
+        context_vector = Multiply()([x, attention_weights])
+        x = GlobalAveragePooling1D()(context_vector)
 
-        # Global context extraction
-        x = GlobalAveragePooling1D()(x)
+        # Final dense layers
+        dense_units1 = self.best_params["dense_units1"]
+        dense_units2 = self.best_params["dense_units2"]
+        l2_lambda = self.best_params["l2_lambda"]
 
-        # Output projection
-        x = Dense(64, activation='relu', kernel_regularizer=l2(1e-6))(x)
+        x = Dense(dense_units1, activation='swish', kernel_regularizer=l2(l2_lambda))(x)
         x = BatchNormalization()(x)
-        x = Dropout(0.15)(x)
-
-        outputs = Dense(1, activation='tanh', kernel_regularizer=l2(1e-6), dtype=tf.float32)(x)
-
-        model = Model(inputs, outputs, name="lstm_cnn_model")
-
-        optimizer = tf.keras.optimizers.Adam(learning_rate=4e-4)
-
-        model.compile(
-            optimizer=optimizer,
-            loss=self._direction_enhanced_mse,
-            metrics=['mae']
-        )
-
-        return model
-
-    def _build_tft_model(self):
-        inputs = Input(shape=self.input_shape, dtype=tf.float32, name="tft_input")
-
-        # Initial normalization
-        x = BatchNormalization(momentum=0.99, epsilon=1e-5)(inputs)
-
-        # Gated residual network for feature processing
-        x = self._gated_residual_network(x, 128)
-
-        # Variable selection
-        x = self._variable_selection_network(x, self.input_shape[1])
-
-        # Temporal processing with attention
-        for i in range(2):
-            x = self._temporal_self_attention_layer(x, 64, num_heads=4, dropout=0.1, name=f"tft_attn_{i}")
-
-        # Global pooling
-        x = GlobalAveragePooling1D()(x)
-
-        # Output projection
-        x = Dense(64, activation='relu', kernel_regularizer=l2(1e-6))(x)
+        x = Dropout(dropout_rate)(x)
+        x = Dense(dense_units2, activation='swish', kernel_regularizer=l2(l2_lambda))(x)
         x = BatchNormalization()(x)
-        x = Dropout(0.15)(x)
+        x = Dropout(dropout_rate)(x)
 
-        outputs = Dense(1, activation='tanh', kernel_regularizer=l2(1e-6), dtype=tf.float32)(x)
+        outputs = Dense(1, activation='tanh', kernel_regularizer=l2(l2_lambda), dtype='float32')(x)
 
-        model = Model(inputs, outputs, name="tft_model")
+        model = Model(inputs, outputs, name="optimized_hybrid_model")
+        learning_rate = self.best_params["learning_rate"]
+        optimizer = AdamW(learning_rate=learning_rate, weight_decay=1e-4)
+        model.compile(optimizer=optimizer, loss=self._direction_enhanced_mse, metrics=['mae'])
 
-        optimizer = tf.keras.optimizers.Adam(learning_rate=3.5e-4)
-
-        model.compile(
-            optimizer=optimizer,
-            loss=self._direction_enhanced_mse,
-            metrics=['mae']
-        )
-
+        self.model = model
         return model
-
-    def _gated_residual_network(self, x, units):
-        skip_connection = x
-
-        # Ensure dimensions match for residual connection
-        if x.shape[-1] != units:
-            skip_connection = Dense(units)(skip_connection)
-
-        # Main path
-        a = Dense(units)(x)
-        a = LayerNormalization()(a)
-        a = Activation('elu')(a)
-
-        a = Dense(units)(a)
-        a = LayerNormalization()(a)
-        a = Activation('elu')(a)
-
-        # Gate
-        gate = Dense(units, activation='sigmoid')(x)
-
-        # Apply gate and add residual connection
-        x = Add()([gate * a, skip_connection])
-
-        return x
-
-    def _variable_selection_network(self, x, num_features):
-        # Feature-wise dense layers
-        processed_features = []
-
-        for i in range(num_features):
-            # Extract single feature across all time steps
-            feature = Lambda(lambda x: x[:, :, i:i + 1])(x)
-
-            # Process through dense layer
-            processed = Dense(16, activation='elu')(feature)
-            processed = Dense(16, activation='elu')(processed)
-
-            processed_features.append(processed)
-
-        # Concatenate processed features
-        processed_x = Concatenate(axis=-1)(processed_features)
-
-        # Attention weights for feature selection
-        attention_input = GlobalAveragePooling1D()(x)
-        attention_weights = Dense(num_features, activation='softmax')(attention_input)
-
-        # Apply attention weights to features
-        weighted_features = []
-        for i in range(num_features):
-            # Extract weight for this feature
-            weight = Lambda(lambda x: x[:, i:i + 1])(attention_weights)
-
-            # Extract processed feature
-            feature = Lambda(lambda x: x[:, :, i:i + 1])(processed_x)
-
-            # Weight the feature
-            weighted = Multiply()([feature, weight])
-            weighted_features.append(weighted)
-
-        # Combine weighted features
-        x = Add()(weighted_features)
-
-        return x
-
-    def _temporal_self_attention_layer(self, x, units, num_heads, dropout, name):
-        # Multi-head attention
-        attention_output = tf.keras.layers.MultiHeadAttention(
-            num_heads=num_heads, key_dim=units // num_heads, dropout=dropout,
-            name=f"{name}_attention"
-        )(x, x)
-
-        # Add & norm
-        attention_output = LayerNormalization(epsilon=1e-6, name=f"{name}_norm1")(x + attention_output)
-
-        # Feed-forward network
-        ffn_output = Dense(units * 2, activation='elu', name=f"{name}_ffn1")(attention_output)
-        ffn_output = Dropout(dropout)(ffn_output)
-        ffn_output = Dense(units, name=f"{name}_ffn2")(ffn_output)
-
-        # Add & norm
-        return LayerNormalization(epsilon=1e-6, name=f"{name}_norm2")(attention_output + ffn_output)
 
     def _positional_encoding(self, max_len, d_model):
-        angle_rads = self._get_angles(
-            np.arange(max_len)[:, np.newaxis],
-            np.arange(d_model)[np.newaxis, :],
-            d_model
-        )
-
-        # Apply sin to even indices
+        angle_rads = self._get_angles(np.arange(max_len)[:, np.newaxis], np.arange(d_model)[np.newaxis, :], d_model)
         angle_rads[:, 0::2] = np.sin(angle_rads[:, 0::2])
-
-        # Apply cos to odd indices
         angle_rads[:, 1::2] = np.cos(angle_rads[:, 1::2])
-
-        pos_encoding = angle_rads[np.newaxis, ...]
-
-        return tf.cast(pos_encoding, dtype=tf.float32)
+        return tf.cast(angle_rads[np.newaxis, ...], dtype=tf.float32)
 
     def _get_angles(self, pos, i, d_model):
         angle_rates = 1 / np.power(10000, (2 * (i // 2)) / np.float32(d_model))
         return pos * angle_rates
 
     def _transformer_encoder_layer(self, inputs, units, num_heads, dropout, name):
-        # Multi-head attention
-        attention_output = tf.keras.layers.MultiHeadAttention(
-            num_heads=num_heads, key_dim=units // num_heads, dropout=dropout,
-            name=f"{name}_attention"
-        )(inputs, inputs)
-
-        # Add & norm
+        attention_output = layers.MultiHeadAttention(num_heads=num_heads, key_dim=units // num_heads, dropout=dropout,
+                                                     name=f"{name}_attention")(inputs, inputs)
         attention_output = LayerNormalization(epsilon=1e-6, name=f"{name}_norm1")(inputs + attention_output)
-
-        # Feed-forward network
-        ffn_output = Dense(units * 2, activation='relu', name=f"{name}_ffn1")(attention_output)
+        ffn_output = Dense(units * 2, activation='swish', name=f"{name}_ffn1")(attention_output)
         ffn_output = Dropout(dropout)(ffn_output)
         ffn_output = Dense(units, name=f"{name}_ffn2")(ffn_output)
-
-        # Add & norm
         return LayerNormalization(epsilon=1e-6, name=f"{name}_norm2")(attention_output + ffn_output)
 
     def _direction_enhanced_mse(self, y_true, y_pred):
-        # Basic MSE component
         mse_loss = tf.reduce_mean(tf.square(y_true - y_pred))
-
-        # Direction component
         direction_true = tf.sign(y_true)
         direction_pred = tf.sign(y_pred)
         direction_match = tf.cast(tf.equal(direction_true, direction_pred), tf.float32)
         direction_loss = 1.0 - direction_match
 
-        # Combined loss with reasonable weighting
-        combined_loss = mse_loss + (0.2 * direction_loss)
+        gamma = 2.0
+        focal_weight = tf.pow(1.0 - direction_match, gamma)
+        focal_direction_loss = focal_weight * direction_loss
 
-        return combined_loss
+        return mse_loss + (self.config.get("model", "direction_loss_weight", 0.65) * focal_direction_loss)
 
-    def train_models(self, X_train, y_train, X_val, y_val, epochs=25, batch_size=256, callbacks=None):
-        self.training_metrics = []
+    def train(self, train_seq, X_val, y_val, fwd_returns_val, callbacks=None):
+        if self.model is None:
+            self.build_model()
 
-        for i, model in enumerate(self.models):
-            model_name = model.name
-            self.logger.info(f"Training {model_name} ({i + 1}/{len(self.models)})")
-
-            history = model.fit(
-                X_train, y_train,
-                validation_data=(X_val, y_val),
-                epochs=epochs,
-                batch_size=batch_size,
-                callbacks=callbacks,
-                verbose=1
+        epochs = self.best_params["epochs"]
+        default_callbacks = [
+            OptimizedGrowthMetricCallback(X_val, y_val, fwd_returns_val),
+            tf.keras.callbacks.EarlyStopping(
+                monitor='growth_score',
+                patience=5,
+                mode='max',
+                restore_best_weights=True
             )
+        ]
 
-            # Store training metrics
-            val_avg_return = max(history.history.get('val_avg_return', [0]))
-            val_win_rate = max(history.history.get('val_win_rate', [0]))
-            val_profit_factor = max(history.history.get('val_profit_factor', [0]))
+        used_callbacks = callbacks if callbacks else default_callbacks
 
-            self.training_metrics.append({
-                'model_name': model_name,
-                'val_avg_return': val_avg_return,
-                'val_win_rate': val_win_rate,
-                'val_profit_factor': val_profit_factor
-            })
+        history = self.model.fit(
+            train_seq,
+            validation_data=(X_val, y_val),
+            epochs=epochs,
+            callbacks=used_callbacks,
+            verbose=1
+        )
 
-            # Update weights based on validation performance
-            self._update_ensemble_weights()
+        monthly_growth = max(history.history.get('monthly_growth', [0]))
+        val_win_rate = max(history.history.get('val_win_rate', [0]))
+        val_profit_factor = max(history.history.get('val_profit_factor', [0]))
+        growth_score = max(history.history.get('growth_score', [0]))
 
-            tf.keras.backend.clear_session()
+        self.training_metrics = {
+            'monthly_growth': monthly_growth,
+            'val_win_rate': val_win_rate,
+            'val_profit_factor': val_profit_factor,
+            'growth_score': growth_score
+        }
 
-        return self.models
-
-    def _update_ensemble_weights(self):
-        if not self.training_metrics:
-            return
-
-        # Extract performance metrics
-        avg_returns = [m.get('val_avg_return', 0) for m in self.training_metrics]
-        win_rates = [m.get('val_win_rate', 0) for m in self.training_metrics]
-        profit_factors = [m.get('val_profit_factor', 0) for m in self.training_metrics]
-
-        # Convert to numpy arrays and handle non-positive values
-        avg_returns = np.array(avg_returns)
-        avg_returns = np.where(avg_returns <= 0, 1e-6, avg_returns)
-
-        win_rates = np.array(win_rates)
-        win_rates = np.where(win_rates <= 0, 1e-6, win_rates)
-
-        profit_factors = np.array(profit_factors)
-        profit_factors = np.where(profit_factors <= 0, 1e-6, profit_factors)
-
-        # Normalize to get weights
-        combined_score = (avg_returns * 0.5) + (win_rates * 0.3) + (profit_factors * 0.2)
-        self.weights = combined_score / np.sum(combined_score)
-
-        self.logger.info(f"Updated ensemble weights: {self.weights}")
+        return history
 
     def predict(self, X):
-        if not self.models:
-            raise ValueError("No models in ensemble. Call build_ensemble() first.")
+        if self.model is None:
+            raise ValueError("Model is not trained yet. Call build_model() or train() first.")
+        return self.model.predict(X, verbose=0)
 
-        all_predictions = []
+    def save_model(self, path):
+        if self.model:
+            self.model.save(path)
+            self.logger.info(f"Saved model to {path}")
 
-        for i, model in enumerate(self.models):
-            try:
-                pred = model.predict(X, verbose=0)
-                all_predictions.append(pred * self.weights[i])
-            except Exception as e:
-                self.logger.error(f"Error in model {i} prediction: {e}")
-                # Return zeros if model fails
-                all_predictions.append(np.zeros((len(X), 1)))
+            params_path = f"{os.path.splitext(path)[0]}_params.json"
+            with open(params_path, 'w') as f:
+                json.dump(self.best_params, f, indent=2)
 
-        # Combine predictions weighted by model performance
-        combined_pred = np.zeros_like(all_predictions[0])
-        for pred in all_predictions:
-            combined_pred += pred
+    def load_model(self, path):
+        if os.path.exists(path):
+            self.model = tf.keras.models.load_model(path, compile=True)
+            self.logger.info(f"Loaded model from {path}")
 
-        return combined_pred
+            params_path = f"{os.path.splitext(path)[0]}_params.json"
+            if os.path.exists(params_path):
+                with open(params_path, 'r') as f:
+                    self.best_params = json.load(f)
 
-    def save_models(self, base_path):
-        if not self.models:
-            return
-
-        for i, model in enumerate(self.models):
-            model_path = f"{base_path}_ensemble_{i}.keras"
-            model.save(model_path)
-            self.logger.info(f"Saved model {i} to {model_path}")
-
-        # Save ensemble weights
-        weights_path = f"{base_path}_ensemble_weights.json"
-        with open(weights_path, 'w') as f:
-            json.dump({
-                'weights': self.weights.tolist(),
-                'metrics': self.training_metrics
-            }, f)
-
-    def load_models(self, base_path, num_models=3):
-        self.models = []
-
-        for i in range(num_models):
-            model_path = f"{base_path}_ensemble_{i}.keras"
-            if os.path.exists(model_path):
-                model = tf.keras.models.load_model(model_path, compile=True)
-                self.models.append(model)
-                self.logger.info(f"Loaded model {i} from {model_path}")
-
-        # Load ensemble weights
-        weights_path = f"{base_path}_ensemble_weights.json"
-        if os.path.exists(weights_path):
-            with open(weights_path, 'r') as f:
-                data = json.load(f)
-                self.weights = np.array(data.get('weights', []))
-                self.training_metrics = data.get('metrics', [])
-        else:
-            # If weights not found, use equal weighting
-            self.weights = np.ones(len(self.models)) / len(self.models)
-
-        return len(self.models) > 0
+            return True
+        return False
 
 
 class TradingModel:
     def __init__(self, config):
         self.config = config
-        self.logger = logging.getLogger("TradingModel")
-
+        self.logger = logging.getLogger("OptimizedTradingModel")
         self.model_path = config.get("model", "model_path")
         self.sequence_length = config.get("model", "sequence_length", 72)
         self.horizon = config.get("model", "horizon", 16)
         self.batch_size = config.get("model", "batch_size", 256)
         self.epochs = config.get("model", "epochs", 20)
         self.early_stopping_patience = config.get("model", "early_stopping_patience", 5)
-        self.project_name = config.get("model", "project_name", "btc_trading")
-
-        self.dropout_rate = config.get("model", "dropout_rate", 0.2)
-        self.l2_reg = config.get("model", "l2_reg", 5e-6)
-
-        self.attention_enabled = config.get("model", "attention_enabled", True)
-        self.use_feature_importance = config.get("model", "use_feature_importance", True)
-        self.cnn_filters = config.get("model", "cnn_filters", 64)
-        self.lstm_units = config.get("model", "lstm_units", 96)
-
-        self.use_lr_schedule = config.get("model", "use_lr_schedule", True)
         self.initial_learning_rate = config.get("model", "initial_learning_rate", 3e-4)
-
-        self.use_ensemble = config.get("model", "use_ensemble", True)
-
-        results_dir = Path(config.results_dir)
-        self.model_dir = results_dir / "models"
+        self.direction_loss_weight = config.get("model", "direction_loss_weight", 0.65)
+        self.results_dir = Path(config.results_dir)
+        self.model_dir = self.results_dir / "models"
         self.model_dir.mkdir(exist_ok=True, parents=True)
 
-        self.importance_path = self.model_dir / "feature_importance.json"
-
         if config.get("model", "use_mixed_precision", True):
-            set_global_policy('mixed_float16')
+            try:
+                from tensorflow.keras.mixed_precision import set_global_policy
+                set_global_policy('mixed_float16')
+            except:
+                self.logger.warning("Could not set mixed precision policy")
 
         self._configure_environment()
-
         self.seed = 42
         tf.random.set_seed(self.seed)
         np.random.seed(self.seed)
-
         self.model = None
-        self.ensemble_models = None
-        self.feature_importance = None
-
-        self._load_feature_importance()
 
     def _configure_environment(self):
         try:
             gpus = tf.config.list_physical_devices('GPU')
             for gpu in gpus:
                 tf.config.experimental.set_memory_growth(gpu, True)
+            self.logger.info(f"Found {len(gpus)} GPU(s)" if gpus else "No GPU found, using CPU")
 
-            if gpus:
-                self.logger.info(f"Found {len(gpus)} GPU(s)")
-                for i, gpu in enumerate(gpus):
-                    self.logger.info(f"GPU {i}: {gpu.name}")
-            else:
-                self.logger.info("No GPU found, using CPU")
-
-            available_memory = psutil.virtual_memory().available / (1024 * 1024 * 1024)
-            self.logger.info(f"Available system memory: {available_memory:.2f} GB")
-
-            if available_memory < 4:
-                self.batch_size = min(self.batch_size, 64)
-                self.logger.info(f"Limited memory detected, reducing batch size to {self.batch_size}")
-
+            try:
+                import psutil
+                available_memory = psutil.virtual_memory().available / (1024 * 1024 * 1024)
+                self.logger.info(f"Available system memory: {available_memory:.2f} GB")
+                if available_memory < 4:
+                    self.batch_size = min(self.batch_size, 64)
+                    self.logger.info(f"Limited memory detected, reducing batch size to {self.batch_size}")
+            except:
+                pass
         except Exception as e:
             self.logger.warning(f"Error configuring GPU: {e}")
-            return False
-
-    def _load_feature_importance(self):
-        try:
-            if self.importance_path.exists():
-                with open(self.importance_path, 'r') as f:
-                    self.feature_importance = json.load(f)
-                self.logger.info(f"Loaded feature importance from {self.importance_path}")
-        except Exception as e:
-            self.logger.warning(f"Error loading feature importance: {e}")
-
-    def _save_feature_importance(self, feature_importance, feature_names=None):
-        try:
-            if feature_importance is not None:
-                importance_dict = {}
-
-                if feature_names is not None and len(feature_names) == len(feature_importance):
-                    for i, name in enumerate(feature_names):
-                        importance_dict[name] = float(feature_importance[i])
-                else:
-                    for i, importance in enumerate(feature_importance):
-                        importance_dict[f"feature_{i}"] = float(importance)
-
-                with open(self.importance_path, 'w') as f:
-                    json.dump(importance_dict, f, indent=2)
-
-                self.logger.info(f"Saved feature importance to {self.importance_path}")
-                self.feature_importance = importance_dict
-        except Exception as e:
-            self.logger.warning(f"Error saving feature importance: {e}")
-
-    def build_model(self, input_shape, feature_names=None):
-        inputs = Input(shape=input_shape, dtype=tf.float32, name="input_features")
-
-        # Initial normalization
-        x = BatchNormalization(momentum=0.99, epsilon=1e-5, name="initial_norm")(inputs)
-
-        # Add positional encoding for transformer
-        pos_encoding = self._positional_encoding(input_shape[0], input_shape[1])
-        x = x + pos_encoding
-
-        # Transformer encoder blocks
-        for i in range(3):
-            x = self._transformer_encoder_layer(x, units=128, num_heads=8, dropout=0.1, name=f"transformer_{i}")
-
-        # Global pooling
-        x = GlobalAveragePooling1D()(x)
-
-        # Output projection layers
-        x = Dense(64, activation='relu', kernel_regularizer=l2(1e-6))(x)
-        x = BatchNormalization()(x)
-        x = Dropout(0.15)(x)
-
-        x = Dense(32, activation='relu', kernel_regularizer=l2(1e-6))(x)
-        x = BatchNormalization()(x)
-        x = Dropout(0.15)(x)
-
-        # Final output with tanh activation for [-1, 1] range
-        outputs = Dense(1, activation='tanh', kernel_regularizer=l2(1e-6), dtype='float32')(x)
-
-        model = Model(inputs, outputs, name="transformer_trading_model")
-
-        def direction_enhanced_mse(y_true, y_pred):
-            # Basic MSE component
-            mse_loss = tf.reduce_mean(tf.square(y_true - y_pred))
-
-            # Direction component
-            direction_true = tf.sign(y_true)
-            direction_pred = tf.sign(y_pred)
-            direction_match = tf.cast(tf.equal(direction_true, direction_pred), tf.float32)
-            direction_loss = 1.0 - direction_match
-
-            # Combined loss with reasonable weighting
-            combined_loss = mse_loss + (0.2 * direction_loss)
-
-            return combined_loss
-
-        optimizer = Adam(learning_rate=self.initial_learning_rate)
-
-        model.compile(
-            optimizer=optimizer,
-            loss=direction_enhanced_mse,
-            metrics=['mae']
-        )
-
-        return model
-
-    def _positional_encoding(self, max_len, d_model):
-        angle_rads = self._get_angles(
-            np.arange(max_len)[:, np.newaxis],
-            np.arange(d_model)[np.newaxis, :],
-            d_model
-        )
-
-        # Apply sin to even indices
-        angle_rads[:, 0::2] = np.sin(angle_rads[:, 0::2])
-
-        # Apply cos to odd indices
-        angle_rads[:, 1::2] = np.cos(angle_rads[:, 1::2])
-
-        pos_encoding = angle_rads[np.newaxis, ...]
-
-        return tf.cast(pos_encoding, dtype=tf.float32)
-
-    def _get_angles(self, pos, i, d_model):
-        angle_rates = 1 / np.power(10000, (2 * (i // 2)) / np.float32(d_model))
-        return pos * angle_rates
-
-    def _transformer_encoder_layer(self, inputs, units, num_heads, dropout, name):
-        # Multi-head attention
-        attention_output = tf.keras.layers.MultiHeadAttention(
-            num_heads=num_heads, key_dim=units // num_heads, dropout=dropout,
-            name=f"{name}_attention"
-        )(inputs, inputs)
-
-        # Add & norm
-        attention_output = LayerNormalization(epsilon=1e-6, name=f"{name}_norm1")(inputs + attention_output)
-
-        # Feed-forward network
-        ffn_output = Dense(units * 2, activation='relu', name=f"{name}_ffn1")(attention_output)
-        ffn_output = Dropout(dropout)(ffn_output)
-        ffn_output = Dense(units, name=f"{name}_ffn2")(ffn_output)
-
-        # Add & norm
-        return LayerNormalization(epsilon=1e-6, name=f"{name}_norm2")(attention_output + ffn_output)
-
-    def train_model(self, X_train, y_train, X_val, y_val, df_val=None, fwd_returns_val=None, class_weight=None):
-        self.logger.info(f"Training data shape: {X_train.shape}, labels shape: {y_train.shape}")
-        self.logger.info(f"Validation data shape: {X_val.shape}, labels shape: {y_val.shape}")
-
-        # Ensure clean data before training - prevent NaN issues
-        X_train = np.nan_to_num(X_train, nan=0.0, posinf=0.0, neginf=0.0)
-        y_train = np.nan_to_num(y_train, nan=0.0, posinf=0.0, neginf=0.0)
-        X_val = np.nan_to_num(X_val, nan=0.0, posinf=0.0, neginf=0.0)
-        y_val = np.nan_to_num(y_val, nan=0.0, posinf=0.0, neginf=0.0)
-
-        # Apply clipping to prevent extreme values
-        y_train = np.clip(y_train, -1.0, 1.0)
-        y_val = np.clip(y_val, -1.0, 1.0)
-
-        y_train = y_train.reshape(-1, 1) if len(y_train.shape) == 1 else y_train
-        y_val = y_val.reshape(-1, 1) if len(y_val.shape) == 1 else y_val
-
-        input_shape = (X_train.shape[1], X_train.shape[2])
-
-        feature_names = None
-        if hasattr(df_val, 'columns'):
-            feature_names = df_val.columns.tolist()
-
-        # Use ensemble approach if configured
-        if self.use_ensemble:
-            self.logger.info("Building ensemble trading model architecture")
-
-            # Create ensemble
-            self.ensemble_models = EnsembleModel(self.config, input_shape, feature_names)
-            models = self.ensemble_models.build_ensemble(num_models=2)
-
-            # Train each model in the ensemble
-            callbacks = self._get_callbacks(X_val, y_val, fwd_returns_val, feature_names)
-
-            self.ensemble_models.train_models(
-                X_train, y_train,
-                X_val, y_val,
-                epochs=self.epochs,
-                batch_size=self._calculate_optimal_batch_size(X_train),
-                callbacks=callbacks
-            )
-
-            # Save ensemble models
-            self.ensemble_models.save_models(self.model_path)
-
-            return models
-        else:
-            # Single model approach
-            self.logger.info("Building trading model architecture")
-            self.model = self.build_model(input_shape, feature_names)
-
-            callbacks = self._get_callbacks(X_val, y_val, fwd_returns_val, feature_names)
-
-            # Add gradient clipping to optimizer
-            self.model.optimizer.clipnorm = 1.0
-
-            # Add gradient noise for better local minima escape
-            noise_callback = GradientNoiseCallback(
-                start_epoch=5,
-                noise_stddev=1e-5,
-                decay_rate=0.55
-            )
-            callbacks.append(noise_callback)
-
-            actual_batch_size = self._calculate_optimal_batch_size(X_train)
-            self.logger.info(f"Using batch size: {actual_batch_size}")
-
-            # Mixed precision is already set with set_global_policy in the class initialization
-            self.logger.info(f"Starting training for {self.epochs} epochs")
-            history = self.model.fit(
-                X_train, y_train,
-                validation_data=(X_val, y_val),
-                epochs=self.epochs,
-                batch_size=actual_batch_size,
-                callbacks=callbacks,
-                class_weight=class_weight,
-                verbose=1
-            )
-
-            self.model.save(self.model_path)
-            self.logger.info(f"Model saved to {self.model_path}")
-
-            feature_importance_callback = next((c for c in callbacks if isinstance(c, FeatureImportanceCallback)), None)
-            if feature_importance_callback and feature_importance_callback.importance_scores is not None:
-                self._save_feature_importance(
-                    feature_importance_callback.importance_scores,
-                    feature_names
-                )
-
-            tf.keras.backend.clear_session()
-
-            return self.model
 
     def _calculate_optimal_batch_size(self, X_train):
-        data_size_mb = X_train.nbytes / (1024 * 1024)
-
         try:
+            import psutil
+            data_size_mb = X_train.nbytes / (1024 * 1024)
             available_memory = psutil.virtual_memory().available / (1024 * 1024)
+            memory_limit = available_memory * 0.2
+            samples_per_batch = max(16, int(memory_limit / (data_size_mb / len(X_train)) / 4))
+            power_of_2 = 2 ** int(np.log2(samples_per_batch))
+            return max(16, min(power_of_2, self.batch_size))
         except:
-            available_memory = 4000
-
-        memory_limit = available_memory * 0.2
-
-        samples_per_batch = max(16, int(memory_limit / (data_size_mb / len(X_train)) / 4))
-
-        power_of_2 = 2 ** int(np.log2(samples_per_batch))
-        optimal_batch_size = min(power_of_2, self.batch_size)
-
-        return max(16, optimal_batch_size)
+            return self.batch_size
 
     def _get_callbacks(self, X_val, y_val, fwd_returns_val, feature_names=None):
         checkpoint_path = self.model_path
         os.makedirs(os.path.dirname(checkpoint_path), exist_ok=True)
 
-        trade_callback = TradeMetricCallback(X_val, y_val, fwd_returns_val)
-
-        importance_callback = FeatureImportanceCallback(X_val[:1000], feature_names)
-
-        early_stopping = EarlyStopping(
-            monitor='val_avg_return',
-            patience=self.early_stopping_patience,
-            mode='max',
-            restore_best_weights=True,
-            min_delta=0.0001,
-            verbose=1
-        )
-
-        try:
-            checkpoint = ModelCheckpoint(
+        callbacks = [
+            OptimizedGrowthMetricCallback(X_val, y_val, fwd_returns_val),
+            tf.keras.callbacks.EarlyStopping(
+                monitor='growth_score',
+                patience=self.early_stopping_patience,
+                mode='max',
+                restore_best_weights=True,
+                min_delta=0.0001,
+                verbose=1
+            ),
+            tf.keras.callbacks.ModelCheckpoint(
                 checkpoint_path,
-                monitor='val_avg_return',
+                monitor='growth_score',
                 save_best_only=True,
                 mode='max',
                 verbose=1,
                 save_weights_only=False
             )
-        except Exception as e:
-            self.logger.warning(f"Error creating checkpoint callback: {e}")
-            checkpoint = ModelCheckpoint(
-                str(checkpoint_path) + ".weights.h5",
-                monitor='val_avg_return',
-                save_best_only=True,
-                mode='max',
-                verbose=1,
-                save_weights_only=True
-            )
+        ]
 
-        callbacks = [trade_callback, importance_callback, early_stopping, checkpoint]
+        class GradientNoiseCallback(tf.keras.callbacks.Callback):
+            def __init__(self, start_epoch=5, noise_stddev=1e-4, decay_rate=0.55):
+                super().__init__()
+                self.start_epoch = start_epoch
+                self.initial_stddev = noise_stddev
+                self.decay_rate = decay_rate
+                self.noise_stddev = noise_stddev
 
-        # Only add ReduceLROnPlateau if we're NOT using a learning rate schedule
-        if not self.use_lr_schedule:
-            reduce_lr = ReduceLROnPlateau(
-                monitor='val_avg_return',
-                factor=0.5,
-                patience=3,
-                min_lr=1e-6,
-                mode='max',
-                verbose=1
-            )
-            callbacks.append(reduce_lr)
+            def on_epoch_begin(self, epoch, logs=None):
+                if epoch >= self.start_epoch:
+                    self.noise_stddev = self.initial_stddev * (
+                    (1.0 / (1.0 + self.decay_rate * (epoch - self.start_epoch))))
+
+            def on_batch_end(self, batch, logs=None):
+                if hasattr(self.model.optimizer, 'get_weights') and hasattr(self.model.optimizer, 'set_weights'):
+                    weights = self.model.optimizer.get_weights()
+                    for i in range(len(weights)):
+                        noise = np.random.normal(0, self.noise_stddev, weights[i].shape)
+                        weights[i] = weights[i] + noise
+                    self.model.optimizer.set_weights(weights)
+
+        callbacks.append(GradientNoiseCallback(start_epoch=3, noise_stddev=1e-4, decay_rate=0.6))
+
+        initial_lr = self.initial_learning_rate
+
+        def lr_schedule(epoch, lr):
+            if epoch < 5:
+                return initial_lr * (epoch + 1) / 5.0
+            return initial_lr * (0.4 ** ((epoch - 5) // 4))
+
+        callbacks.append(tf.keras.callbacks.LearningRateScheduler(lr_schedule))
 
         return callbacks
 
+    def train_model(self, X_train, y_train, X_val, y_val, df_val=None, fwd_returns_val=None, class_weight=None):
+        self.logger.info(f"Training data shape: {X_train.shape}, Validation data shape: {X_val.shape}")
+        X_train = np.nan_to_num(X_train, nan=0.0, posinf=0.0, neginf=0.0)
+        y_train = np.nan_to_num(y_train, nan=0.0, posinf=0.0, neginf=0.0)
+        X_val = np.nan_to_num(X_val, nan=0.0, posinf=0.0, neginf=0.0)
+        y_val = np.nan_to_num(y_val, nan=0.0, posinf=0.0, neginf=0.0)
+        y_train = np.clip(y_train, -1.0, 1.0).reshape(-1, 1) if len(y_train.shape) == 1 else y_train
+        y_val = np.clip(y_val, -1.0, 1.0).reshape(-1, 1) if len(y_val.shape) == 1 else y_val
+
+        input_shape = (X_train.shape[1], X_train.shape[2])
+        feature_names = df_val.columns.tolist() if hasattr(df_val, 'columns') else None
+        batch_size = self._calculate_optimal_batch_size(X_train)
+        self.logger.info(f"Using batch size: {batch_size}")
+
+        callbacks = self._get_callbacks(X_val, y_val, fwd_returns_val, feature_names)
+        train_seq = NoisySequence(X_train, y_train, batch_size, noise_level=0.015, data_augmentation=True)
+
+        self.logger.info("Creating model with optimized parameters")
+        hybrid_model = OptimizedHybridModel(self.config, input_shape, feature_names)
+        self.model = hybrid_model.build_model()
+
+        hybrid_model.train(
+            train_seq, X_val, y_val, fwd_returns_val,
+            callbacks=callbacks
+        )
+
+        model_path = self.model_path
+        hybrid_model.save_model(model_path)
+
+        return self.model
+
     def predict(self, X, batch_size=None):
-        # Check if we're using the ensemble
-        if hasattr(self, 'ensemble_models') and self.ensemble_models is not None:
-            try:
-                return self.ensemble_models.predict(X)
-            except Exception as e:
-                self.logger.error(f"Error in ensemble prediction: {e}")
-                # Fall back to single model if available
-                if self.model is None:
-                    self.load_model()
-
-        # Single model prediction
-        if self.model is None:
-            self.load_model()
-            if self.model is None:
-                self.logger.error("No model available for prediction")
-                return np.zeros((len(X), 1))
-
-        if len(X) == 0:
-            return np.array([])
-
-        if np.isnan(X).any() or np.isinf(X).any():
-            self.logger.warning("NaN or Inf values in input data, replacing with zeros")
-            X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
-
-        if batch_size is None:
-            data_size_mb = X.nbytes / (1024 * 1024)
-            try:
-                available_memory = psutil.virtual_memory().available / (1024 * 1024)
-                batch_size = max(16, min(256, int((available_memory * 0.1) / (data_size_mb / len(X)))))
-            except:
-                batch_size = min(self.batch_size, 256)
-
-        try:
-            predictions = self.model.predict(X, verbose=0, batch_size=batch_size)
-
-            if np.isnan(predictions).any() or np.isinf(predictions).any():
-                self.logger.warning("NaN or Inf values in predictions, replacing with zeros")
-                predictions = np.nan_to_num(predictions, nan=0.0, posinf=0.0, neginf=0.0)
-
-            predictions = np.clip(predictions, -1.0, 1.0)
-
-            return predictions
-
-        except Exception as e:
-            self.logger.error(f"Error during prediction: {e}")
-            return np.zeros((len(X), 1))
+        if self.model:
+            return self.model.predict(X, verbose=0)
+        self.logger.error("No model available for prediction")
+        return np.zeros((len(X), 1))
 
     def load_model(self, model_path=None):
         path = model_path or self.model_path
-
-        # Check if we have ensemble models
-        ensemble_base = str(path).rstrip(".keras")
-        ensemble_weights_path = f"{ensemble_base}_ensemble_weights.json"
-
-        if os.path.exists(ensemble_weights_path):
-            self.logger.info("Loading ensemble models")
-
-            # Initialize ensemble
-            self.ensemble_models = EnsembleModel(self.config, (72, 50))  # Default shape, will be updated
-            if self.ensemble_models.load_models(ensemble_base):
-                return self.ensemble_models
-
-        # Fall back to single model loading
-        if not os.path.exists(path):
-            self.logger.warning(f"Model not found at {path}")
-            return None
-
-        try:
-            self.logger.info(f"Loading model from {path}")
-
-            def direction_enhanced_mse(y_true, y_pred):
-                mse_loss = tf.reduce_mean(tf.square(y_true - y_pred))
-                direction_true = tf.sign(y_true)
-                direction_pred = tf.sign(y_pred)
-                direction_match = tf.cast(tf.equal(direction_true, direction_pred), tf.float32)
-                direction_loss = 1.0 - direction_match
-                return mse_loss + (0.2 * direction_loss)
-
-            # Register custom layer for model loading
-            custom_objects = {
-                'direction_enhanced_mse': direction_enhanced_mse,
-                'SoftmaxLayer': SoftmaxLayer
-            }
-
-            self.model = tf.keras.models.load_model(
-                path,
-                custom_objects=custom_objects,
-                compile=True
-            )
-
+        hybrid_model = OptimizedHybridModel(self.config, (self.sequence_length, 50))
+        if hybrid_model.load_model(path):
+            self.model = hybrid_model.model
             return self.model
-
-        except Exception as e:
-            self.logger.error(f"Error loading model: {e}")
-            try:
-                self.logger.info("Attempting to load model with alternative method")
-                self.model = tf.keras.models.load_model(
-                    path,
-                    custom_objects={
-                        'direction_enhanced_mse': tf.keras.losses.Huber(delta=0.25),
-                        'SoftmaxLayer': SoftmaxLayer
-                    },
-                    compile=True
-                )
-                return self.model
-            except Exception as e2:
-                self.logger.error(f"Error in fallback loading: {e2}")
-                return None
-
-    def evaluate(self, X_test, y_test, fwd_returns_test=None):
-        # Check if we're using ensemble
-        if hasattr(self, 'ensemble_models') and self.ensemble_models is not None:
-            try:
-                y_pred = self.ensemble_models.predict(X_test)
-                metrics = self._calculate_trading_metrics(y_pred, X_test, y_test, fwd_returns_test)
-                return metrics
-            except Exception as e:
-                self.logger.error(f"Error in ensemble evaluation: {e}")
-                # Fall back to single model if available
-
-        # Single model evaluation
-        if self.model is None:
-            self.load_model()
-            if self.model is None:
-                self.logger.error("No model available for evaluation")
-                return None
-
-        self.logger.info("Evaluating model on test data")
-
-        y_test = y_test.reshape(-1, 1) if len(y_test.shape) == 1 else y_test
-
-        test_loss, test_mse, test_mae = self.model.evaluate(X_test, y_test, verbose=0)
-
-        y_pred = self.predict(X_test)
-
-        metrics = self._calculate_trading_metrics(y_pred, X_test, y_test, fwd_returns_test)
-        metrics['loss'] = test_loss
-        metrics['mse'] = test_mse
-        metrics['mae'] = test_mae
-
-        return metrics
-
-    def _calculate_trading_metrics(self, y_pred, X_test, y_test, fwd_returns_test):
-        metrics = {}
-
-        metrics['predictions'] = y_pred.flatten()
-        metrics['actual_returns'] = y_test.flatten()
-
-        from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
-        metrics['rmse'] = np.sqrt(mean_squared_error(y_test, y_pred))
-        metrics['mae'] = mean_absolute_error(y_test, y_pred)
-        metrics['r2'] = r2_score(y_test, y_pred)
-
-        metrics['prediction_correlation'] = np.corrcoef(y_pred.flatten(), y_test.flatten())[0, 1]
-
-        if fwd_returns_test is not None:
-            sorted_preds = np.sort(np.abs(y_pred).flatten())
-            if len(sorted_preds) > 0:
-                threshold_idx = max(1, int(len(sorted_preds) * 0.7))  # Using 30% of top predictions
-                threshold = sorted_preds[threshold_idx]
-                threshold = max(threshold, 0.0007)  # Reduced from 0.002
-            else:
-                threshold = 0.0007  # Reduced from 0.002
-
-            trade_indices = np.where(np.abs(y_pred) > threshold)[0]
-
-            if len(trade_indices) > 0:
-                trade_returns = []
-                win_count = 0
-                profit_sum = 0
-                loss_sum = 0
-
-                for idx in trade_indices:
-                    if idx >= len(fwd_returns_test):
-                        continue
-
-                    actual_return = fwd_returns_test[idx]
-                    pred_direction = np.sign(y_pred[idx])
-                    trade_return = pred_direction * actual_return
-
-                    trade_returns.append(trade_return)
-
-                    if trade_return > 0:
-                        win_count += 1
-                        profit_sum += trade_return
-                    else:
-                        loss_sum += abs(trade_return)
-
-                total_trades = len(trade_returns)
-
-                metrics['win_rate'] = win_count / total_trades if total_trades > 0 else 0
-                metrics['avg_return'] = np.mean(trade_returns) if trade_returns else 0
-                metrics['total_trades'] = total_trades
-                metrics['profit_factor'] = profit_sum / loss_sum if loss_sum > 0 else float('inf')
-
-                winning_returns = [r for r in trade_returns if r > 0]
-                losing_returns = [abs(r) for r in trade_returns if r <= 0]
-
-                if winning_returns:
-                    metrics['avg_win'] = np.mean(winning_returns)
-                    metrics['max_win'] = np.max(winning_returns)
-                if losing_returns:
-                    metrics['avg_loss'] = np.mean(losing_returns)
-                    metrics['max_loss'] = np.max(losing_returns)
-
-                returns_std = np.std(trade_returns) if len(trade_returns) > 1 else 1e-10
-                metrics['sharpe_ratio'] = (metrics['avg_return'] / returns_std) * np.sqrt(365 * 24)
-
-                negative_returns = [r for r in trade_returns if r < 0]
-                downside_std = np.std(negative_returns) if negative_returns else 1e-10
-                metrics['sortino_ratio'] = (metrics['avg_return'] / downside_std) * np.sqrt(365 * 24)
-
-                if winning_returns and losing_returns:
-                    win_prob = len(winning_returns) / total_trades
-                    avg_win_pct = np.mean(winning_returns)
-                    avg_loss_pct = np.mean(losing_returns)
-                    if avg_loss_pct > 0:
-                        kelly = win_prob - ((1 - win_prob) / (avg_win_pct / avg_loss_pct))
-                        metrics['kelly_criterion'] = max(0, kelly)
-            else:
-                metrics['win_rate'] = 0
-                metrics['avg_return'] = 0
-                metrics['profit_factor'] = 0
-                metrics['total_trades'] = 0
-                metrics['sharpe_ratio'] = 0
-                metrics['sortino_ratio'] = 0
-
-        return metrics
+        return None

@@ -1,0 +1,13 @@
+{
+  "projection_size": 96,
+  "transformer_heads": 8,
+  "transformer_dropout": 0.31,
+  "recurrent_units": 60,
+  "recurrent_dropout": 0.11,
+  "dropout": 0.2,
+  "dense_units1": 68,
+  "dense_units2": 18,
+  "l2_lambda": 3.058656666978529e-05,
+  "learning_rate": 5.4120091907504824e-05,
+  "epochs": 15
+}

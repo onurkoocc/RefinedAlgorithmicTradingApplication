@@ -1,0 +1,68 @@
+Time-Based Trading Analysis
+==========================
+
+Exit Type Performance
+--------------------
+QuickProfit:
+  Count: 61
+  Win Rate: 100.0%
+  Avg PnL: $55.17
+  Avg Duration: 0.0h
+  Total PnL: $3365.21
+
+StopLoss:
+  Count: 380
+  Win Rate: 0.0%
+  Avg PnL: $-71.02
+  Avg Duration: 0.0h
+  Total PnL: $-26986.13
+
+QuickProfitTaken:
+  Count: 46
+  Win Rate: 100.0%
+  Avg PnL: $39.36
+  Avg Duration: 0.0h
+  Total PnL: $1810.42
+
+ProfitTarget:
+  Count: 407
+  Win Rate: 100.0%
+  Avg PnL: $65.01
+  Avg Duration: 0.0h
+  Total PnL: $26458.09
+
+StagnantExit:
+  Count: 215
+  Win Rate: 26.0%
+  Avg PnL: $-15.50
+  Avg Duration: 0.0h
+  Total PnL: $-3332.67
+
+RSIExtreme:
+  Count: 12
+  Win Rate: 100.0%
+  Avg PnL: $26.84
+  Avg Duration: 0.0h
+  Total PnL: $322.14
+
+EndOfTest:
+  Count: 15
+  Win Rate: 20.0%
+  Avg PnL: $-8.07
+  Avg Duration: 0.0h
+  Total PnL: $-120.98
+
+EarlyLossExit:
+  Count: 7
+  Win Rate: 0.0%
+  Avg PnL: $-179.87
+  Avg Duration: 0.0h
+  Total PnL: $-1259.10
+
+Optimal Trade Duration
+---------------------
+Optimal Hold Time: 24.0h
+Confidence: low
+Data Points: 0
+Avg Trade Duration: 0.0h
+Avg Profitable Duration: 0.0h

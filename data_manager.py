@@ -23,7 +23,7 @@ class DataManager:
         self.csv_30m = config.get("data", "csv_30m")
         self.use_api = config.get("data", "use_api", False)
         self.extended_data = config.get("data", "fetch_extended_data", True)
-        self.min_candles = config.get("data", "min_candles", 25000)
+        self.min_candles = config.get("data", "min_candles", 15000)
 
         self.client = None
         if BINANCE_AVAILABLE and self.use_api:
@@ -44,7 +44,7 @@ class DataManager:
         return df_30m
 
     def fetch_30m_data(self, live: bool = False, extended: bool = True,
-                       min_candles: int = 25000) -> pd.DataFrame:
+                       min_candles: int = 15000) -> pd.DataFrame:
         cache_key = f"30m_{extended}_{min_candles}"
         if not live and cache_key in self.data_cache:
             self.logger.info("Using cached 30m data")
@@ -65,7 +65,7 @@ class DataManager:
         self.logger.info(f"Fetching 30m data from Binance API {'(extended)' if extended else ''}")
 
         try:
-            lookback_candles = min_candles if extended else 25000
+            lookback_candles = min_candles if extended else 15000
             start_time = int((datetime.now().timestamp() - (lookback_candles * 30 * 60)) * 1000)
 
             all_klines = []

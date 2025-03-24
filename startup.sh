@@ -30,7 +30,7 @@ fi
 # Run the application with proper logging
 echo "Running backtesting..."
 python main.py --mode backtest $API_FLAG "$@"
-
+#python main.py --mode optimize-features --optuna-trials 50 $API_FLAG "$@"
 # Check exit code
 exit_code=$?
 if [ $exit_code -ne 0 ]; then
