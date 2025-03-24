@@ -263,7 +263,7 @@ class Config:
                 "track_indicator_metrics": True,
                 "enhanced_exit_analysis": True,
                 "track_exit_performance": True,
-                "optimize_every_n_iterations": 1
+                "optimize_every_n_iterations": 3
             }
         }
 
