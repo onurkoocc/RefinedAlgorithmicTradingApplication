@@ -519,8 +519,29 @@ class MarketSimulator:
             )
             self.equity_curve.append(self.portfolio_manager.current_capital)
 
+    def should_skip_trade(self, timestamp):
+        if not isinstance(timestamp, datetime):
+            return False
+
+        weekday = timestamp.weekday()
+        hour = timestamp.hour
+
+        if (weekday == 5 and hour >= 2) or weekday == 6 or (weekday == 0 and hour < 6):
+            return True
+
+        if 2 <= hour < 6:
+            return True
+
+        if 22 <= hour < 23:
+            return True
+
+        return False
+
     def _evaluate_new_entry(self, i, row_idx, model_probs, current_time, current_price, df_labeled,
                             signal_generator, risk_manager):
+        if self.should_skip_trade(current_time):
+            return
+
         min_hours_adjusted = self._get_adjusted_min_hours()
         if self.last_signal_time is not None:
             hours_since_last = (current_time - self.last_signal_time).total_seconds() / 3600
