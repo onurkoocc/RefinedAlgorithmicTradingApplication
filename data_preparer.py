@@ -39,7 +39,7 @@ class DataPreparer:
         self.normalization_stats = {}
 
         self.train_features = None
-        self.max_features = config.get("model", "max_features", 70)
+        self.max_features = config.get("model", "max_features", 40)
 
         self.essential_features = [
             "open", "high", "low", "close", "volume",
@@ -48,7 +48,7 @@ class DataPreparer:
             "atr_14", "obv", "cmf_20",
             "adx_14", "plus_di_14", "minus_di_14",
             "macd_12_26", "macd_signal_12_26_9", "macd_histogram_12_26_9",
-            "market_regime", "volatility_regime"
+            "market_regime", "volatility_regime", 'hour_sin', 'hour_cos', 'day_of_week_sin', 'day_of_week_cos'
         ]
 
         # Create Optuna feature selector
@@ -69,7 +69,11 @@ class DataPreparer:
             "market_regime": 0,
             "volatility_regime": 0.5,
             "taker_buy_ratio": 0.5,
-            "mfi": 50
+            "mfi": 50,
+            "hour_sin": 0,
+            "hour_cos": 1,  # Midnight default
+            "day_of_week_sin": 0,
+            "day_of_week_cos": 1  # Monday default
         }
 
         self._load_scaler_and_features()
@@ -143,15 +147,14 @@ class DataPreparer:
 
         actual_cols = [col for col in df.columns if col.startswith('actual_')]
 
-        # Check if we should run Optuna feature optimization
-        if self.use_optuna_features and (self.optimized_features is None):
+        if self.use_optuna_features:
             self.logger.info("Running Optuna feature optimization...")
             self.optimized_features = self.optuna_feature_selector.optimize_features(df)
 
         # Use Optuna-optimized features if available
         if self.use_optuna_features and self.optimized_features:
             self.train_features = self._filter_available_features(df, self.optimized_features)
-            self.logger.info(f"Using {len(self.train_features)} Optuna-optimized features")
+            self.logger.info(f"Using {len(self.train_features)} Optuna-optimized features for current iteration")
         else:
             self.train_features = self._get_available_features(df)
             self.logger.info(f"Using {len(self.train_features)} standard features")
@@ -420,6 +423,23 @@ class DataPreparer:
     def _impute_missing_feature(self, df: pd.DataFrame, feature: str) -> pd.Series:
         if feature in self.fallback_indicators:
             return pd.Series(self.fallback_indicators[feature], index=df.index)
+
+        # Time features - calculate them if possible
+        if feature in ['hour_sin', 'hour_cos', 'day_of_week_sin', 'day_of_week_cos']:
+            try:
+                if not isinstance(df.index, pd.DatetimeIndex):
+                    df_with_datetime = df.copy()
+                    df_with_datetime.index = pd.to_datetime(df_with_datetime.index)
+                    time_features = self.optuna_feature_selector.data_preparer.indicator_util.calculate_time_features(
+                        df_with_datetime)
+                    if feature in time_features.columns:
+                        return time_features[feature]
+            except:
+                # Fall back to default values
+                if feature == 'hour_sin': return pd.Series(0, index=df.index)
+                if feature == 'hour_cos': return pd.Series(1, index=df.index)
+                if feature == 'day_of_week_sin': return pd.Series(0, index=df.index)
+                if feature == 'day_of_week_cos': return pd.Series(1, index=df.index)
 
         if feature in ['open', 'high', 'low'] and 'close' in df.columns:
             return df['close'].copy()
@@ -720,8 +740,9 @@ class DataPreparer:
         return df_clean
 
     def optimize_features(self, df_features):
-        """Run Optuna feature optimization directly"""
         if self.use_optuna_features:
+            # Force optimization regardless of whether optimized_features already exists
+            self.logger.info("Running Optuna feature optimization for current iteration...")
             self.optimized_features = self.optuna_feature_selector.optimize_features(df_features)
             return self.optimized_features
         return None

@@ -1,4 +1,6 @@
 import logging
+from gc import collect
+
 import numpy as np
 import pandas as pd
 from datetime import datetime, timedelta
@@ -54,6 +56,10 @@ class BacktestEngine:
 
     def run_backtest(self, df_features: pd.DataFrame) -> pd.DataFrame:
         self.logger.info("Starting backtest with advanced signal generation and exit strategies")
+        # Force reset model between iterations
+        if hasattr(self.model, 'model'):
+            self.model.model = None
+        tf.keras.backend.clear_session()
 
         if len(df_features) < (self.train_window_size + self.test_window_size):
             self.logger.error(
@@ -80,6 +86,7 @@ class BacktestEngine:
                 self._update_optimization_parameters(iteration_result)
 
             tf.keras.backend.clear_session()
+            collect()
 
         self._process_consolidated_results(all_results)
         return self._create_results_dataframe(all_results)
@@ -122,6 +129,10 @@ class BacktestEngine:
 
     def _train_model_for_window(self, train_df: pd.DataFrame) -> bool:
         try:
+            tf.keras.backend.clear_session()
+            if hasattr(self.model, 'model'):
+                self.model.model = None
+
             prepared_data = self.data_preparer.prepare_data(train_df)
 
             if not prepared_data or len(prepared_data[0]) == 0:
@@ -129,12 +140,6 @@ class BacktestEngine:
                 return False
 
             X_train, y_train, X_val, y_val, df_val, fwd_returns_val = prepared_data
-
-            if hasattr(self.model, 'model') and self.model.model is not None:
-                validation_score = self._validate_existing_model(X_val, y_val)
-                if validation_score >= self.config.get("backtest", "train_confidence_threshold", 0.65):
-                    self.logger.info(f"Skipping retraining as model validation score is good: {validation_score:.4f}")
-                    return True
 
             class_weights = self._compute_class_weights(y_train)
             self.model.train_model(X_train, y_train, X_val, y_val, df_val, fwd_returns_val, class_weight=class_weights)
@@ -1149,7 +1154,7 @@ class WalkForwardManager:
         if df_len < min_required:
             return []
 
-        step_size =test_size
+        step_size = test_size
         available_steps = (df_len - min_required) // step_size + 1
         max_iterations = min(num_windows, available_steps)
 
@@ -1172,7 +1177,8 @@ class WalkForwardManager:
                 "test_start": df.index[train_end],
                 "test_end": df.index[test_end - 1],
                 "train_size": len(train_df),
-                "test_size": len(test_df)
+                "test_size": len(test_df),
+                "iteration": i + 1
             }
 
             windows.append((train_df, test_df, window_info))

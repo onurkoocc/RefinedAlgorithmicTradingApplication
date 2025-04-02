@@ -16,6 +16,9 @@ class IndicatorUtil:
 
         df = df.copy()
 
+        # Add time-based features
+        df = self.calculate_time_features(df)
+
         # Trend Indicators
         df = self.calculate_ema(df, [9, 21, 50])
 
@@ -39,6 +42,27 @@ class IndicatorUtil:
         df = self.calculate_bb_width(df)
 
         return df
+
+    def calculate_time_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        df_out = df.copy()
+
+        if not isinstance(df_out.index, pd.DatetimeIndex):
+            try:
+                df_out.index = pd.to_datetime(df_out.index)
+            except:
+                return df_out
+
+        # Hour features - sin/cos encoding for cyclical nature
+        hours = df_out.index.hour
+        df_out['hour_sin'] = np.sin(2 * np.pi * hours / 24.0)
+        df_out['hour_cos'] = np.cos(2 * np.pi * hours / 24.0)
+
+        # Day of week features - sin/cos encoding for cyclical nature
+        day_of_week = df_out.index.dayofweek  # 0=Monday, 6=Sunday
+        df_out['day_of_week_sin'] = np.sin(2 * np.pi * day_of_week / 7.0)
+        df_out['day_of_week_cos'] = np.cos(2 * np.pi * day_of_week / 7.0)
+
+        return df_out
 
     def calculate_ema(self, df: pd.DataFrame, periods: List[int]) -> pd.DataFrame:
         df_out = df.copy()

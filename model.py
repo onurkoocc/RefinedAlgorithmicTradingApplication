@@ -32,13 +32,16 @@ class OptimizedGrowthMetricCallback(tf.keras.callbacks.Callback):
             y_val,
             fwd_returns_val,
             monthly_target=0.08,
-            threshold_pct=0.4,
+            threshold_pct=0.6,
             model_idx=None,
             transaction_cost=0.001,
-            drawdown_weight=1.2,
+            drawdown_weight=1.8,
             avg_return_weight=1.0,
-            consistency_weight=0.8,
-            fixed_threshold=None
+            consistency_weight=1.2,
+            fixed_threshold=None,
+            volatility_lookback=30,
+            adaptive_threshold=True,
+            min_trades_penalty=True
     ):
         super().__init__()
         self.X_val = X_val
@@ -52,6 +55,9 @@ class OptimizedGrowthMetricCallback(tf.keras.callbacks.Callback):
         self.avg_return_weight = avg_return_weight
         self.consistency_weight = consistency_weight
         self.fixed_threshold = fixed_threshold
+        self.volatility_lookback = volatility_lookback
+        self.adaptive_threshold = adaptive_threshold
+        self.min_trades_penalty = min_trades_penalty
         self.trade_periods_per_month = 1440
         self.best_metrics = {
             'growth_score': -np.inf,
@@ -64,6 +70,9 @@ class OptimizedGrowthMetricCallback(tf.keras.callbacks.Callback):
         }
         self.historical_returns = []
         self.threshold_history = []
+        self.max_drawdown_threshold = 0.15
+        self.consecutive_loss_scale = 0.85
+        self.max_position_size = 0.5
 
     def on_epoch_end(self, epoch, logs=None):
         logs = logs or {}
@@ -72,18 +81,11 @@ class OptimizedGrowthMetricCallback(tf.keras.callbacks.Callback):
             return
 
         try:
-            batch_size = min(len(self.X_val), 256)
+            batch_size = min(len(self.X_val), 128)
             y_pred = self.model.predict(self.X_val, verbose=0, batch_size=batch_size)
             y_pred = np.nan_to_num(y_pred, nan=0.0, posinf=0.0, neginf=0.0)
 
-            if self.fixed_threshold is not None:
-                threshold = self.fixed_threshold
-            else:
-                sorted_preds = np.sort(np.abs(y_pred).flatten())
-                threshold_idx = max(1, int(len(sorted_preds) * (1 - self.threshold_pct)))
-                threshold = sorted_preds[threshold_idx] if len(sorted_preds) > threshold_idx else 0.0007
-                threshold = max(threshold, 0.0004)
-
+            threshold = self._determine_threshold(y_pred)
             self.threshold_history.append(threshold)
 
             trade_indices = np.where(np.abs(y_pred) > threshold)[0]
@@ -98,6 +100,55 @@ class OptimizedGrowthMetricCallback(tf.keras.callbacks.Callback):
             import traceback
             print(traceback.format_exc())
             self._update_logs_with_defaults(logs)
+
+    def _determine_threshold(self, y_pred):
+        if self.fixed_threshold is not None:
+            return self.fixed_threshold
+
+        sorted_preds = np.sort(np.abs(y_pred).flatten())
+        threshold_idx = max(1, int(len(sorted_preds) * (1 - self.threshold_pct)))
+        base_threshold = sorted_preds[threshold_idx] if len(sorted_preds) > threshold_idx else 0.001
+        base_threshold = max(base_threshold, 0.001)
+
+        if not self.adaptive_threshold:
+            return base_threshold
+
+        volatility = self._calculate_volatility()
+        base_volatility = 0.01
+        volatility_factor = volatility / base_volatility
+
+        market_regime = self._detect_market_regime()
+        regime_factor = 1.0
+        if market_regime == "bullish":
+            regime_factor = 0.9
+        elif market_regime == "bearish":
+            regime_factor = 1.2
+        elif market_regime == "volatile":
+            regime_factor = 1.5
+
+        return base_threshold * volatility_factor * regime_factor
+
+    def _calculate_volatility(self):
+        lookback = min(self.volatility_lookback, len(self.fwd_returns_val))
+        recent_returns = self.fwd_returns_val[-lookback:]
+        return np.std(recent_returns)
+
+    def _detect_market_regime(self):
+        if len(self.fwd_returns_val) < 20:
+            return "neutral"
+
+        recent_returns = self.fwd_returns_val[-20:]
+        avg_return = np.mean(recent_returns)
+        volatility = np.std(recent_returns)
+
+        if volatility > 0.02:
+            return "volatile"
+        elif avg_return > 0.5 * volatility:
+            return "bullish"
+        elif avg_return < -0.5 * volatility:
+            return "bearish"
+        else:
+            return "neutral"
 
     def _update_logs_with_defaults(self, logs):
         logs['growth_score'] = 0.0
@@ -119,27 +170,69 @@ class OptimizedGrowthMetricCallback(tf.keras.callbacks.Callback):
         win_count = 0
         profit_sum = 0
         loss_sum = 0
+        win_amounts = []
+        loss_amounts = []
 
         equity_curve = [1.0]
         trade_timestamps = []
+
+        market_volatility = self._calculate_volatility()
+        transaction_cost = self.transaction_cost * (1 + 0.5 * market_volatility / 0.01)
+
+        consecutive_losses = 0
+        max_trades_per_day = 5
+        trades_today = 0
+        current_day = 0
 
         for idx in trade_indices:
             if idx >= len(self.fwd_returns_val):
                 continue
 
+            day_of_trade = idx // 48  # Assuming 48 periods per day
+
+            # Reset trade counter for new day
+            if day_of_trade > current_day:
+                current_day = day_of_trade
+                trades_today = 0
+
+            # Skip if exceeded max trades per day
+            if trades_today >= max_trades_per_day:
+                continue
+
+            trades_today += 1
+
             actual_return = float(self.fwd_returns_val[idx])
             pred_direction = np.sign(y_pred[idx].flatten()[0])
-            trade_return = float(pred_direction * actual_return) - self.transaction_cost
+
+            # Dynamic position sizing with confidence and drawdown controls
+            pred_confidence = abs(y_pred[idx].flatten()[0])
+            position_size = min(self.max_position_size, max(0.2, pred_confidence / 0.005))
+
+            # Apply consecutive loss scaling
+            if consecutive_losses >= 3:
+                position_size *= max(0.3, self.consecutive_loss_scale ** (consecutive_losses - 2))
+
+            trade_return = float(pred_direction * actual_return * position_size) - transaction_cost
             trade_returns.append(trade_return)
 
             if trade_return > 0:
                 win_count += 1
                 profit_sum += trade_return
+                win_amounts.append(trade_return)
+                consecutive_losses = 0
             else:
                 loss_sum += abs(trade_return)
+                loss_amounts.append(trade_return)
+                consecutive_losses += 1
 
-            equity_curve.append(equity_curve[-1] * (1.0 + trade_return))
+            current_equity = equity_curve[-1] * (1.0 + trade_return)
+            equity_curve.append(current_equity)
             trade_timestamps.append(idx)
+
+            # Check if max drawdown threshold is breached
+            current_drawdown = 1.0 - (current_equity / max(equity_curve))
+            if current_drawdown > self.max_drawdown_threshold:
+                break
 
         n_trades = len(trade_returns)
         if n_trades == 0:
@@ -213,9 +306,9 @@ class OptimizedGrowthMetricCallback(tf.keras.callbacks.Callback):
         growth_factor = (1.0 + avg_return) ** trades_per_month
         monthly_growth = growth_factor - 1.0
 
+        window_size = min(max(5, n_trades // 10), 20, n_trades)
         returns_sequence = np.array(trade_returns)
         rolling_returns = []
-        window_size = min(10, len(returns_sequence))
 
         for i in range(len(returns_sequence) - window_size + 1):
             rolling_returns.append(np.mean(returns_sequence[i:i + window_size]))
@@ -240,11 +333,7 @@ class OptimizedGrowthMetricCallback(tf.keras.callbacks.Callback):
         recovery_efficiency = n_trades / max(avg_recovery, 1.0)
 
         growth_distance = min(2.0, monthly_growth / self.monthly_target)
-
-        dd_penalty_factor = 6.0
-        dd_penalty = 1.0 - min(1.0, max_drawdown * dd_penalty_factor)
-
-        self.drawdown_weight = 1.2
+        dd_penalty = np.exp(-6.0 * max_drawdown)
 
         growth_score = (
                                self.avg_return_weight * growth_distance +
@@ -252,19 +341,18 @@ class OptimizedGrowthMetricCallback(tf.keras.callbacks.Callback):
                                self.consistency_weight * min(3.0, consistency_score)
                        ) / (self.avg_return_weight + self.drawdown_weight + self.consistency_weight)
 
-        growth_score *= (0.4 + 0.6 * min(1.0, profit_factor / 2.0))
+        growth_score += 0.2 * min(1.0, sortino_ratio / 2.0)
 
-        consecutive_loss_penalty = min(0.3, max_consecutive_losses * 0.05)
+        profit_factor_term = 0.4 + 0.6 * min(1.0, profit_factor / 2.0)
+        growth_score *= profit_factor_term
+
+        consecutive_loss_penalty = min(0.5, max_consecutive_losses * 0.06)
         growth_score *= (1.0 - consecutive_loss_penalty)
 
         growth_score *= (0.65 + 0.35 * min(1.0, recovery_efficiency))
 
-        if trades_per_month < 20:
-            growth_score *= 0.75
-        if max_drawdown > 0.20:
-            growth_score *= 0.5
-        elif max_drawdown > 0.15:
-            growth_score *= 0.75
+        if self.min_trades_penalty and trades_per_month < 20:
+            growth_score *= max(0.5, trades_per_month / 40)
 
         logs['growth_score'] = float(growth_score)
         logs['monthly_growth'] = float(monthly_growth)
@@ -325,7 +413,7 @@ class OptimizedGrowthMetricCallback(tf.keras.callbacks.Callback):
 
 
 class NoisySequence(tf.keras.utils.Sequence):
-    def __init__(self, X, y, batch_size, noise_level=0.015, data_augmentation=True, **kwargs):
+    def __init__(self, X, y, batch_size, noise_level=0.01, data_augmentation=True, **kwargs):
         super().__init__(**kwargs)
         self.X = X
         self.y = y
@@ -349,11 +437,11 @@ class NoisySequence(tf.keras.utils.Sequence):
 
         if self.data_augmentation:
             for i in range(len(batch_X)):
-                if np.random.random() < 0.4:
+                if np.random.random() < 0.3:
                     start = np.random.randint(0, batch_X.shape[1] // 4)
                     batch_X[i] = np.roll(batch_X[i], shift=start, axis=0)
 
-            mask_prob = 0.25
+            mask_prob = 0.2
             mask = np.random.random(batch_X.shape) > mask_prob
             batch_X = batch_X * mask
 
@@ -372,44 +460,40 @@ class OptimizedHybridModel:
         self.logger = logging.getLogger("OptimizedHybridModel")
         self.training_metrics = []
 
-        # Best parameters from optimization
         self.best_params = {
-            "projection_size": 96,
-            "transformer_heads": 8,
-            "transformer_dropout": 0.31,
-            "recurrent_units": 60,
-            "recurrent_dropout": 0.11,
-            "dropout": 0.2,
-            "dense_units1": 68,
-            "dense_units2": 18,
-            "l2_lambda": 3.058656666978529e-05,
-            "learning_rate": 5.4120091907504824e-05,
-            "epochs": 15
+            "projection_size": 64,  # Reduced from 96
+            "transformer_heads": 4,  # Reduced from 8
+            "transformer_dropout": 0.4,  # Increased from 0.31
+            "recurrent_units": 40,  # Reduced from 60
+            "recurrent_dropout": 0.2,  # Increased from 0.11
+            "dropout": 0.3,  # Increased from 0.2
+            "dense_units1": 64,  # Reduced from 96
+            "dense_units2": 32,  # Reduced from 48
+            "l2_lambda": 1e-4,  # Increased from 3.058e-05
+            "learning_rate": 1e-5,  # Reduced from 5.412e-05
+            "epochs": 24
         }
 
     def build_model(self):
+        tf.keras.backend.clear_session()
         inputs = Input(shape=self.input_shape, dtype=tf.float32, name="hybrid_input")
         x = BatchNormalization(momentum=0.99, epsilon=1e-5)(inputs)
 
-        # First stage: transformer with optimized parameters
         projection_size = self.best_params["projection_size"]
         transformer_heads = self.best_params["transformer_heads"]
         transformer_dropout = self.best_params["transformer_dropout"]
 
         x = Dense(projection_size, activation='linear')(x)
 
-        # Apply position encoding
         pos_encoding = self._positional_encoding(self.input_shape[0], projection_size)
         x = Lambda(lambda x: x + tf.cast(pos_encoding, x.dtype))(x)
 
-        # Transformer encoder layers
-        for i in range(2):
-            x = self._transformer_encoder_layer(x, units=projection_size,
-                                                num_heads=transformer_heads,
-                                                dropout=transformer_dropout,
-                                                name=f"hybrid_transformer_{i}")
+        # Reduce to only 1 transformer layer instead of 2
+        x = self._transformer_encoder_layer(x, units=projection_size,
+                                            num_heads=transformer_heads,
+                                            dropout=transformer_dropout,
+                                            name="hybrid_transformer_0")
 
-        # Second stage: GRU
         recurrent_units = self.best_params["recurrent_units"]
         recurrent_dropout = self.best_params["recurrent_dropout"]
         dropout_rate = self.best_params["dropout"]
@@ -420,13 +504,11 @@ class OptimizedHybridModel:
         recurrent_out = Dropout(dropout_rate)(recurrent_out)
         x = recurrent_out
 
-        # Final attention mechanism
         attention_score = Dense(1, activation='tanh')(x)
         attention_weights = SoftmaxLayer(axis=1)(attention_score)
         context_vector = Multiply()([x, attention_weights])
         x = GlobalAveragePooling1D()(context_vector)
 
-        # Final dense layers
         dense_units1 = self.best_params["dense_units1"]
         dense_units2 = self.best_params["dense_units2"]
         l2_lambda = self.best_params["l2_lambda"]
@@ -442,7 +524,7 @@ class OptimizedHybridModel:
 
         model = Model(inputs, outputs, name="optimized_hybrid_model")
         learning_rate = self.best_params["learning_rate"]
-        optimizer = AdamW(learning_rate=learning_rate, weight_decay=1e-4)
+        optimizer = AdamW(learning_rate=learning_rate, weight_decay=1e-4, clipnorm=1.0)
         model.compile(optimizer=optimizer, loss=self._direction_enhanced_mse, metrics=['mae'])
 
         self.model = model
@@ -478,7 +560,7 @@ class OptimizedHybridModel:
         focal_weight = tf.pow(1.0 - direction_match, gamma)
         focal_direction_loss = focal_weight * direction_loss
 
-        return mse_loss + (self.config.get("model", "direction_loss_weight", 0.65) * focal_direction_loss)
+        return mse_loss + (0.5 * focal_direction_loss)
 
     def train(self, train_seq, X_val, y_val, fwd_returns_val, callbacks=None):
         if self.model is None:
@@ -489,7 +571,7 @@ class OptimizedHybridModel:
             OptimizedGrowthMetricCallback(X_val, y_val, fwd_returns_val),
             tf.keras.callbacks.EarlyStopping(
                 monitor='growth_score',
-                patience=5,
+                patience=8,  # Increased from 5
                 mode='max',
                 restore_best_weights=True
             )
@@ -554,11 +636,11 @@ class TradingModel:
         self.model_path = config.get("model", "model_path")
         self.sequence_length = config.get("model", "sequence_length", 72)
         self.horizon = config.get("model", "horizon", 16)
-        self.batch_size = config.get("model", "batch_size", 256)
-        self.epochs = config.get("model", "epochs", 20)
-        self.early_stopping_patience = config.get("model", "early_stopping_patience", 5)
-        self.initial_learning_rate = config.get("model", "initial_learning_rate", 3e-4)
-        self.direction_loss_weight = config.get("model", "direction_loss_weight", 0.65)
+        self.batch_size = config.get("model", "batch_size", 128)
+        self.epochs = config.get("model", "epochs", 32)
+        self.early_stopping_patience = config.get("model", "early_stopping_patience", 8)
+        self.initial_learning_rate = config.get("model", "initial_learning_rate", 1e-5)
+        self.direction_loss_weight = config.get("model", "direction_loss_weight", 0.5)
         self.results_dir = Path(config.results_dir)
         self.model_dir = self.results_dir / "models"
         self.model_dir.mkdir(exist_ok=True, parents=True)
@@ -595,18 +677,6 @@ class TradingModel:
         except Exception as e:
             self.logger.warning(f"Error configuring GPU: {e}")
 
-    def _calculate_optimal_batch_size(self, X_train):
-        try:
-            import psutil
-            data_size_mb = X_train.nbytes / (1024 * 1024)
-            available_memory = psutil.virtual_memory().available / (1024 * 1024)
-            memory_limit = available_memory * 0.2
-            samples_per_batch = max(16, int(memory_limit / (data_size_mb / len(X_train)) / 4))
-            power_of_2 = 2 ** int(np.log2(samples_per_batch))
-            return max(16, min(power_of_2, self.batch_size))
-        except:
-            return self.batch_size
-
     def _get_callbacks(self, X_val, y_val, fwd_returns_val, feature_names=None):
         checkpoint_path = self.model_path
         os.makedirs(os.path.dirname(checkpoint_path), exist_ok=True)
@@ -618,7 +688,7 @@ class TradingModel:
                 patience=self.early_stopping_patience,
                 mode='max',
                 restore_best_weights=True,
-                min_delta=0.0001,
+                min_delta=0.0005,
                 verbose=1
             ),
             tf.keras.callbacks.ModelCheckpoint(
@@ -632,7 +702,7 @@ class TradingModel:
         ]
 
         class GradientNoiseCallback(tf.keras.callbacks.Callback):
-            def __init__(self, start_epoch=5, noise_stddev=1e-4, decay_rate=0.55):
+            def __init__(self, start_epoch=5, noise_stddev=1e-4, decay_rate=0.6):
                 super().__init__()
                 self.start_epoch = start_epoch
                 self.initial_stddev = noise_stddev
@@ -642,7 +712,7 @@ class TradingModel:
             def on_epoch_begin(self, epoch, logs=None):
                 if epoch >= self.start_epoch:
                     self.noise_stddev = self.initial_stddev * (
-                    (1.0 / (1.0 + self.decay_rate * (epoch - self.start_epoch))))
+                        (1.0 / (1.0 + self.decay_rate * (epoch - self.start_epoch))))
 
             def on_batch_end(self, batch, logs=None):
                 if hasattr(self.model.optimizer, 'get_weights') and hasattr(self.model.optimizer, 'set_weights'):
@@ -658,8 +728,8 @@ class TradingModel:
 
         def lr_schedule(epoch, lr):
             if epoch < 5:
-                return initial_lr * (epoch + 1) / 5.0
-            return initial_lr * (0.4 ** ((epoch - 5) // 4))
+                return initial_lr
+            return initial_lr * (0.85 ** ((epoch - 5) // 3))
 
         callbacks.append(tf.keras.callbacks.LearningRateScheduler(lr_schedule))
 
@@ -674,13 +744,16 @@ class TradingModel:
         y_train = np.clip(y_train, -1.0, 1.0).reshape(-1, 1) if len(y_train.shape) == 1 else y_train
         y_val = np.clip(y_val, -1.0, 1.0).reshape(-1, 1) if len(y_val.shape) == 1 else y_val
 
+        self.model = None
+        tf.keras.backend.clear_session()
+
         input_shape = (X_train.shape[1], X_train.shape[2])
         feature_names = df_val.columns.tolist() if hasattr(df_val, 'columns') else None
-        batch_size = self._calculate_optimal_batch_size(X_train)
+        batch_size = self.batch_size
         self.logger.info(f"Using batch size: {batch_size}")
 
         callbacks = self._get_callbacks(X_val, y_val, fwd_returns_val, feature_names)
-        train_seq = NoisySequence(X_train, y_train, batch_size, noise_level=0.015, data_augmentation=True)
+        train_seq = NoisySequence(X_train, y_train, batch_size, noise_level=0.01, data_augmentation=True)
 
         self.logger.info("Creating model with optimized parameters")
         hybrid_model = OptimizedHybridModel(self.config, input_shape, feature_names)

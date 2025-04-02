@@ -19,3 +19,4 @@ optuna==3.1.0
 sqlalchemy==2.0.25
 alembic==1.13.1
 plotly==5.18.0
+lightgbm

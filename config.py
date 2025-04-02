@@ -44,18 +44,21 @@ class Config:
                 "chunk_size": 2000,
                 "correlation_threshold": 0.9,
                 "use_optuna_features": True,
-                "optuna_n_trials": 30,
+                "optuna_n_trials": 100,
                 "optuna_timeout": 3600,
-                "optuna_metric": "growth_score", # Options: growth_score, r2, directional_accuracy
+                "optuna_metric": "growth_score",
                 "feature_selection_method": "importance",
                 "use_adaptive_features": False,
+                "dynamic_feature_count": 35,  # Reduced from original
+                "max_features": 40,  # Added explicit max features cap
                 "essential_features": [
                     "open", "high", "low", "close", "volume",
                     "ema_9", "ema_21", "ema_50", "sma_200",
                     "rsi_14", "bb_middle_20", "bb_upper_20", "bb_lower_20", "bb_width_20",
                     "atr_14", "obv", "cmf_20",
                     "adx_14", "plus_di_14", "minus_di_14",
-                    "macd_12_26", "macd_signal_12_26_9", "macd_histogram_12_26_9"
+                    "macd_12_26", "macd_signal_12_26_9", "macd_histogram_12_26_9",
+                    "hour_sin", "hour_cos", "day_of_week_sin", "day_of_week_cos"
                 ],
                 "indicators_to_compute": [
                     "ema_9", "ema_21", "ema_50", "sma_200",
@@ -210,8 +213,8 @@ class Config:
                 "atr_multiplier_sl": 2.2,
                 "use_regime_filter": True,
                 "use_volatility_filter": True,
-                "rsi_overbought": 70,
-                "rsi_oversold": 30,
+                "rsi_overbought": 75,
+                "rsi_oversold": 25,
                 "return_threshold": 0.00015,
                 "trending_threshold": 26,
                 "ranging_threshold": 18
@@ -221,31 +224,48 @@ class Config:
                 "horizon": 16,
                 "normalize_method": "feature_specific",
                 "train_ratio": 0.7,
-                "epochs": 20,
-                "batch_size": 256,
+                "epochs": 24,  # Reduced from 32
+                "batch_size": 128,
                 "use_mixed_precision": True,
-                "early_stopping_patience": 5,
-                "dropout_rate": 0.25,  # Increased from previous value (targeting mid-range of 0.15-0.35)
-                "dropout_min": 0.15,  # New: Min dropout for Optuna search range
-                "dropout_max": 0.35,  # New: Max dropout for Optuna search range
-                "recurrent_dropout_max": 0.2,  # New: Max recurrent dropout for LSTM/GRUs
-                "l2_reg": 1e-5,  # Base L2 regularization value
-                "l2_min": 1e-6,  # New: Min L2 regularization for Optuna search
-                "l2_max": 1e-3,  # New: Max L2 regularization for Optuna search
+                "early_stopping_patience": 8,
+                "dropout_rate": 0.3,  # Increased from 0.25
+                "dropout_min": 0.2,  # Increased from 0.15
+                "dropout_max": 0.4,  # Increased from 0.35
+                "recurrent_dropout": 0.2,  # Added explicit parameter
+                "recurrent_units": 40,  # Added explicit parameter
+                "dense_units1": 64,  # Added explicit parameter
+                "dense_units2": 32,  # Added explicit parameter
+                "l2_reg": 1e-4,  # Increased from 1e-5
+                "l2_min": 1e-5,  # Increased from 1e-6
+                "l2_max": 1e-3,
                 "attention_enabled": True,
-                "use_ensemble": True,
+                "use_ensemble": False,  # Changed from True to simplify
                 "optuna_trials": 10,
                 "optuna_timeout": 3600,
-                "initial_learning_rate": 3e-4,
-                "lr_decay_factor": 0.4,  # Updated from 0.5 to 0.4 for faster decay
-                "direction_loss_weight": 0.6,
-                "max_features": 70,
+                "initial_learning_rate": 1e-5,  # Reduced from 3e-4
+                "lr_decay_factor": 0.85,  # Changed from 0.4 to slower decay
+                "direction_loss_weight": 0.5,  # Reduced from 0.7
+                "max_features": 48,
+                "clipnorm": 1.0,  # Added gradient clipping
                 "model_path": str(self.results_dir / "models" / "best_model.keras"),
-                "data_augmentation": {  # New section for data augmentation parameters
+                "transformer_params": {  # Added transformer parameters
+                    "projection_size": 64,
+                    "transformer_heads": 4,
+                    "transformer_dropout": 0.4,
+                    "layers": 1  # Explicitly set to 1 layer
+                },
+                "data_augmentation": {
                     "enabled": True,
-                    "noise_level": 0.015,  # Increased from 0.01
-                    "roll_probability": 0.4,  # Increased from 0.3
-                    "mask_probability": 0.25  # Increased from 0.2
+                    "noise_level": 0.01,  # Reduced from 0.015
+                    "roll_probability": 0.3,  # Reduced from 0.4
+                    "mask_probability": 0.2  # Reduced from 0.25
+                },
+                "risk_management": {  # Added risk management section
+                    "max_drawdown_threshold": 0.15,
+                    "consecutive_loss_scale": 0.85,
+                    "max_position_size": 0.5,
+                    "max_trades_per_day": 5,
+                    "min_threshold": 0.001
                 }
             },
             "backtest": {

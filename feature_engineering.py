@@ -49,6 +49,13 @@ class FeatureEngineer:
 
         self.logger.info(f"Available columns in input data: {df_30m.columns.tolist()}")
 
+        # Ensure datetime index for time features
+        if not isinstance(df_30m.index, pd.DatetimeIndex):
+            try:
+                df_30m.index = pd.to_datetime(df_30m.index)
+            except:
+                self.logger.warning("Failed to convert index to datetime")
+
         if self.use_chunking and len(df_30m) > self.chunk_size:
             final_df = self._process_data_in_chunks(df_30m, chunk_size=self.chunk_size)
         else:
@@ -63,11 +70,17 @@ class FeatureEngineer:
         final_df = self._store_actual_prices(final_df)
         final_df = self._standardize_column_names(final_df)
 
+        # Make sure time features exist (may have been added already, but check again)
+        if not all(col in final_df.columns for col in ['hour_sin', 'hour_cos', 'day_of_week_sin', 'day_of_week_cos']):
+            final_df = self.indicator_util.calculate_time_features(final_df)
+
         self.logger.info(f"Processed {len(final_df)} rows with {len(final_df.columns)} features")
         return final_df
 
     def compute_advanced_features(self, df: pd.DataFrame) -> pd.DataFrame:
         df = df.copy()
+
+        # Time features are already added by indicator_util.calculate_all_indicators
 
         df['market_regime'] = df.apply(
             lambda row: self._map_market_phase_to_regime(self.indicator_util.detect_market_phase(row.to_frame().T)),

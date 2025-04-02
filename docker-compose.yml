@@ -17,7 +17,7 @@ services:
       - TF_GPU_ALLOCATOR=cuda_malloc_async
       - TF_XLA_FLAGS=--tf_xla_auto_jit=2
       - TF_GPU_THREAD_MODE=gpu_private
-      - TF_GPU_THREAD_COUNT=2
+      - TF_GPU_THREAD_COUNT=4
       - TF_ENABLE_GPU_GARBAGE_COLLECTION=true
       # New transformer/ensemble settings
       - TF_ENABLE_ONEDNN_OPTS=1
