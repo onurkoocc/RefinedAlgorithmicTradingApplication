@@ -35,7 +35,7 @@ class OptunaFeatureSelector:
             'hour_sin', 'hour_cos', 'day_of_week_sin', 'day_of_week_cos'
         ])
 
-        self.max_features = config.get("model", "max_features", 40)
+        self.max_features = config.get("model", "max_features", 48)
         self.correlation_threshold = config.get("feature_engineering", "correlation_threshold", 0.9)
         self.score_threshold = 0.001
         self.best_features = None
@@ -62,7 +62,6 @@ class OptunaFeatureSelector:
         df_features = self._remove_correlated_features(df_features)
         self._precompute_feature_importances(df_features)
 
-        # For per-iteration optimization, create a new study each time
         if force_new:
             study_name = f"feature_optimization_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         else:
@@ -152,13 +151,14 @@ class OptunaFeatureSelector:
 
         params = {
             'n_estimators': 50,
-            'max_depth': 10,
+            'max_depth': 4,
+            'learning_rate': 0.015,
             'random_state': 42,
             'n_jobs': -1,
             'objective': 'regression',
-            'verbose': -1,  # Suppress output
-            'min_child_samples': 20,  # Avoid overfitting
-            'min_split_gain': 0.01  # Minimum gain required for split
+            'verbose': -1,
+            'min_child_samples': 20,
+            'min_split_gain': 0.01
         }
 
         import warnings
@@ -240,17 +240,16 @@ class OptunaFeatureSelector:
 
         tscv = TimeSeriesSplit(n_splits=3, test_size=len(X) // 5)
 
-        # Modify LightGBM parameters to avoid split warnings
         params = {
-            'n_estimators': trial.suggest_int('n_estimators', 30, 100),
-            'max_depth': trial.suggest_int('max_depth', 3, 10),
-            'learning_rate': trial.suggest_float('learning_rate', 0.01, 0.1, log=True),
+            'n_estimators': 50,
+            'max_depth': 4,
+            'learning_rate': 0.015,
             'objective': 'regression',
             'random_state': 42,
-            'min_child_samples': 20,  # Increase to avoid overfitting on small samples
-            'min_split_gain': 0.01,  # Set minimum gain required for split
-            'verbose': -1,  # Suppress LightGBM warnings
-            'min_data_in_leaf': 10  # Ensure enough data in each leaf
+            'min_child_samples': 20,
+            'min_split_gain': 0.01,
+            'verbose': -1,
+            'min_data_in_leaf': 10
         }
 
         direction_accuracy_scores = []
@@ -261,7 +260,6 @@ class OptunaFeatureSelector:
             y_train, y_test = y[train_idx], y[test_idx]
 
             try:
-                # Use a context manager to suppress specific warnings
                 import warnings
                 with warnings.catch_warnings():
                     warnings.filterwarnings("ignore", category=UserWarning)

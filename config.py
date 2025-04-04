@@ -43,22 +43,55 @@ class Config:
                 "use_chunking": True,
                 "chunk_size": 2000,
                 "correlation_threshold": 0.9,
-                "use_optuna_features": True,
+                "use_optuna_features": False,
                 "optuna_n_trials": 100,
                 "optuna_timeout": 3600,
                 "optuna_metric": "growth_score",
                 "feature_selection_method": "importance",
-                "use_adaptive_features": False,
-                "dynamic_feature_count": 35,  # Reduced from original
-                "max_features": 40,  # Added explicit max features cap
+                "use_adaptive_features": False,  # Changed from False
+                "dynamic_feature_count": 48,  # Increased from 50
+                "max_features": 48,  # Increased from 50
+                "use_only_essential_features": True,  # Changed from True
+                "use_cyclic_features": True,
+                "use_liquidity_features": True,
+                "use_market_impact_features": True,
                 "essential_features": [
-                    "open", "high", "low", "close", "volume",
-                    "ema_9", "ema_21", "ema_50", "sma_200",
-                    "rsi_14", "bb_middle_20", "bb_upper_20", "bb_lower_20", "bb_width_20",
-                    "atr_14", "obv", "cmf_20",
-                    "adx_14", "plus_di_14", "minus_di_14",
-                    "macd_12_26", "macd_signal_12_26_9", "macd_histogram_12_26_9",
-                    "hour_sin", "hour_cos", "day_of_week_sin", "day_of_week_cos"
+                    # Core price data
+                    'open', 'high', 'low', 'close', 'volume',
+
+                    # Volume dynamics
+                    'taker_buy_base_asset_volume', 'cumulative_delta', 'volume_imbalance_ratio',
+                    'volume_price_momentum',
+
+                    # Trend indicators
+                    'ema_9', 'ema_21', 'ema_50', 'sma_200',
+                    'adx_14', 'plus_di_14', 'minus_di_14',
+                    'trend_strength', 'ma_cross_velocity',
+
+                    # Momentum oscillators
+                    'rsi_14', 'rsi_roc_3', 'macd_histogram_12_26_9',
+
+                    # Volatility metrics
+                    'atr_14', 'bb_width_20', 'volatility_regime',
+
+                    # Market context
+                    'market_regime', 'mean_reversion_signal', 'price_impact_ratio',
+
+                    # Support/resistance
+                    'bb_percent_b', 'range_position', 'pullback_strength',
+
+                    # Time-based patterns
+                    'hour_sin', 'hour_cos', 'day_of_week_sin', 'day_of_week_cos',
+                    'cycle_phase', 'cycle_position',
+
+                    # Price action patterns
+                    'relative_candle_size', 'candle_body_ratio', 'gap',
+
+                    # Order flow
+                    'spread_pct', 'close_vwap_diff',
+
+                    # Adaptive volatility features
+                    'vol_norm_close_change', 'vol_norm_momentum'
                 ],
                 "indicators_to_compute": [
                     "ema_9", "ema_21", "ema_50", "sma_200",
@@ -224,43 +257,35 @@ class Config:
                 "horizon": 16,
                 "normalize_method": "feature_specific",
                 "train_ratio": 0.7,
-                "epochs": 24,  # Reduced from 32
+                "epochs": 24,
                 "batch_size": 128,
                 "use_mixed_precision": True,
-                "early_stopping_patience": 8,
-                "dropout_rate": 0.3,  # Increased from 0.25
-                "dropout_min": 0.2,  # Increased from 0.15
-                "dropout_max": 0.4,  # Increased from 0.35
-                "recurrent_dropout": 0.2,  # Added explicit parameter
-                "recurrent_units": 40,  # Added explicit parameter
-                "dense_units1": 64,  # Added explicit parameter
-                "dense_units2": 32,  # Added explicit parameter
-                "l2_reg": 1e-4,  # Increased from 1e-5
-                "l2_min": 1e-5,  # Increased from 1e-6
-                "l2_max": 1e-3,
+                "early_stopping_patience": 12,
+                "dropout_rate": 0.35,
+                "recurrent_dropout": 0.25,
+                "recurrent_units": 32,
+                "dense_units1": 48,
+                "dense_units2": 24,
+                "l2_reg": 1e-3,
                 "attention_enabled": True,
-                "use_ensemble": False,  # Changed from True to simplify
-                "optuna_trials": 10,
-                "optuna_timeout": 3600,
-                "initial_learning_rate": 1e-5,  # Reduced from 3e-4
-                "lr_decay_factor": 0.85,  # Changed from 0.4 to slower decay
-                "direction_loss_weight": 0.5,  # Reduced from 0.7
-                "max_features": 48,
-                "clipnorm": 1.0,  # Added gradient clipping
-                "model_path": str(self.results_dir / "models" / "best_model.keras"),
-                "transformer_params": {  # Added transformer parameters
-                    "projection_size": 64,
-                    "transformer_heads": 4,
+                "initial_learning_rate": 5e-5,
+                "lr_decay_factor": 0.85,
+                "direction_loss_weight": 1.0,
+                "clipnorm": 1.0,
+                "model_path": "path/to/results_dir/models/best_model.keras",
+                "transformer_params": {
+                    "projection_size": 48,
+                    "transformer_heads": 3,
                     "transformer_dropout": 0.4,
-                    "layers": 1  # Explicitly set to 1 layer
+                    "layers": 1
                 },
                 "data_augmentation": {
                     "enabled": True,
-                    "noise_level": 0.01,  # Reduced from 0.015
-                    "roll_probability": 0.3,  # Reduced from 0.4
-                    "mask_probability": 0.2  # Reduced from 0.25
+                    "noise_level": 0.01,
+                    "roll_probability": 0.3,
+                    "mask_probability": 0.2
                 },
-                "risk_management": {  # Added risk management section
+                "risk_management": {
                     "max_drawdown_threshold": 0.15,
                     "consecutive_loss_scale": 0.85,
                     "max_position_size": 0.5,
@@ -271,11 +296,11 @@ class Config:
             "backtest": {
                 "train_window_size": 4500,
                 "test_window_size": 500,
-                "walk_forward_steps": 50,
+                "walk_forward_steps": 48,
                 "slippage": 0.0004,
                 "fixed_cost": 0.0009,
                 "variable_cost": 0.00045,
-                "min_hours_between_trades": 1,
+                "min_hours_between_trades": 0.5,
                 "use_dynamic_slippage": True,
                 "adaptive_training": True,
                 "train_confidence_threshold": 0.65,
