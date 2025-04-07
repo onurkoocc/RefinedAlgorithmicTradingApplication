@@ -1506,6 +1506,22 @@ class SignalGenerator:
                 enhanced_signal["multi_timeframe"] = multi_timeframe_signals
                 enhanced_signal["volume_profile"] = volume_profile
 
+            # Check for Fibonacci signals in range-bound markets
+            try:
+                use_fibonacci = self.config.get("signal", "use_fibonacci", False)
+
+                if use_fibonacci and self._is_range_bound_market(df):
+                    fibonacci_levels = self._calculate_fibonacci_levels(df)
+                    current_price = self._get_latest_price(df)
+
+                    fibonacci_signal = self._generate_fibonacci_signal(df, current_price, fibonacci_levels)
+
+                    if fibonacci_signal["signal_type"] != "NoTrade":
+                        enhanced_signal = enhanced_signal.copy()
+                        enhanced_signal.update(fibonacci_signal)
+            except Exception as e:
+                self.logger.warning(f"Error in Fibonacci analysis: {e}")
+
             # Extract additional parameters
             trade_history = kwargs.get("trade_history", [])
             adaptive_mode = kwargs.get("adaptive_mode", False)
@@ -2178,3 +2194,62 @@ class SignalGenerator:
         except Exception as e:
             self.logger.warning(f"Error checking volume confirmation: {e}")
             return False
+
+    def _calculate_fibonacci_levels(self, df):
+        lookback = self.config.get("signal", "fibonacci_lookback", 144)
+        recent_data = df.iloc[-lookback:] if len(df) > lookback else df
+
+        high = recent_data['high'].max()
+        low = recent_data['low'].min()
+
+        levels = {
+            0: low,
+            0.236: low + (high - low) * 0.236,
+            0.382: low + (high - low) * 0.382,
+            0.5: low + (high - low) * 0.5,
+            0.618: low + (high - low) * 0.618,
+            0.764: low + (high - low) * 0.764,
+            1: high
+        }
+        return levels
+
+    def _is_range_bound_market(self, df):
+        adx_threshold = self.config.get("signal", "fibonacci_adx_threshold", 25)
+        bb_width_threshold = self.config.get("signal", "fibonacci_bb_threshold", 0.03)
+
+        adx_value = self._get_indicator_value(df, 'adx_14', 100)
+        bb_width = self._get_indicator_value(df, 'bb_width_20', 0.1)
+
+        return adx_value < adx_threshold and bb_width < bb_width_threshold
+
+    def _generate_fibonacci_signal(self, df, current_price, fibonacci_levels):
+        long_entry = self.config.get("signal", "fibonacci_long_entry", 0.382)
+        short_entry = self.config.get("signal", "fibonacci_short_entry", 0.618)
+        long_block_start = self.config.get("signal", "fibonacci_long_block_start", 0.618)
+        long_block_end = self.config.get("signal", "fibonacci_long_block_end", 1.0)
+        short_block_start = self.config.get("signal", "fibonacci_short_block_start", 0.0)
+        short_block_end = self.config.get("signal", "fibonacci_short_block_end", 0.382)
+
+        if fibonacci_levels[long_entry] * 1.01 >= current_price >= fibonacci_levels[0]:
+            if fibonacci_levels[long_block_start] <= current_price <= fibonacci_levels[long_block_end]:
+                return {"signal_type": "NoTrade", "reason": "LongBlockingZone"}
+            return {
+                "signal_type": "FibonacciBuy",
+                "direction": "long",
+                "fibonacci_levels": fibonacci_levels,
+                "entry_level": long_entry,
+                "confidence": 0.7
+            }
+
+        elif fibonacci_levels[short_entry] * 0.99 <= current_price <= fibonacci_levels[1]:
+            if fibonacci_levels[short_block_end] >= current_price >= fibonacci_levels[short_block_start]:
+                return {"signal_type": "NoTrade", "reason": "ShortBlockingZone"}
+            return {
+                "signal_type": "FibonacciSell",
+                "direction": "short",
+                "fibonacci_levels": fibonacci_levels,
+                "entry_level": short_entry,
+                "confidence": 0.7
+            }
+
+        return {"signal_type": "NoTrade", "reason": "OutsideFibonacciZones"}

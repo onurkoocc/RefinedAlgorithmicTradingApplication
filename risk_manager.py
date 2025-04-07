@@ -304,6 +304,11 @@ class DynamicExitStrategy:
             "high": 1.2,
             "extreme": 1.4
         }
+        self.enable_fibonacci_partial_exits = config.get("exit", "enable_fibonacci_partial_exits", True)
+        self.fibonacci_partial_exit_levels_long = config.get("exit", "fibonacci_partial_exit_levels_long",
+                                                             [ 0.618, 0.764, 1.0])
+        self.fibonacci_partial_exit_levels_short = config.get("exit", "fibonacci_partial_exit_levels_short",
+                                                              [0.382, 0.236, 0.0])
 
     def evaluate_exit(self, position, current_price, current_atr, **kwargs):
         if not self._validate_position_data(position):
@@ -536,6 +541,11 @@ class DynamicExitStrategy:
                     "reason": "MACDReversalExit",
                     "exit_price": current_price
                 }
+
+        # Fibonacci exit logic
+        fibonacci_exit = self._evaluate_fibonacci_exit(position, current_price)
+        if fibonacci_exit.get("exit", False):
+            return fibonacci_exit
 
         stop_hit = ((direction == 'long' and current_price <= current_stop_loss) or
                     (direction == 'short' and current_price >= current_stop_loss))
@@ -821,6 +831,86 @@ class DynamicExitStrategy:
             perf['win_count'] += 1
 
         perf['avg_pnl'] = perf['total_pnl'] / perf['count']
+
+    def _evaluate_fibonacci_exit(self, position, current_price):
+        if "fibonacci_levels" not in position:
+            return {"exit": False}
+
+        fibonacci_levels = position.get("fibonacci_levels", {})
+        if not fibonacci_levels:
+            return {"exit": False}
+
+        direction = position.get('direction', '')
+
+        # Check for partial exit first
+        if self.enable_fibonacci_partial_exits:
+            partial_exit = self._check_fibonacci_partial_exit(position, current_price, fibonacci_levels)
+            if partial_exit.get("partial_exit", False):
+                return partial_exit
+
+        # Standard full exit logic
+        if direction == 'long':
+            for level in [0.618, 0.764, 1]:
+                if level in fibonacci_levels and current_price >= fibonacci_levels[level]:
+                    return {
+                        "exit": True,
+                        "reason": f"FibonacciTarget_{level}",
+                        "exit_price": current_price
+                    }
+        elif direction == 'short':
+            for level in [0.382, 0.236, 0]:
+                if level in fibonacci_levels and current_price <= fibonacci_levels[level]:
+                    return {
+                        "exit": True,
+                        "reason": f"FibonacciTarget_{level}",
+                        "exit_price": current_price
+                    }
+
+        return {"exit": False}
+
+    def _check_fibonacci_partial_exit(self, position, current_price, fibonacci_levels):
+        direction = position.get('direction', '')
+
+        # Define partial exit levels for long and short positions
+        if direction == 'long':
+            partial_exit_levels = self.fibonacci_partial_exit_levels_long
+        elif direction == 'short':
+            partial_exit_levels = self.fibonacci_partial_exit_levels_short
+        else:
+            return {"exit": False}
+
+        # Check if any partial exit level has been reached but not yet triggered
+        for i, ratio in enumerate(partial_exit_levels):
+            ratio_value = float(ratio) if isinstance(ratio, str) else ratio
+
+            if ratio_value not in fibonacci_levels:
+                continue
+
+            level = fibonacci_levels[ratio_value]
+            level_id = f"fib_partial_{i + 1}"
+
+            # Skip if this level's partial exit has already been taken
+            if position.get(f"partial_exit_{level_id}", False):
+                continue
+
+            level_reached = False
+            if direction == 'long' and current_price >= level:
+                level_reached = True
+            elif direction == 'short' and current_price <= level:
+                level_reached = True
+
+            if level_reached:
+                return {
+                    "exit": False,
+                    "partial_exit": True,
+                    "portion": 0.3333,
+                    "id": level_id,
+                    "price": current_price,
+                    "reason": f"FibonacciPartialExit_{ratio_value}",
+                    "update_position_flag": f"partial_exit_{level_id}"
+                }
+
+        return {"exit": False}
 
 
 class ExposureManager:

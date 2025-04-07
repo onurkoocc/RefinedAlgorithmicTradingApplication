@@ -250,7 +250,20 @@ class Config:
                 "rsi_oversold": 25,
                 "return_threshold": 0.00015,
                 "trending_threshold": 26,
-                "ranging_threshold": 18
+                "ranging_threshold": 18,
+                "use_fibonacci": True,
+                "fibonacci_lookback": 144,
+                "fibonacci_adx_threshold": 25,
+                "fibonacci_bb_threshold": 0.03,
+                "fibonacci_long_entry": 0.382,
+                "fibonacci_short_entry": 0.618,
+                "fibonacci_long_block_start": 0.618,
+                "fibonacci_long_block_end": 1.0,
+                "fibonacci_short_block_start": 0.0,
+                "fibonacci_short_block_end": 0.382,
+                "enable_fibonacci_partial_exits": True,
+                "fibonacci_partial_exit_levels_long": [0.618, 0.764, 1.0],
+                "fibonacci_partial_exit_levels_short":  [0.382, 0.236, 0.0]
             },
             "model": {
                 "sequence_length": 72,
