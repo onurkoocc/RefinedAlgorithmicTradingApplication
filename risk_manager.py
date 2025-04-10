@@ -42,27 +42,18 @@ class PerformanceTracker:
         exit_reason = trade_result.get('exit_signal', 'unknown')
         signal_type = trade_result.get('entry_signal', 'unknown')
 
-        if market_phase not in self.performance_by_regime:
-            self.performance_by_regime[market_phase] = {'count': 0, 'win_count': 0, 'total_pnl': 0}
+        for key, collection in [
+            (market_phase, self.performance_by_regime),
+            (exit_reason, self.performance_by_exit),
+            (signal_type, self.performance_by_signal)
+        ]:
+            if key not in collection:
+                collection[key] = {'count': 0, 'win_count': 0, 'total_pnl': 0}
 
-        if exit_reason not in self.performance_by_exit:
-            self.performance_by_exit[exit_reason] = {'count': 0, 'win_count': 0, 'total_pnl': 0}
-
-        if signal_type not in self.performance_by_signal:
-            self.performance_by_signal[signal_type] = {'count': 0, 'win_count': 0, 'total_pnl': 0}
-
-        self.performance_by_regime[market_phase]['count'] += 1
-        self.performance_by_exit[exit_reason]['count'] += 1
-        self.performance_by_signal[signal_type]['count'] += 1
-
-        if is_win:
-            self.performance_by_regime[market_phase]['win_count'] += 1
-            self.performance_by_exit[exit_reason]['win_count'] += 1
-            self.performance_by_signal[signal_type]['win_count'] += 1
-
-        self.performance_by_regime[market_phase]['total_pnl'] += pnl
-        self.performance_by_exit[exit_reason]['total_pnl'] += pnl
-        self.performance_by_signal[signal_type]['total_pnl'] += pnl
+            collection[key]['count'] += 1
+            collection[key]['total_pnl'] += pnl
+            if is_win:
+                collection[key]['win_count'] += 1
 
         duration = trade_result.get('duration_hours', 0)
         if duration > 0:
@@ -106,11 +97,8 @@ class MarketRegimeAdapter:
     def __init__(self, config):
         self.config = config
         self.volatility_bands = {
-            "very_low": 0.0,
-            "low": 0.3,
-            "medium": 0.5,
-            "high": 0.7,
-            "very_high": 0.85
+            "very_low": 0.0, "low": 0.3, "medium": 0.5,
+            "high": 0.7, "very_high": 0.85
         }
         self.trend_threshold = config.get("risk", "trend_threshold", 25)
         self.regime_performance = {}
@@ -126,11 +114,7 @@ class MarketRegimeAdapter:
         pnl = trade_result.get('pnl', 0)
 
         if regime not in self.regime_performance:
-            self.regime_performance[regime] = {
-                'count': 0,
-                'win_count': 0,
-                'total_pnl': 0
-            }
+            self.regime_performance[regime] = {'count': 0, 'win_count': 0, 'total_pnl': 0}
 
         self.regime_performance[regime]['count'] += 1
         if pnl > 0:
@@ -168,23 +152,16 @@ class PartialExitTracker:
         }
 
         self.regime_threshold_adjustments = {
-            "strong_uptrend": 1.2,
-            "uptrend": 1.1,
-            "neutral": 1.0,
-            "downtrend": 0.9,
-            "strong_downtrend": 0.8,
-            "ranging_at_support": 0.8,
-            "ranging_at_resistance": 0.7,
+            "strong_uptrend": 1.2, "uptrend": 1.1, "neutral": 1.0,
+            "downtrend": 0.9, "strong_downtrend": 0.8,
+            "ranging_at_support": 0.8, "ranging_at_resistance": 0.7,
             "volatile": 0.7
         }
         self.exit_performance = {}
 
         self.volatility_adjustment_enabled = True
         self.volatility_adjustment_factors = {
-            "low": 0.9,
-            "medium": 1.0,
-            "high": 1.1,
-            "extreme": 1.2
+            "low": 0.9, "medium": 1.0, "high": 1.1, "extreme": 1.2
         }
 
     def get_partial_exit_levels(self, position, current_price, **market_conditions):
@@ -197,10 +174,7 @@ class PartialExitTracker:
         if direction not in ['long', 'short'] or entry_price <= 0:
             return None
 
-        if direction == 'long':
-            pnl_pct = (current_price / entry_price) - 1
-        else:
-            pnl_pct = (entry_price / current_price) - 1
+        pnl_pct = (current_price / entry_price) - 1 if direction == 'long' else (entry_price / current_price) - 1
 
         if pnl_pct <= 0:
             return None
@@ -239,38 +213,24 @@ class DynamicExitStrategy:
         self.config = config
         self.base_atr_multiplier = config.get("exit", "base_atr_multiplier", 3.0)
         self.atr_multiplier_map = {
-            "strong_uptrend": {"long": 3.5, "short": 2.8},
-            "uptrend": {"long": 3.2, "short": 2.5},
-            "neutral": {"long": 2.8, "short": 2.8},
-            "downtrend": {"long": 2.5, "short": 3.2},
-            "strong_downtrend": {"long": 2.8, "short": 3.5},
-            "ranging_at_support": {"long": 2.4, "short": 3.0},
-            "ranging_at_resistance": {"long": 3.0, "short": 2.4},
-            "volatile": {"long": 3.6, "short": 3.6}
+            "strong_uptrend": {"long": 3.5, "short": 2.8}, "uptrend": {"long": 3.2, "short": 2.5},
+            "neutral": {"long": 2.8, "short": 2.8}, "downtrend": {"long": 2.5, "short": 3.2},
+            "strong_downtrend": {"long": 2.8, "short": 3.5}, "ranging_at_support": {"long": 2.4, "short": 3.0},
+            "ranging_at_resistance": {"long": 3.0, "short": 2.4}, "volatile": {"long": 3.6, "short": 3.6}
         }
         self.profit_targets = {
-            "strong_uptrend": {"long": 0.04, "short": 0.025},
-            "uptrend": {"long": 0.035, "short": 0.02},
-            "neutral": {"long": 0.025, "short": 0.025},
-            "downtrend": {"long": 0.02, "short": 0.035},
-            "strong_downtrend": {"long": 0.025, "short": 0.04},
-            "ranging_at_support": {"long": 0.02, "short": 0.015},
-            "ranging_at_resistance": {"long": 0.015, "short": 0.02},
-            "volatile": {"long": 0.03, "short": 0.03}
+            "strong_uptrend": {"long": 0.04, "short": 0.025}, "uptrend": {"long": 0.035, "short": 0.02},
+            "neutral": {"long": 0.025, "short": 0.025}, "downtrend": {"long": 0.02, "short": 0.035},
+            "strong_downtrend": {"long": 0.025, "short": 0.04}, "ranging_at_support": {"long": 0.02, "short": 0.015},
+            "ranging_at_resistance": {"long": 0.015, "short": 0.02}, "volatile": {"long": 0.03, "short": 0.03}
         }
         self.enable_dynamic_trailing = config.get("exit", "enable_dynamic_trailing", True)
         self.trailing_activation_threshold = config.get("exit", "trailing_activation_threshold", 0.01)
         self.time_based_exits = config.get("exit", "time_based_exits", True)
         self.max_trade_duration_hours = config.get("exit", "max_trade_duration_hours", 24.0)
         self.phase_max_durations = {
-            "strong_uptrend": 18.0,
-            "uptrend": 12.0,
-            "neutral": 24.0,
-            "downtrend": 12.0,
-            "strong_downtrend": 18.0,
-            "ranging_at_support": 8.0,
-            "ranging_at_resistance": 6.0,
-            "volatile": 8.0
+            "strong_uptrend": 18.0, "uptrend": 12.0, "neutral": 24.0, "downtrend": 12.0,
+            "strong_downtrend": 18.0, "ranging_at_support": 8.0, "ranging_at_resistance": 6.0, "volatile": 8.0
         }
         self.rsi_extreme_exit = config.get("exit", "rsi_extreme_exit", True)
         self.rsi_overbought = config.get("exit", "rsi_overbought", 70)
@@ -280,8 +240,7 @@ class DynamicExitStrategy:
         self.early_loss_threshold = config.get("exit", "early_loss_threshold", -0.012)
         self.early_loss_time = config.get("exit", "early_loss_time", 2.5)
         self.enable_quick_profit_exit = config.get("exit", "enable_quick_profit_exit", True)
-        self.quick_profit_threshold = config.get("exit", "quick_profit_threshold",
-                                                 0.006)
+        self.quick_profit_threshold = config.get("exit", "quick_profit_threshold", 0.006)
         self.min_holding_time = config.get("exit", "min_holding_time", 0.3)
         self.enable_stagnant_exit = config.get("exit", "enable_stagnant_exit", True)
         self.stagnant_threshold = config.get("exit", "stagnant_threshold", 0.003)
@@ -299,14 +258,11 @@ class DynamicExitStrategy:
 
         self.enable_volatility_tp_scaling = True
         self.volatility_tp_factors = {
-            "low": 0.9,
-            "medium": 1.0,
-            "high": 1.2,
-            "extreme": 1.4
+            "low": 0.9, "medium": 1.0, "high": 1.2, "extreme": 1.4
         }
         self.enable_fibonacci_partial_exits = config.get("exit", "enable_fibonacci_partial_exits", True)
         self.fibonacci_partial_exit_levels_long = config.get("exit", "fibonacci_partial_exit_levels_long",
-                                                             [ 0.618, 0.764, 1.0])
+                                                             [0.618, 0.764, 1.0])
         self.fibonacci_partial_exit_levels_short = config.get("exit", "fibonacci_partial_exit_levels_short",
                                                               [0.382, 0.236, 0.0])
 
@@ -329,16 +285,13 @@ class DynamicExitStrategy:
         volatility_regime = float(kwargs.get('volatility', 0.5))
         ensemble_score = float(position.get('ensemble_score', 0.5))
 
-        if direction == 'long':
-            pnl_pct = (current_price - entry_price) / entry_price
-        else:
-            pnl_pct = (entry_price - current_price) / entry_price
+        pnl_pct = (current_price - entry_price) / entry_price if direction == 'long' else (
+                                                                                                      entry_price - current_price) / entry_price
 
         rsi_14 = float(kwargs.get('rsi_14', 50))
         macd = float(kwargs.get('macd', 0))
         macd_signal = float(kwargs.get('macd_signal', 0))
         macd_histogram = float(kwargs.get('macd_histogram', 0))
-
         bb_width = float(kwargs.get('bb_width', 0))
         momentum = float(kwargs.get('momentum', 0))
         trend_strength = float(kwargs.get('trend_strength', 0.5))
@@ -348,22 +301,15 @@ class DynamicExitStrategy:
 
         if pnl_pct > 0.015:
             max_duration *= 1.5
-
         if pnl_pct < 0 and volatility_regime > 0.7:
             max_duration *= 0.7
-
         if ensemble_score < 0.5:
             max_duration *= 0.8
 
         if trade_duration > max_duration:
-            return {
-                "exit": True,
-                "reason": "MaxDurationExit",
-                "exit_price": current_price
-            }
+            return {"exit": True, "reason": "MaxDurationExit", "exit_price": current_price}
 
         base_profit_target = self.profit_targets.get(market_phase, {}).get(direction, 0.025)
-
         base_profit_target *= 1.2
 
         if self.enable_volatility_tp_scaling:
@@ -376,7 +322,6 @@ class DynamicExitStrategy:
                 volatility_factor = self.volatility_tp_factors["high"]
             else:
                 volatility_factor = self.volatility_tp_factors["extreme"]
-
             profit_target = base_profit_target * volatility_factor
         else:
             profit_target = base_profit_target
@@ -392,193 +337,106 @@ class DynamicExitStrategy:
             profit_target *= 1.15
 
         if pnl_pct >= profit_target:
-            return {
-                "exit": True,
-                "reason": "ProfitTargetReached",
-                "exit_price": current_price
-            }
+            return {"exit": True, "reason": "ProfitTargetReached", "exit_price": current_price}
 
         if self.enable_trailing_take_profit and trade_duration >= (
                 self.avg_profitable_duration * self.trailing_tp_activation_ratio):
             if pnl_pct > (profit_target * 0.45):
-                if direction == 'long':
-                    trailing_tp_level = current_price - (self.trailing_tp_atr_multiplier * current_atr)
-                    if trailing_tp_level > current_stop_loss:
-                        return {
-                            "exit": False,
-                            "update_stop": True,
-                            "new_stop": float(trailing_tp_level),
-                            "reason": "TrailingTakeProfitUpdate"
-                        }
-                else:
-                    trailing_tp_level = current_price + (self.trailing_tp_atr_multiplier * current_atr)
-                    if trailing_tp_level < current_stop_loss:
-                        return {
-                            "exit": False,
-                            "update_stop": True,
-                            "new_stop": float(trailing_tp_level),
-                            "reason": "TrailingTakeProfitUpdate"
-                        }
+                trailing_tp_level = current_price - (
+                            self.trailing_tp_atr_multiplier * current_atr) if direction == 'long' else current_price + (
+                            self.trailing_tp_atr_multiplier * current_atr)
+                if (direction == 'long' and trailing_tp_level > current_stop_loss) or (
+                        direction == 'short' and trailing_tp_level < current_stop_loss):
+                    return {"exit": False, "update_stop": True, "new_stop": float(trailing_tp_level),
+                            "reason": "TrailingTakeProfitUpdate"}
 
-        momentum_reversal = False
+        momentum_factors = []
         if direction == 'long':
-            momentum_factors = []
-            if momentum < -0.2:
-                momentum_factors.append(True)
-            if macd_histogram < 0 and macd < macd_signal:
-                momentum_factors.append(True)
-            if volume_delta < -1.0:
-                momentum_factors.append(True)
-
-            momentum_reversal = sum(momentum_factors) >= 2
+            if momentum < -0.2: momentum_factors.append(True)
+            if macd_histogram < 0 and macd < macd_signal: momentum_factors.append(True)
+            if volume_delta < -1.0: momentum_factors.append(True)
         else:
-            momentum_factors = []
-            if momentum > 0.2:
-                momentum_factors.append(True)
-            if macd_histogram > 0 and macd > macd_signal:
-                momentum_factors.append(True)
-            if volume_delta > 1.0:
-                momentum_factors.append(True)
+            if momentum > 0.2: momentum_factors.append(True)
+            if macd_histogram > 0 and macd > macd_signal: momentum_factors.append(True)
+            if volume_delta > 1.0: momentum_factors.append(True)
 
-            momentum_reversal = sum(momentum_factors) >= 2
+        momentum_reversal = sum(momentum_factors) >= 2
 
         if momentum_reversal and pnl_pct > 0.006:
-            return {
-                "exit": True,
-                "reason": "MomentumReversal",
-                "exit_price": current_price
-            }
+            return {"exit": True, "reason": "MomentumReversal", "exit_price": current_price}
 
         if bb_width > 0.05 and trade_duration > 1.0:
-            volatility_expansion = False
-
+            vol_expansion_factors = []
             if direction == 'long':
-                vol_expansion_factors = []
-                if macd < macd_signal:
-                    vol_expansion_factors.append(True)
-                if momentum < -0.15:
-                    vol_expansion_factors.append(True)
-                if rsi_14 > 70:
-                    vol_expansion_factors.append(True)
-
-                volatility_expansion = sum(vol_expansion_factors) >= 2
+                if macd < macd_signal: vol_expansion_factors.append(True)
+                if momentum < -0.15: vol_expansion_factors.append(True)
+                if rsi_14 > 70: vol_expansion_factors.append(True)
             else:
-                vol_expansion_factors = []
-                if macd > macd_signal:
-                    vol_expansion_factors.append(True)
-                if momentum > 0.15:
-                    vol_expansion_factors.append(True)
-                if rsi_14 < 30:
-                    vol_expansion_factors.append(True)
+                if macd > macd_signal: vol_expansion_factors.append(True)
+                if momentum > 0.15: vol_expansion_factors.append(True)
+                if rsi_14 < 30: vol_expansion_factors.append(True)
 
-                volatility_expansion = sum(vol_expansion_factors) >= 2
+            volatility_expansion = sum(vol_expansion_factors) >= 2
 
             if volatility_expansion and pnl_pct > 0.005:
-                return {
-                    "exit": True,
-                    "reason": "VolatilityExpansionExit",
-                    "exit_price": current_price
-                }
+                return {"exit": True, "reason": "VolatilityExpansionExit", "exit_price": current_price}
 
         if abs(volume_delta) > 2.0 and trade_duration > 0.5:
-            volume_climax = False
-
-            if direction == 'long' and volume_delta < -1.5 and momentum < -0.1:
-                volume_climax = True
-            elif direction == 'short' and volume_delta > 1.5 and momentum > 0.1:
-                volume_climax = True
+            volume_climax = (direction == 'long' and volume_delta < -1.5 and momentum < -0.1) or (
+                        direction == 'short' and volume_delta > 1.5 and momentum > 0.1)
 
             if volume_climax and pnl_pct > 0.004:
-                return {
-                    "exit": True,
-                    "reason": "VolumeClimaxExit",
-                    "exit_price": current_price
-                }
+                return {"exit": True, "reason": "VolumeClimaxExit", "exit_price": current_price}
 
         if self.rsi_extreme_exit:
-            rsi_extreme_condition = (direction == 'long' and rsi_14 > self.rsi_overbought) or \
-                                    (direction == 'short' and rsi_14 < self.rsi_oversold)
+            rsi_extreme_condition = (direction == 'long' and rsi_14 > self.rsi_overbought) or (
+                        direction == 'short' and rsi_14 < self.rsi_oversold)
 
             if rsi_extreme_condition:
-                technical_confirmation = False
-
+                tech_factors = []
                 if direction == 'long':
-                    tech_factors = []
-                    if macd < macd_signal:
-                        tech_factors.append(True)
-                    if momentum < 0:
-                        tech_factors.append(True)
-                    if bb_width > 0.03:
-                        tech_factors.append(True)
-
-                    technical_confirmation = sum(tech_factors) >= 2
+                    if macd < macd_signal: tech_factors.append(True)
+                    if momentum < 0: tech_factors.append(True)
+                    if bb_width > 0.03: tech_factors.append(True)
                 else:
-                    tech_factors = []
-                    if macd > macd_signal:
-                        tech_factors.append(True)
-                    if momentum > 0:
-                        tech_factors.append(True)
-                    if bb_width > 0.03:
-                        tech_factors.append(True)
+                    if macd > macd_signal: tech_factors.append(True)
+                    if momentum > 0: tech_factors.append(True)
+                    if bb_width > 0.03: tech_factors.append(True)
 
-                    technical_confirmation = sum(tech_factors) >= 2
+                technical_confirmation = sum(tech_factors) >= 2
 
                 if technical_confirmation and pnl_pct > 0.006:
                     exit_reason = "OverboughtExit" if direction == 'long' else "OversoldExit"
-                    return {
-                        "exit": True,
-                        "reason": exit_reason,
-                        "exit_price": current_price
-                    }
+                    return {"exit": True, "reason": exit_reason, "exit_price": current_price}
 
         if self.macd_reversal_exit:
-            macd_reversal = (direction == 'long' and macd < macd_signal and macd_histogram < 0) or \
-                            (direction == 'short' and macd > macd_signal and macd_histogram > 0)
+            macd_reversal = (direction == 'long' and macd < macd_signal and macd_histogram < 0) or (
+                        direction == 'short' and macd > macd_signal and macd_histogram > 0)
 
             if macd_reversal and pnl_pct > 0.007 and trade_duration > 0.5:
-                return {
-                    "exit": True,
-                    "reason": "MACDReversalExit",
-                    "exit_price": current_price
-                }
+                return {"exit": True, "reason": "MACDReversalExit", "exit_price": current_price}
 
-        # Fibonacci exit logic
         fibonacci_exit = self._evaluate_fibonacci_exit(position, current_price)
         if fibonacci_exit.get("exit", False):
             return fibonacci_exit
 
-        stop_hit = ((direction == 'long' and current_price <= current_stop_loss) or
-                    (direction == 'short' and current_price >= current_stop_loss))
+        stop_hit = ((direction == 'long' and current_price <= current_stop_loss) or (
+                    direction == 'short' and current_price >= current_stop_loss))
 
         if stop_hit:
             emergency_buffer = 0.002
-
             if direction == 'long':
                 emergency_price = current_stop_loss * (1 - emergency_buffer)
                 if current_price > emergency_price:
-                    new_stop = emergency_price
-                    return {
-                        "exit": False,
-                        "update_stop": True,
-                        "new_stop": float(new_stop),
-                        "reason": "EmergencyStopAdjustment"
-                    }
+                    return {"exit": False, "update_stop": True, "new_stop": float(emergency_price),
+                            "reason": "EmergencyStopAdjustment"}
             else:
                 emergency_price = current_stop_loss * (1 + emergency_buffer)
                 if current_price < emergency_price:
-                    new_stop = emergency_price
-                    return {
-                        "exit": False,
-                        "update_stop": True,
-                        "new_stop": float(new_stop),
-                        "reason": "EmergencyStopAdjustment"
-                    }
+                    return {"exit": False, "update_stop": True, "new_stop": float(emergency_price),
+                            "reason": "EmergencyStopAdjustment"}
 
-            return {
-                "exit": True,
-                "reason": "StopLoss",
-                "exit_price": current_stop_loss
-            }
+            return {"exit": True, "reason": "StopLoss", "exit_price": current_stop_loss}
 
         trailing_stop = self._calculate_trailing_stop(
             direction, entry_price, current_price, pnl_pct,
@@ -591,16 +449,12 @@ class DynamicExitStrategy:
 
         if self.enable_early_loss_exit:
             base_early_loss = self.early_loss_threshold * 1.2
-
             if "ranging" in market_phase:
                 base_early_loss *= 0.75
             elif "strong" in market_phase:
                 base_early_loss *= 1.3
-
             if volatility_regime > 0.7:
                 base_early_loss *= 0.9
-
-            trend_strength = float(kwargs.get('trend_strength', 0.5))
             if trend_strength < 0.3:
                 base_early_loss *= 0.85
 
@@ -609,29 +463,18 @@ class DynamicExitStrategy:
                 time_threshold *= 0.8
             elif "strong" in market_phase:
                 time_threshold *= 1.3
-
             if (direction == 'long' and momentum < -0.2) or (direction == 'short' and momentum > 0.2):
                 base_early_loss *= 0.85
                 time_threshold *= 0.85
 
             if pnl_pct < base_early_loss and trade_duration > time_threshold:
-                recovery_detected = False
-
-                if direction == 'long' and momentum > 0.1:
-                    recovery_detected = True
-                elif direction == 'short' and momentum < -0.1:
-                    recovery_detected = True
-
+                recovery_detected = (direction == 'long' and momentum > 0.1) or (
+                            direction == 'short' and momentum < -0.1)
                 if not recovery_detected:
-                    return {
-                        "exit": True,
-                        "reason": "EarlyLossExit",
-                        "exit_price": current_price
-                    }
+                    return {"exit": True, "reason": "EarlyLossExit", "exit_price": current_price}
 
         if self.enable_quick_profit_exit:
             quick_profit_threshold = self.quick_profit_threshold * 0.9
-
             if market_phase == "ranging_at_resistance" or market_phase == "ranging_at_support":
                 quick_profit_threshold = 0.0045
             elif market_phase == "uptrend" and direction == "long":
@@ -653,15 +496,10 @@ class DynamicExitStrategy:
                 quick_profit_threshold *= 0.85
 
             if pnl_pct > quick_profit_threshold and trade_duration > self.min_holding_time:
-                return {
-                    "exit": True,
-                    "reason": "QuickProfitTaken",
-                    "exit_price": current_price
-                }
+                return {"exit": True, "reason": "QuickProfitTaken", "exit_price": current_price}
 
         if self.enable_stagnant_exit:
             stagnant_threshold = self.stagnant_threshold
-
             if "ranging" in market_phase:
                 stagnant_threshold *= 0.85
             elif "strong" in market_phase:
@@ -671,32 +509,14 @@ class DynamicExitStrategy:
 
             if "ranging" in market_phase:
                 if trade_duration > min_stagnant_time * 0.8 and abs(pnl_pct) < stagnant_threshold:
-                    return {
-                        "exit": True,
-                        "reason": "StagnantExit",
-                        "exit_price": current_price
-                    }
+                    return {"exit": True, "reason": "StagnantExit", "exit_price": current_price}
                 if trade_duration > min_stagnant_time * 1.2 and abs(pnl_pct) < stagnant_threshold * 1.5:
-                    return {
-                        "exit": True,
-                        "reason": "StagnantExit",
-                        "exit_price": current_price
-                    }
+                    return {"exit": True, "reason": "StagnantExit", "exit_price": current_price}
             else:
-                if trade_duration < min_stagnant_time:
-                    pass
-                elif trade_duration > min_stagnant_time * 1.5 and abs(pnl_pct) < stagnant_threshold:
-                    return {
-                        "exit": True,
-                        "reason": "StagnantExit",
-                        "exit_price": current_price
-                    }
-                elif trade_duration > min_stagnant_time * 2.0 and abs(pnl_pct) < stagnant_threshold * 1.5:
-                    return {
-                        "exit": True,
-                        "reason": "StagnantExit",
-                        "exit_price": current_price
-                    }
+                if trade_duration >= min_stagnant_time * 1.5 and abs(pnl_pct) < stagnant_threshold:
+                    return {"exit": True, "reason": "StagnantExit", "exit_price": current_price}
+                elif trade_duration >= min_stagnant_time * 2.0 and abs(pnl_pct) < stagnant_threshold * 1.5:
+                    return {"exit": True, "reason": "StagnantExit", "exit_price": current_price}
 
         return {"exit": False, "reason": "NoActionNeeded"}
 
@@ -711,7 +531,6 @@ class DynamicExitStrategy:
             return None
 
         min_profit_for_adjustment = 0.015
-
         if pnl_pct < min_profit_for_adjustment:
             return None
 
@@ -747,50 +566,32 @@ class DynamicExitStrategy:
         if market_phase in ["ranging_at_support", "ranging_at_resistance", "choppy"]:
             atr_multiplier *= 1.35
 
+        profit_levels = [(0.035, 0.02), (0.025, 0.012), (0.018, 0.006), (0.012, 0.002)]
+
         if direction == 'long':
             new_stop = current_price - (atr_multiplier * atr_value)
 
-            if pnl_pct > 0.035:
-                new_stop = max(new_stop, entry_price + (0.02 * entry_price))
-            elif pnl_pct > 0.025:
-                new_stop = max(new_stop, entry_price + (0.012 * entry_price))
-            elif pnl_pct > 0.018 and trade_duration > 2.0:
-                new_stop = max(new_stop, entry_price + (0.006 * entry_price))
-            elif pnl_pct > 0.012 and trade_duration > 3.0:
-                new_stop = max(new_stop, entry_price + (0.002 * entry_price))
+            for pnl_level, profit_lock in profit_levels:
+                if pnl_pct > pnl_level and (trade_duration > 2.0 or pnl_level > 0.025):
+                    new_stop = max(new_stop, entry_price + (profit_lock * entry_price))
 
             if market_phase == "ranging_at_resistance" and pnl_pct > 0.012:
                 new_stop = max(new_stop, entry_price + (0.008 * entry_price))
 
             if new_stop > current_stop:
-                return {
-                    "exit": False,
-                    "update_stop": True,
-                    "new_stop": float(new_stop),
-                    "reason": "TrailingStopUpdate"
-                }
+                return {"exit": False, "update_stop": True, "new_stop": float(new_stop), "reason": "TrailingStopUpdate"}
         else:
             new_stop = current_price + (atr_multiplier * atr_value)
 
-            if pnl_pct > 0.035:
-                new_stop = min(new_stop, entry_price - (0.02 * entry_price))
-            elif pnl_pct > 0.025:
-                new_stop = min(new_stop, entry_price - (0.012 * entry_price))
-            elif pnl_pct > 0.018 and trade_duration > 2.0:
-                new_stop = min(new_stop, entry_price - (0.006 * entry_price))
-            elif pnl_pct > 0.012 and trade_duration > 3.0:
-                new_stop = min(new_stop, entry_price - (0.002 * entry_price))
+            for pnl_level, profit_lock in profit_levels:
+                if pnl_pct > pnl_level and (trade_duration > 2.0 or pnl_level > 0.025):
+                    new_stop = min(new_stop, entry_price - (profit_lock * entry_price))
 
             if market_phase == "ranging_at_support" and pnl_pct > 0.012:
                 new_stop = min(new_stop, entry_price - (0.008 * entry_price))
 
             if new_stop < current_stop:
-                return {
-                    "exit": False,
-                    "update_stop": True,
-                    "new_stop": float(new_stop),
-                    "reason": "TrailingStopUpdate"
-                }
+                return {"exit": False, "update_stop": True, "new_stop": float(new_stop), "reason": "TrailingStopUpdate"}
 
         return None
 
@@ -804,22 +605,13 @@ class DynamicExitStrategy:
             float(position['entry_price'])
             float(position['initial_stop_loss'])
             float(position['current_stop_loss'])
-
-            if position['direction'] not in ['long', 'short']:
-                return False
-
-            return True
+            return position['direction'] in ['long', 'short']
         except (ValueError, TypeError):
             return False
 
     def update_exit_performance(self, exit_reason, pnl):
         if exit_reason not in self.exit_performance:
-            self.exit_performance[exit_reason] = {
-                'count': 0,
-                'win_count': 0,
-                'total_pnl': 0,
-                'avg_pnl': 0
-            }
+            self.exit_performance[exit_reason] = {'count': 0, 'win_count': 0, 'total_pnl': 0, 'avg_pnl': 0}
 
         self.exit_counter[exit_reason] = self.exit_counter.get(exit_reason, 0) + 1
 
@@ -842,71 +634,47 @@ class DynamicExitStrategy:
 
         direction = position.get('direction', '')
 
-        # Check for partial exit first
         if self.enable_fibonacci_partial_exits:
             partial_exit = self._check_fibonacci_partial_exit(position, current_price, fibonacci_levels)
             if partial_exit.get("partial_exit", False):
                 return partial_exit
 
-        # Standard full exit logic
         if direction == 'long':
             for level in [0.618, 0.764, 1]:
                 if level in fibonacci_levels and current_price >= fibonacci_levels[level]:
-                    return {
-                        "exit": True,
-                        "reason": f"FibonacciTarget_{level}",
-                        "exit_price": current_price
-                    }
+                    return {"exit": True, "reason": f"FibonacciTarget_{level}", "exit_price": current_price}
         elif direction == 'short':
             for level in [0.382, 0.236, 0]:
                 if level in fibonacci_levels and current_price <= fibonacci_levels[level]:
-                    return {
-                        "exit": True,
-                        "reason": f"FibonacciTarget_{level}",
-                        "exit_price": current_price
-                    }
+                    return {"exit": True, "reason": f"FibonacciTarget_{level}", "exit_price": current_price}
 
         return {"exit": False}
 
     def _check_fibonacci_partial_exit(self, position, current_price, fibonacci_levels):
         direction = position.get('direction', '')
+        partial_exit_levels = self.fibonacci_partial_exit_levels_long if direction == 'long' else self.fibonacci_partial_exit_levels_short
 
-        # Define partial exit levels for long and short positions
-        if direction == 'long':
-            partial_exit_levels = self.fibonacci_partial_exit_levels_long
-        elif direction == 'short':
-            partial_exit_levels = self.fibonacci_partial_exit_levels_short
-        else:
+        if direction not in ['long', 'short']:
             return {"exit": False}
 
-        # Check if any partial exit level has been reached but not yet triggered
         for i, ratio in enumerate(partial_exit_levels):
             ratio_value = float(ratio) if isinstance(ratio, str) else ratio
-
             if ratio_value not in fibonacci_levels:
                 continue
 
             level = fibonacci_levels[ratio_value]
             level_id = f"fib_partial_{i + 1}"
 
-            # Skip if this level's partial exit has already been taken
             if position.get(f"partial_exit_{level_id}", False):
                 continue
 
-            level_reached = False
-            if direction == 'long' and current_price >= level:
-                level_reached = True
-            elif direction == 'short' and current_price <= level:
-                level_reached = True
+            level_reached = (direction == 'long' and current_price >= level) or (
+                        direction == 'short' and current_price <= level)
 
             if level_reached:
                 return {
-                    "exit": False,
-                    "partial_exit": True,
-                    "portion": 0.3333,
-                    "id": level_id,
-                    "price": current_price,
-                    "reason": f"FibonacciPartialExit_{ratio_value}",
+                    "exit": False, "partial_exit": True, "portion": 0.3333, "id": level_id,
+                    "price": current_price, "reason": f"FibonacciPartialExit_{ratio_value}",
                     "update_position_flag": f"partial_exit_{level_id}"
                 }
 
@@ -920,10 +688,7 @@ class ExposureManager:
         self.max_correlation_risk = config.get("risk", "max_correlation_risk", 0.12)
         self.max_single_exposure = config.get("risk", "max_single_exposure", 0.40)
         self.drawdown_exposure_curve = {
-            "normal": 1.0,
-            "caution": 0.75,
-            "reduced": 0.5,
-            "minimal": 0.25
+            "normal": 1.0, "caution": 0.75, "reduced": 0.5, "minimal": 0.25
         }
         self.current_exposure = 0.0
         self.exposures_by_regime = {}
@@ -951,33 +716,26 @@ class ExposureManager:
                 return (False, 0.0)
 
         available_risk = min(proposed_risk, risk_remaining)
-
         return (True, available_risk)
 
     def _check_trade_density(self):
         if not self.recent_trade_times:
             return False
-
         now = datetime.now()
         most_recent = self.recent_trade_times[-1]
-
         hours_since_last = (now - most_recent).total_seconds() / 3600
-
         return hours_since_last < self.min_hours_between_trades
 
     def update_exposure(self, trade_result, is_entry=True):
         if is_entry:
             self.recent_trade_times.append(datetime.now())
-
             risk_amount = trade_result.get('risk_amount', 0)
             market_phase = trade_result.get('market_phase', 'neutral')
-
             self.current_exposure += risk_amount
             self.exposures_by_regime[market_phase] = self.exposures_by_regime.get(market_phase, 0) + risk_amount
         else:
             risk_amount = trade_result.get('risk_amount', 0)
             market_phase = trade_result.get('market_phase', 'neutral')
-
             self.current_exposure = max(0, self.current_exposure - risk_amount)
             if market_phase in self.exposures_by_regime:
                 self.exposures_by_regime[market_phase] = max(0, self.exposures_by_regime[market_phase] - risk_amount)
@@ -994,17 +752,10 @@ class AdaptivePositionSizer:
         self.volatility_scaling = config.get("risk", "volatility_scaling", True)
         self.momentum_scaling = config.get("risk", "momentum_scaling", True)
         self.regime_factors = {
-            "strong_uptrend": 1.3,
-            "uptrend": 1.2,
-            "uptrend_transition": 0.9,
-            "neutral": 1.0,
-            "downtrend": 0.8,
-            "downtrend_transition": 0.9,
-            "strong_downtrend": 0.7,
-            "ranging": 0.6,
-            "ranging_at_support": 0.7,
-            "ranging_at_resistance": 0.5,
-            "volatile": 0.7
+            "strong_uptrend": 1.3, "uptrend": 1.2, "uptrend_transition": 0.9,
+            "neutral": 1.0, "downtrend": 0.8, "downtrend_transition": 0.9,
+            "strong_downtrend": 0.7, "ranging": 0.6, "ranging_at_support": 0.7,
+            "ranging_at_resistance": 0.5, "volatile": 0.7
         }
         self.confidence_scaling = config.get("risk", "confidence_scaling", True)
         self.streak_sensitivity = config.get("risk", "streak_sensitivity", 0.12)
@@ -1025,7 +776,6 @@ class AdaptivePositionSizer:
         loss_streak = kwargs.get('loss_streak', 0)
         drawdown_state = kwargs.get('drawdown_state', 'normal')
         recovery_mode = kwargs.get('recovery_mode', False)
-
         key_level_proximity = signal.get('key_level_proximity', {"impact": 0, "type": "none"})
 
         risk_multiplier = 1.0
@@ -1055,7 +805,6 @@ class AdaptivePositionSizer:
 
         if "ranging" in market_phase:
             risk_multiplier *= 0.8
-
             if key_level_proximity["impact"] > 0.5:
                 if key_level_proximity["type"] == "support" and direction == "long":
                     risk_multiplier *= 0.9
@@ -1081,12 +830,7 @@ class AdaptivePositionSizer:
             streak_factor = 1.0 - (min(loss_streak, 5) * self.streak_sensitivity)
         risk_multiplier *= streak_factor
 
-        drawdown_factors = {
-            "normal": 1.0,
-            "caution": 0.8,
-            "reduced": 0.6,
-            "minimal": 0.4
-        }
+        drawdown_factors = {"normal": 1.0, "caution": 0.8, "reduced": 0.6, "minimal": 0.4}
         risk_multiplier *= drawdown_factors.get(drawdown_state, 1.0)
 
         if recovery_mode:
@@ -1096,16 +840,8 @@ class AdaptivePositionSizer:
         risk_pct = max(self.min_risk, min(self.max_risk, risk_pct))
         risk_amount = current_capital * risk_pct
 
-        if direction == 'long':
-            stop_distance = entry_price - stop_loss
-        else:
-            stop_distance = stop_loss - entry_price
-
-        if stop_distance <= 0:
-            return 0.0
-
-        position_size = risk_amount / stop_distance
-        return position_size
+        stop_distance = entry_price - stop_loss if direction == 'long' else stop_loss - entry_price
+        return risk_amount / stop_distance if stop_distance > 0 else 0.0
 
     def _calculate_kelly_risk(self):
         if len(self.recent_trades) < 5:
@@ -1127,9 +863,7 @@ class AdaptivePositionSizer:
             return self.base_risk
 
         win_loss_ratio = avg_win / avg_loss
-
         kelly = win_rate - ((1 - win_rate) / win_loss_ratio)
-
         adjusted_kelly = kelly * self.kelly_fraction
 
         return max(self.min_risk, min(self.max_risk, adjusted_kelly))
@@ -1146,7 +880,6 @@ class AdaptivePositionSizer:
 
     def update_trade_result(self, trade_result):
         self.recent_trades.append(trade_result)
-
         win_count = sum(1 for trade in self.recent_trades if trade.get('pnl', 0) > 0)
         self.recent_win_rate = win_count / len(self.recent_trades) if self.recent_trades else 0.5
 
@@ -1155,26 +888,19 @@ class AdaptivePositionSizer:
 
         total_profit = sum(trade.get('pnl', 0) for trade in wins)
         total_loss = abs(sum(trade.get('pnl', 0) for trade in losses))
-
         self.recent_profit_factor = total_profit / total_loss if total_loss > 0 else 1.0
 
     def update_regime_performance(self, trade_result):
         self.recent_trades.append(trade_result)
-
         regime = trade_result.get('market_phase', 'neutral')
         pnl = trade_result.get('pnl', 0)
 
         if regime not in self.regime_performance:
-            self.regime_performance[regime] = {
-                'count': 0,
-                'win_count': 0,
-                'total_pnl': 0
-            }
+            self.regime_performance[regime] = {'count': 0, 'win_count': 0, 'total_pnl': 0}
 
         perf = self.regime_performance[regime]
         perf['count'] += 1
         perf['total_pnl'] += pnl
-
         if pnl > 0:
             perf['win_count'] += 1
 
@@ -1224,24 +950,16 @@ class RiskManager:
         market_phase = signal.get('market_phase', 'neutral')
 
         can_trade, available_risk = self.exposure_manager.check_exposure_limits(
-            signal,
-            self.base_risk_per_trade,
-            self.current_capital,
-            drawdown_state=self.drawdown_state
+            signal, self.base_risk_per_trade, self.current_capital, drawdown_state=self.drawdown_state
         )
 
         if not can_trade:
             return 0.0
 
         position_size = self.position_sizer.calculate_position_size(
-            signal,
-            entry_price,
-            stop_loss,
-            self.current_capital,
-            drawdown_state=self.drawdown_state,
-            win_streak=self.current_win_streak,
-            loss_streak=self.current_loss_streak,
-            recovery_mode=self.recovery_mode
+            signal, entry_price, stop_loss, self.current_capital,
+            drawdown_state=self.drawdown_state, win_streak=self.current_win_streak,
+            loss_streak=self.current_loss_streak, recovery_mode=self.recovery_mode
         )
 
         if "ranging" in market_phase:
@@ -1271,26 +989,18 @@ class RiskManager:
             return {"exit": False, "reason": "InvalidPosition"}
 
         exit_decision = self.exit_strategy.evaluate_exit(
-            position,
-            current_price,
-            current_atr,
-            **kwargs
+            position, current_price, current_atr, **kwargs
         )
 
         if not exit_decision.get('exit', False) and self.partial_exit_tracker.enable_partial_exits:
             partial_exit = self.partial_exit_tracker.get_partial_exit_levels(
-                position,
-                current_price,
-                **kwargs
+                position, current_price, **kwargs
             )
 
             if partial_exit:
                 return {
-                    "exit": False,
-                    "partial_exit": True,
-                    "portion": partial_exit["portion"],
-                    "id": partial_exit["id"],
-                    "price": current_price,
+                    "exit": False, "partial_exit": True, "portion": partial_exit["portion"],
+                    "id": partial_exit["id"], "price": current_price,
                     "reason": f"PartialExit_{int(partial_exit['portion'] * 100)}pct",
                 }
 
@@ -1302,7 +1012,6 @@ class RiskManager:
 
         self.current_capital = max(0, self.current_capital + pnl)
         self.peak_capital = max(self.peak_capital, self.current_capital)
-
         self.trade_history.append(trade_result)
 
         if is_win:
@@ -1342,82 +1051,11 @@ class RiskManager:
             return (False, 0.0)
 
         return self.exposure_manager.check_exposure_limits(
-            signal,
-            self.base_risk_per_trade,
-            self.current_capital,
-            drawdown_state=self.drawdown_state
+            signal, self.base_risk_per_trade, self.current_capital, drawdown_state=self.drawdown_state
         )
 
-    def _optimize_stop_loss_placement(self, direction, entry_price, atr, market_phase, volatility, ensemble_score=0.5):
-        base_multiplier = self.config.get("exit", "base_atr_multiplier", 3.0)
-        base_multiplier *= 1.2
-
-        if market_phase == "ranging" or "ranging_at" in market_phase:
-            base_multiplier *= 1.6
-        elif market_phase == "volatile":
-            base_multiplier *= 1.8
-        elif "downtrend" in market_phase and direction == "long":
-            base_multiplier *= 1.4
-        elif "uptrend" in market_phase and direction == "short":
-            base_multiplier *= 1.4
-
-        if volatility > 0.7:
-            base_multiplier *= 1.3
-        elif volatility > 0.5:
-            base_multiplier *= 1.1
-        elif volatility < 0.3:
-            base_multiplier *= 0.9
-
-        if ensemble_score < 0.4:
-            base_multiplier *= 1.2
-        elif ensemble_score > 0.75:
-            base_multiplier *= 0.9
-
-        stop_distance = atr * base_multiplier
-
-        min_stop_percent = 0.015
-
-        if direction == 'long':
-            atr_based_stop = entry_price - stop_distance
-            percent_based_stop = entry_price * (1 - min_stop_percent)
-            stop_price = min(atr_based_stop, percent_based_stop)
-        else:
-            atr_based_stop = entry_price + stop_distance
-            percent_based_stop = entry_price * (1 + min_stop_percent)
-            stop_price = max(atr_based_stop, percent_based_stop)
-
-        return stop_price
-
-    def _check_oscillation_exit(self, position, current_price, prev_prices):
-        if len(prev_prices) < 6:
-            return False
-
-        direction = position.get('direction', '')
-        entry_price = float(position.get('entry_price', 0))
-
-        price_range = max(prev_prices) - min(prev_prices)
-        price_movement = abs(current_price - prev_prices[0])
-        oscillation_ratio = price_range / max(price_movement, 0.0001)
-
-        if direction == 'long':
-            pnl_pct = (current_price / entry_price) - 1
-        else:
-            pnl_pct = (entry_price / current_price) - 1
-
-        if oscillation_ratio > 3.0 and abs(pnl_pct) < 0.005:
-            return {
-                "exit": True,
-                "reason": "OscillationExit",
-                "exit_price": current_price
-            }
-
-        return {"exit": False, "reason": "NoExit"}
-
     def get_partial_exit_levels(self, direction, entry_price, current_price, **market_conditions):
-        position = {
-            'direction': direction,
-            'entry_price': entry_price,
-        }
+        position = {'direction': direction, 'entry_price': entry_price}
         return self.partial_exit_tracker.get_partial_exit_levels(position, current_price, **market_conditions)
 
     def get_performance_metrics(self):
@@ -1447,19 +1085,12 @@ class RiskManager:
             float(position['entry_price'])
             float(position['initial_stop_loss'])
             float(position['current_stop_loss'])
-
-            if position['direction'] not in ['long', 'short']:
-                return False
-
-            return True
+            return position['direction'] in ['long', 'short']
         except (ValueError, TypeError):
             return False
 
     def _update_drawdown_state(self):
-        if self.peak_capital == 0:
-            self.current_drawdown = 0
-        else:
-            self.current_drawdown = 1 - (self.current_capital / self.peak_capital)
+        self.current_drawdown = 1 - (self.current_capital / self.peak_capital) if self.peak_capital > 0 else 0
 
         if self.current_drawdown < 0.05:
             self.drawdown_state = "normal"
@@ -1473,14 +1104,12 @@ class RiskManager:
     def _update_recovery_mode(self):
         if self.current_drawdown > 0.12 and not self.recovery_mode:
             self.recovery_mode = True
-
         elif self.current_drawdown < 0.08 and self.recovery_mode:
             self.recovery_mode = False
 
     def _clean_daily_counts(self):
         today = datetime.now().date()
         cutoff = today - timedelta(days=7)
-
         self.daily_trade_count = {
             d: c for d, c in self.daily_trade_count.items()
             if datetime.strptime(d, "%Y-%m-%d").date() >= cutoff

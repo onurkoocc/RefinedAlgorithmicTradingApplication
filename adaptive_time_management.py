@@ -28,10 +28,8 @@ class ExitType:
 class AdaptiveTimeManager:
     def __init__(self, config):
         self.config = config
-
         self.min_holding_time = config.get("time_management", "min_holding_time", 0.5)
         self.max_holding_time = config.get("time_management", "max_holding_time", 36.0)
-
         self.profit_targets = {
             TimeFrame.MICRO: config.get("time_management", "micro_profit", 0.004),
             TimeFrame.SHORT: config.get("time_management", "short_profit", 0.009),
@@ -39,7 +37,6 @@ class AdaptiveTimeManager:
             TimeFrame.LONG: config.get("time_management", "long_profit", 0.035),
             TimeFrame.EXTENDED: config.get("time_management", "extended_profit", 0.05)
         }
-        # Add these new attributes for early loss and stagnant trade detection
         self.early_loss_threshold = config.get("exit", "early_loss_threshold", -0.012)
         self.early_loss_time = config.get("exit", "early_loss_time", 2.5)
         self.stagnant_threshold = config.get("exit", "stagnant_threshold", 0.003)
@@ -52,7 +49,6 @@ class AdaptiveTimeManager:
             "ranging_at_resistance": {"long": 0.7, "short": 1.1},
             "volatile": {"long": 0.8, "short": 0.8}
         }
-
         self.atr_multiplier_map = {
             "uptrend": {"long": 2.8, "short": 2.2},
             "downtrend": {"long": 2.2, "short": 2.8},
@@ -60,7 +56,6 @@ class AdaptiveTimeManager:
             "ranging_at_support": {"long": 2.0, "short": 3.0},
             "ranging_at_resistance": {"long": 3.0, "short": 2.0}
         }
-
         self.partial_exit_strategy = {
             "uptrend": [
                 {"threshold": 0.012, "portion": 0.2},
@@ -78,27 +73,17 @@ class AdaptiveTimeManager:
                 {"threshold": 0.028, "portion": 0.3}
             ]
         }
-
         self.exit_stats = {}
         self.optimal_durations = {}
         self.trade_history = deque(maxlen=500)
         self.performance_by_duration = {}
         self.performance_by_phase = {}
         self.time_decay_factors = {
-            4: 1.0,
-            8: 0.95,
-            16: 0.9,
-            24: 0.85,
-            36: 0.7
+            4: 1.0, 8: 0.95, 16: 0.9, 24: 0.85, 36: 0.7
         }
-
         self.volatility_amplifiers = {
-            "low": 1.2,
-            "medium": 1.0,
-            "high": 0.8,
-            "extreme": 0.6
+            "low": 1.2, "medium": 1.0, "high": 0.8, "extreme": 0.6
         }
-
         from indicator_util import IndicatorUtil
         self.indicator_util = IndicatorUtil()
 
@@ -113,18 +98,14 @@ class AdaptiveTimeManager:
         direction = position['direction']
         entry_price = float(position['entry_price'])
         current_stop = float(position['current_stop_loss'])
-
         trade_duration = self._calculate_duration(entry_time, current_time)
         pnl_pct = self._calculate_pnl(direction, entry_price, current_price)
         market_phase = market_conditions.get('market_phase', 'neutral')
         volatility = float(market_conditions.get('volatility', 0.5))
         ensemble_score = float(position.get('ensemble_score', 0.5))
         momentum = float(market_conditions.get('momentum', 0))
-
-        # Get volume delta from market conditions
         volume_delta = float(market_conditions.get('volume_delta', 0))
 
-        # Add volume_delta to exit factors analysis
         exit_decision = self._analyze_exit_factors(
             position, current_price, current_time, market_conditions,
             trade_duration, pnl_pct, market_phase, volatility, ensemble_score, momentum
@@ -135,7 +116,6 @@ class AdaptiveTimeManager:
                 direction, entry_price, current_price, market_phase,
                 trade_duration, volatility, momentum
             )
-
             if partial_exit:
                 return partial_exit
 
@@ -143,10 +123,8 @@ class AdaptiveTimeManager:
                 position, current_price, market_phase,
                 volatility, pnl_pct
             )
-
             if trailing_stop:
                 return trailing_stop
-
         return exit_decision
 
     def _analyze_exit_factors(self, position, current_price, current_time, market_conditions,
@@ -154,8 +132,6 @@ class AdaptiveTimeManager:
         direction = position['direction']
         entry_price = float(position['entry_price'])
         current_stop = float(position['current_stop_loss'])
-
-        # Add additional market data from market_conditions
         macd_histogram = float(market_conditions.get('macd_histogram', 0))
         volume_delta = float(market_conditions.get('volume_delta', 0))
         bb_width = float(market_conditions.get('bb_width', 0))
@@ -192,7 +168,6 @@ class AdaptiveTimeManager:
                 "exit_price": current_price
             }
 
-        # New: Check for volatility expansion exit
         if bb_width > 0.05 and abs(pnl_pct) > 0.005:
             if (direction == 'long' and momentum < -0.1) or (direction == 'short' and momentum > 0.1):
                 return {
@@ -201,7 +176,6 @@ class AdaptiveTimeManager:
                     "exit_price": current_price
                 }
 
-        # New: Check for key level breach
         if price_action and 'key_level_breach' in price_action:
             level_breach = price_action['key_level_breach']
             if level_breach.get('breached', False):
@@ -236,38 +210,20 @@ class AdaptiveTimeManager:
                 "exit_price": current_stop
             }
 
-        # Enhanced early loss detection - get values from config rather than attributes
-        early_loss_threshold = self.config.get("exit", "early_loss_threshold", -0.012)
+        base_early_loss = self.config.get("exit", "early_loss_threshold", -0.012)
         early_loss_time = self.config.get("exit", "early_loss_time", 2.5)
 
         if pnl_pct < 0:
-            # Scale threshold based on market conditions
-            base_early_loss = early_loss_threshold
+            base_early_loss = base_early_loss * (0.7 if "ranging" in market_phase else 1.0)
+            base_early_loss *= 0.85 if volatility > 0.7 else 1.0
+            base_early_loss *= 0.8 if float(market_conditions.get('trend_strength', 0.5)) < 0.3 else 1.0
 
-            # More sensitive early loss detection in ranging markets
-            if "ranging" in market_phase:
-                base_early_loss *= 0.7
+            time_threshold = early_loss_time * (0.7 if "ranging" in market_phase else 1.0)
 
-            # Consider volatility for early loss threshold
-            if volatility > 0.7:
-                base_early_loss *= 0.85  # Less sensitive in high volatility
-
-            # Consider trend strength from market conditions
-            trend_strength = float(market_conditions.get('trend_strength', 0.5))
-            if trend_strength < 0.3:  # Weak trend
-                base_early_loss *= 0.8  # More sensitive when trend is weak
-
-            # Adaptive time threshold - exit earlier in ranging markets
-            time_threshold = early_loss_time
-            if "ranging" in market_phase:
-                time_threshold *= 0.7
-
-            # Factor in momentum direction - exit faster on adverse momentum
-            if (direction == 'long' and momentum < -0.2) or (direction == 'short' and momentum > 0.2):
+            if ((direction == 'long' and momentum < -0.2) or (direction == 'short' and momentum > 0.2)):
                 base_early_loss *= 0.8
                 time_threshold *= 0.8
 
-            # Check for early loss exit condition
             if pnl_pct < base_early_loss and trade_duration > time_threshold:
                 return {
                     "exit": True,
@@ -295,35 +251,17 @@ class AdaptiveTimeManager:
         }
 
         phase_duration = base_max_duration.get(market_phase, {}).get(direction, 18.0)
-
-        if volatility > 0.7:
-            phase_duration *= 0.8
-        elif volatility < 0.3:
-            phase_duration *= 1.2
-
-        if ensemble_score > 0.7:
-            phase_duration *= 1.2
-        elif ensemble_score < 0.5:
-            phase_duration *= 0.85
-
+        phase_duration *= 0.8 if volatility > 0.7 else 1.2 if volatility < 0.3 else 1.0
+        phase_duration *= 1.2 if ensemble_score > 0.7 else 0.85 if ensemble_score < 0.5 else 1.0
         return min(phase_duration, self.max_holding_time)
 
     def _get_adjusted_profit_target(self, market_phase, direction, trade_duration, volatility):
         base_targets = self.profit_targets.copy()
-
         phase_adjustment = self.market_phase_adjustments.get(market_phase, {"long": 1.0, "short": 1.0})
         direction_factor = phase_adjustment.get(direction, 1.0)
-
-        volatility_factor = 1.0
-        if volatility > 0.7:
-            volatility_factor = 0.85
-        elif volatility < 0.3:
-            volatility_factor = 1.15
-
+        volatility_factor = 0.85 if volatility > 0.7 else 1.15 if volatility < 0.3 else 1.0
         timeframe = self._get_timeframe_from_duration(trade_duration)
-
         base_target = base_targets.get(timeframe, 0.01)
-
         return base_target * direction_factor * volatility_factor
 
     def _get_timeframe_from_duration(self, duration):
@@ -342,41 +280,22 @@ class AdaptiveTimeManager:
         if pnl_pct <= 0.005 or trade_duration < 1.0:
             return False
 
-        # Check both momentum and MACD histogram for stronger confirmation
         if direction == 'long':
-            # Combined signal using momentum, MACD histogram and volume (if available)
             momentum_signal = momentum < -0.2
             macd_signal = macd_histogram < 0
             volume_signal = volume_delta < -1.0 if abs(volume_delta) > 0 else False
-
-            # Need at least 2 confirming signals (reduced dependency on any single indicator)
-            signals = [momentum_signal, macd_signal, volume_signal]
-            confirming_signals = sum(1 for signal in signals if signal)
-
-            return confirming_signals >= 2
-        else:  # short
+        else:
             momentum_signal = momentum > 0.2
             macd_signal = macd_histogram > 0
             volume_signal = volume_delta > 1.0 if abs(volume_delta) > 0 else False
 
-            signals = [momentum_signal, macd_signal, volume_signal]
-            confirming_signals = sum(1 for signal in signals if signal)
-
-            return confirming_signals >= 2
-
-        return False
+        signals = [momentum_signal, macd_signal, volume_signal]
+        return sum(1 for signal in signals if signal) >= 2
 
     def _check_rsi_extreme_exit(self, direction, rsi, pnl_pct, trade_duration):
         if pnl_pct <= 0.004 or trade_duration < 0.5:
             return False
-
-        if direction == 'long' and rsi > 75:
-            return True
-
-        if direction == 'short' and rsi < 25:
-            return True
-
-        return False
+        return (direction == 'long' and rsi > 75) or (direction == 'short' and rsi < 25)
 
     def _check_quick_profit_exit(self, pnl_pct, trade_duration, volatility, ensemble_score, market_phase):
         phase_thresholds = {
@@ -391,26 +310,17 @@ class AdaptiveTimeManager:
         direction = "long" if pnl_pct > 0 else "short"
         threshold = phase_thresholds.get(market_phase, {}).get(direction, 0.007)
 
-        if volatility > 0.7:
-            threshold *= 0.85
-
-        if ensemble_score < 0.5:
-            threshold *= 0.9
-
-        if trade_duration < 1.0:
-            threshold *= 1.2
-        elif trade_duration > 6.0:
-            threshold *= 0.8
+        threshold *= 0.85 if volatility > 0.7 else 1.0
+        threshold *= 0.9 if ensemble_score < 0.5 else 1.0
+        threshold *= 1.2 if trade_duration < 1.0 else 0.8 if trade_duration > 6.0 else 1.0
 
         return pnl_pct > threshold and trade_duration > self.min_holding_time
 
     def _check_stagnant_trade(self, pnl_pct, trade_duration, market_phase):
-        # Get stagnant threshold from config
         base_threshold = self.config.get("exit", "stagnant_threshold", 0.003)
 
-        # More aggressive thresholds for ranging markets
         phase_thresholds = {
-            "ranging": base_threshold * 0.83,  # Increased sensitivity in ranging markets
+            "ranging": base_threshold * 0.83,
             "ranging_at_support": base_threshold * 0.66,
             "ranging_at_resistance": base_threshold * 0.66,
             "uptrend": base_threshold,
@@ -418,28 +328,17 @@ class AdaptiveTimeManager:
             "neutral": base_threshold * 0.83,
             "volatile": base_threshold * 1.33
         }
-
         threshold = phase_thresholds.get(market_phase, base_threshold)
 
-        # More dynamic time thresholds - exit earlier in ranging markets
         if "ranging" in market_phase:
-            if trade_duration > 3.0 and abs(pnl_pct) < threshold:
-                return True
-            if trade_duration > 6.0 and abs(pnl_pct) < threshold * 1.5:
-                return True
-            if trade_duration > 9.0 and abs(pnl_pct) < threshold * 2:
-                return True
+            if trade_duration > 3.0 and abs(pnl_pct) < threshold: return True
+            if trade_duration > 6.0 and abs(pnl_pct) < threshold * 1.5: return True
+            if trade_duration > 9.0 and abs(pnl_pct) < threshold * 2: return True
         else:
-            # Standard checks for other market phases
-            if trade_duration < 4.0:
-                return False
-            if trade_duration > 8.0 and abs(pnl_pct) < threshold:
-                return True
-            if trade_duration > 14.0 and abs(pnl_pct) < threshold * 1.5:
-                return True
-            if trade_duration > 20.0 and abs(pnl_pct) < threshold * 2:
-                return True
-
+            if trade_duration < 4.0: return False
+            if trade_duration > 8.0 and abs(pnl_pct) < threshold: return True
+            if trade_duration > 14.0 and abs(pnl_pct) < threshold * 1.5: return True
+            if trade_duration > 20.0 and abs(pnl_pct) < threshold * 2: return True
         return False
 
     def _check_time_decay_exit(self, pnl_pct, trade_duration, market_phase):
@@ -465,32 +364,19 @@ class AdaptiveTimeManager:
         phase_adj = phase_adjustments.get(market_phase, {}).get(direction, 1.0)
         decay_threshold *= phase_adj
 
-        if 0 < pnl_pct < decay_threshold and trade_duration > 8.0:
-            return True
-
-        return False
+        return 0 < pnl_pct < decay_threshold and trade_duration > 8.0
 
     def _check_partial_exit(self, direction, entry_price, current_price, market_phase,
                             trade_duration, volatility, momentum):
         if direction not in ['long', 'short']:
             return None
 
-        if direction == 'long':
-            pnl_pct = (current_price / entry_price) - 1
-        else:
-            pnl_pct = (entry_price / current_price) - 1
-
+        pnl_pct = ((current_price / entry_price) - 1) if direction == 'long' else ((entry_price / current_price) - 1)
         if pnl_pct <= 0:
             return None
 
-        exit_levels = self.partial_exit_strategy.get(market_phase,
-                                                     self.partial_exit_strategy["neutral"])
-
-        volatility_adj = 1.0
-        if volatility > 0.7:
-            volatility_adj = 0.9
-        elif volatility < 0.3:
-            volatility_adj = 1.1
+        exit_levels = self.partial_exit_strategy.get(market_phase, self.partial_exit_strategy["neutral"])
+        volatility_adj = 0.9 if volatility > 0.7 else 1.1 if volatility < 0.3 else 1.0
 
         for i, level in enumerate(exit_levels):
             threshold = level["threshold"] * volatility_adj
@@ -510,7 +396,6 @@ class AdaptiveTimeManager:
                     "reason": f"PartialExit_{int(portion * 100)}pct",
                     "update_position_flag": f"partial_exit_{level_id}"
                 }
-
         return None
 
     def _update_trailing_stop(self, position, current_price, market_phase, volatility, pnl_pct):
@@ -518,29 +403,22 @@ class AdaptiveTimeManager:
         entry_price = float(position['entry_price'])
         current_stop = float(position['current_stop_loss'])
         atr = float(position.get('atr', current_price * 0.01))
+        min_profit_for_adjustment = 0.008
 
-        # Don't trail stops until minimum profit threshold
-        min_profit_for_adjustment = 0.008  # Increased from previous value
         if pnl_pct < min_profit_for_adjustment:
             return None
 
-        # Get base ATR multiplier for the market phase and direction
         atr_multiplier = self.atr_multiplier_map.get(market_phase, {}).get(direction, 2.5)
 
-        # For ranging markets, use wider trailing stops
         if "ranging" in market_phase:
             atr_multiplier *= 1.5
 
-        # Implement smarter trailing logic based on trend_strength
         trend_strength = float(position.get('trend_strength', 0.5))
-        if trend_strength < 0.3:  # Weak trend
-            atr_multiplier *= 1.3  # Wider trailing
+        if trend_strength < 0.3:
+            atr_multiplier *= 1.3
 
-        # Calculate new stop loss with sufficient breathing room
         if direction == 'long':
             new_stop = current_price - (atr_multiplier * atr)
-
-            # Add progressive profit lock logic - move to breakeven faster in ranging markets
             if market_phase == "ranging" and pnl_pct > 0.012:
                 new_stop = max(new_stop, entry_price + (entry_price * 0.001))
 
@@ -553,8 +431,6 @@ class AdaptiveTimeManager:
                 }
         else:
             new_stop = current_price + (atr_multiplier * atr)
-
-            # Add progressive profit lock logic
             if market_phase == "ranging" and pnl_pct > 0.012:
                 new_stop = min(new_stop, entry_price - (entry_price * 0.001))
 
@@ -591,10 +467,8 @@ class AdaptiveTimeManager:
         stats = self.exit_stats[exit_reason]
         stats['count'] += 1
         stats['total_pnl'] += pnl
-
         if pnl > 0:
             stats['win_count'] += 1
-
         if duration_hours > 0:
             stats['durations'].append(duration_hours)
 
@@ -610,7 +484,6 @@ class AdaptiveTimeManager:
         dur_stats = self.performance_by_duration[duration_bucket]
         dur_stats['count'] += 1
         dur_stats['total_pnl'] += pnl
-
         if pnl > 0:
             dur_stats['win_count'] += 1
 
@@ -623,7 +496,6 @@ class AdaptiveTimeManager:
         phase_stats = self.performance_by_phase[market_phase]
         phase_stats['count'] += 1
         phase_stats['total_pnl'] += pnl
-
         if pnl > 0:
             phase_stats['win_count'] += 1
             phase_stats['durations'].append(duration_hours)
@@ -658,7 +530,6 @@ class AdaptiveTimeManager:
         for phase, stats in self.performance_by_phase.items():
             if not stats.get('durations'):
                 continue
-
             if len(stats['durations']) >= 5:
                 stats['optimal_duration'] = np.mean(stats['durations'])
                 self.optimal_durations[phase] = stats['optimal_duration']
@@ -676,14 +547,12 @@ class AdaptiveTimeManager:
         for reason, stats in self.exit_stats.items():
             if stats['count'] < 5:
                 continue
-
             score = (stats['win_rate'] * 0.4) + (stats['avg_pnl'] * 100 * 0.6)
             exit_perf[reason] = score
 
         for bucket, stats in self.performance_by_duration.items():
             if stats['count'] < 5:
                 continue
-
             win_rate = stats['win_count'] / stats['count'] if stats['count'] > 0 else 0
             avg_pnl = stats['total_pnl'] / stats['count'] if stats['count'] > 0 else 0
             score = (win_rate * 0.4) + (avg_pnl * 100 * 0.6)
@@ -691,7 +560,6 @@ class AdaptiveTimeManager:
 
         if len(exit_perf) >= 3:
             best_exits = sorted(exit_perf.items(), key=lambda x: x[1], reverse=True)[:3]
-
             for exit_type, score in best_exits:
                 if exit_type == "ProfitTarget" and score > 1.0:
                     self._boost_profit_targets(1.1)
@@ -701,7 +569,6 @@ class AdaptiveTimeManager:
         if len(duration_perf) >= 3:
             best_durations = sorted(duration_perf.items(), key=lambda x: x[1], reverse=True)[:2]
             worst_durations = sorted(duration_perf.items(), key=lambda x: x[1])[:2]
-
             self._adjust_max_durations(best_durations, worst_durations)
 
         return True
@@ -718,36 +585,18 @@ class AdaptiveTimeManager:
             for direction in ['long', 'short']:
                 if any(h in best_hours for h in [4, 8, 16]):
                     self.market_phase_adjustments[phase][direction] *= 1.05
-
                 if any(h in worst_hours for h in [16, 24, 36]):
                     self.market_phase_adjustments[phase][direction] *= 0.95
 
     def _hours_from_buckets(self, duration_scores):
-        hours = []
-        for bucket, _ in duration_scores:
-            if bucket == "0-1h":
-                hours.append(1)
-            elif bucket == "1-2h":
-                hours.append(2)
-            elif bucket == "2-4h":
-                hours.append(4)
-            elif bucket == "4-8h":
-                hours.append(8)
-            elif bucket == "8-16h":
-                hours.append(16)
-            else:
-                hours.append(24)
-        return hours
+        bucket_map = {"0-1h": 1, "1-2h": 2, "2-4h": 4, "4-8h": 8, "8-16h": 16, "16h+": 24}
+        return [bucket_map.get(bucket, 0) for bucket, _ in duration_scores]
 
     def get_optimal_holding_time(self, market_phase=None, direction=None):
         if not market_phase:
             return self.optimal_durations.get('overall', 12.0)
-
         phase_specific = self.optimal_durations.get(market_phase)
-        if phase_specific:
-            return phase_specific
-
-        return self.optimal_durations.get('overall', 12.0)
+        return phase_specific if phase_specific else self.optimal_durations.get('overall', 12.0)
 
     def get_exit_performance_stats(self):
         return self.get_exit_performance()
@@ -762,7 +611,6 @@ class AdaptiveTimeManager:
 
     def calculate_optimal_trade_duration(self, trade_history=None):
         trades = trade_history or self.trade_history
-
         if not trades or len(trades) < 10:
             return {
                 "optimal_hold_time": 12,
@@ -788,16 +636,8 @@ class AdaptiveTimeManager:
                 phases[phase] = []
             phases[phase].append(trade.get('duration_hours', 0))
 
-        phase_durations = {}
-        for phase, durations in phases.items():
-            if len(durations) >= 5:
-                phase_durations[phase] = np.mean(durations)
-
-        confidence = "medium"
-        if len(winning_trades) > 30:
-            confidence = "high"
-        elif len(winning_trades) < 10:
-            confidence = "low"
+        phase_durations = {phase: np.mean(durations) for phase, durations in phases.items() if len(durations) >= 5}
+        confidence = "high" if len(winning_trades) > 30 else "low" if len(winning_trades) < 10 else "medium"
 
         return {
             "optimal_hold_time": optimal_duration,
@@ -810,51 +650,37 @@ class AdaptiveTimeManager:
 
     def _validate_position(self, position, current_price, current_time):
         required_fields = ['entry_time', 'direction', 'entry_price', 'current_stop_loss']
-
-        for field in required_fields:
-            if field not in position:
-                return False
-
+        if not all(field in position for field in required_fields):
+            return False
         if position['direction'] not in ['long', 'short']:
             return False
-
         try:
             float(position['entry_price'])
             float(position['current_stop_loss'])
             float(current_price)
         except (ValueError, TypeError):
             return False
-
         entry_time = position.get('entry_time')
         if not isinstance(entry_time, datetime) or current_time <= entry_time:
             return False
-
         return True
 
     def _validate_trade_result(self, trade_result):
         required_fields = ['entry_time', 'exit_time', 'pnl', 'exit_signal']
-
-        for field in required_fields:
-            if field not in trade_result:
-                return False
-
-        entry_time = trade_result.get('entry_time')
-        exit_time = trade_result.get('exit_time')
-
+        if not all(field in trade_result for field in required_fields):
+            return False
+        entry_time, exit_time = trade_result.get('entry_time'), trade_result.get('exit_time')
         if not isinstance(entry_time, datetime) or not isinstance(exit_time, datetime):
             return False
-
         try:
             float(trade_result['pnl'])
         except (ValueError, TypeError):
             return False
-
         return True
 
     def _calculate_duration(self, entry_time, current_time):
         if not isinstance(entry_time, datetime) or not isinstance(current_time, datetime):
             return 0.0
-
         try:
             if entry_time.tzinfo is not None and current_time.tzinfo is None:
                 current_time = current_time.replace(tzinfo=entry_time.tzinfo)
@@ -862,7 +688,6 @@ class AdaptiveTimeManager:
                 entry_time = entry_time.replace(tzinfo=current_time.tzinfo)
         except Exception:
             pass
-
         try:
             duration_seconds = (current_time - entry_time).total_seconds()
             return max(0.0, duration_seconds / 3600)
@@ -872,7 +697,6 @@ class AdaptiveTimeManager:
     def _calculate_pnl(self, direction, entry_price, current_price):
         if entry_price <= 0 or current_price <= 0:
             return 0.0
-
         if direction == 'long':
             return (current_price / entry_price) - 1
         elif direction == 'short':

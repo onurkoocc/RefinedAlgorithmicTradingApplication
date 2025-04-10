@@ -1,20 +1,20 @@
 import logging
+from collections import deque
+from datetime import datetime
 from gc import collect
+from pathlib import Path
+from typing import Dict, List, Any
+from uuid import uuid4
 
 import numpy as np
 import pandas as pd
-from datetime import datetime, timedelta
-from typing import Dict, List, Tuple, Any, Optional, Union
-from pathlib import Path
-from uuid import uuid4
-from collections import deque
 import tensorflow as tf
+
 
 class BacktestEngine:
     def __init__(self, config, data_preparer, model, signal_generator, risk_manager):
         self.config = config
         self.logger = logging.getLogger("BacktestEngine")
-
         self.data_preparer = data_preparer
         self.model = model
         self.signal_generator = signal_generator
@@ -56,14 +56,12 @@ class BacktestEngine:
 
     def run_backtest(self, df_features: pd.DataFrame) -> pd.DataFrame:
         self.logger.info("Starting backtest with advanced signal generation and exit strategies")
-        # Force reset model between iterations
         if hasattr(self.model, 'model'):
             self.model.model = None
         tf.keras.backend.clear_session()
 
         if len(df_features) < (self.train_window_size + self.test_window_size):
-            self.logger.error(
-                f"Insufficient data for backtest. Need at least {self.train_window_size + self.test_window_size} samples.")
+            self.logger.error(f"Insufficient data for backtest. Need at least {self.train_window_size + self.test_window_size} samples.")
             return pd.DataFrame()
 
         walk_forward_windows = self.walk_forward_manager.create_windows(
@@ -109,7 +107,7 @@ class BacktestEngine:
                 window_info
             )
 
-            result = {
+            return {
                 "iteration": iteration,
                 "window_info": window_info,
                 "final_equity": simulation_result["final_equity"],
@@ -118,8 +116,6 @@ class BacktestEngine:
                 "trade_count": len(simulation_result["trades"]),
                 "daily_returns": simulation_result["daily_returns"]
             }
-
-            return result
 
         except Exception as e:
             self.logger.error(f"Error in window backtest iteration {iteration}: {e}")
@@ -150,15 +146,6 @@ class BacktestEngine:
             import traceback
             self.logger.error(traceback.format_exc())
             return False
-
-    def _validate_existing_model(self, X_val, y_val) -> float:
-        try:
-            predictions = self.model.predict(X_val)
-            correct_direction = np.sum(np.sign(predictions.flatten()) == np.sign(y_val))
-            return correct_direction / len(y_val) if len(y_val) > 0 else 0.0
-        except Exception as e:
-            self.logger.warning(f"Error in model validation: {e}")
-            return 0.0
 
     def _compute_class_weights(self, y_train: np.ndarray) -> Dict[int, float]:
         from sklearn.utils import compute_class_weight
@@ -302,7 +289,6 @@ class BacktestEngine:
         )
 
         self.exporter.export_monthly_performance(self.metric_calculator.monthly_returns)
-
         self.optimization_engine.export_optimization_results(self.results_dir)
 
     def _create_results_dataframe(self, all_results: List[Dict[str, Any]]) -> pd.DataFrame:
@@ -349,21 +335,11 @@ class MarketSimulator:
         self.use_dynamic_slippage = config.get("backtest", "use_dynamic_slippage", True)
         self.min_hours_between_trades = config.get("backtest", "min_hours_between_trades", 1)
 
-        self.signal_stats = {"Buy": 0, "Sell": 0, "NoTrade": 0}
-        self.no_trade_reasons = {}
-        self.position = 0
-        self.trade_entry = None
-        self.last_signal_time = None
-        self.equity_curve = []
-        self.daily_returns = []
-        self.trades = []
-        self.peak_capital = 0
-        self.drawdown_periods = []
-        self.iteration = 0
+        self.reset_simulation_state()
 
     def simulate(self, iteration, predictions, df_labeled, fwd_returns,
                  signal_generator, risk_manager, time_manager) -> Dict[str, Any]:
-        self._reset_simulation_state()
+        self.reset_simulation_state()
         self.iteration = iteration
 
         self.equity_curve = [self.portfolio_manager.current_capital]
@@ -420,7 +396,7 @@ class MarketSimulator:
             "signal_stats": self.signal_stats
         }
 
-    def _reset_simulation_state(self):
+    def reset_simulation_state(self):
         self.position = 0
         self.trade_entry = None
         self.last_signal_time = None
@@ -431,6 +407,7 @@ class MarketSimulator:
         self.no_trade_reasons = {}
         self.peak_capital = self.portfolio_manager.current_capital
         self.drawdown_periods = []
+        self.iteration = 0
 
     def _update_drawdown_metrics(self, i, current_price):
         if self.portfolio_manager.current_capital > self.peak_capital:
@@ -504,10 +481,8 @@ class MarketSimulator:
         if time_exit_decision.get("update_stop", False):
             new_stop = float(time_exit_decision.get("new_stop", 0))
             if not np.isnan(new_stop) and new_stop > 0:
-                if (self.trade_entry['direction'] == 'long' and new_stop > self.trade_entry[
-                    'current_stop_loss'] and new_stop < current_price) or \
-                        (self.trade_entry['direction'] == 'short' and new_stop < self.trade_entry[
-                            'current_stop_loss'] and new_stop > current_price):
+                if (self.trade_entry['direction'] == 'long' and new_stop > self.trade_entry['current_stop_loss'] and new_stop < current_price) or \
+                        (self.trade_entry['direction'] == 'short' and new_stop < self.trade_entry['current_stop_loss'] and new_stop > current_price):
                     self.trade_entry['current_stop_loss'] = new_stop
 
         partial_exit = risk_manager.get_partial_exit_levels(
@@ -1206,11 +1181,7 @@ class OptimizationEngine:
 
             if exit_reason not in exit_performance:
                 exit_performance[exit_reason] = {
-                    'count': 0,
-                    'win_count': 0,
-                    'total_pnl': 0,
-                    'avg_pnl': 0,
-                    'win_rate': 0
+                    'count': 0, 'win_count': 0, 'total_pnl': 0, 'avg_pnl': 0, 'win_rate': 0
                 }
 
             stats = exit_performance[exit_reason]
@@ -1381,13 +1352,8 @@ class PerformanceAnalyzer:
     def calculate_window_metrics(self, trades, equity_curve, window_info):
         if not trades:
             return {
-                'win_rate': 0,
-                'profit_factor': 0,
-                'sharpe_ratio': 0,
-                'sortino_ratio': 0,
-                'max_drawdown': 0,
-                'max_drawdown_duration': 0,
-                'return': 0
+                'win_rate': 0, 'profit_factor': 0, 'sharpe_ratio': 0, 'sortino_ratio': 0,
+                'max_drawdown': 0, 'max_drawdown_duration': 0, 'return': 0
             }
 
         wins = [t for t in trades if t.get('pnl', 0) > 0]

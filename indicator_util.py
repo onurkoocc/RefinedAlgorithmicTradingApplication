@@ -15,29 +15,15 @@ class IndicatorUtil:
             return df
 
         df = df.copy()
-
-        # Add time-based features
         df = self.calculate_time_features(df)
-
-        # Trend Indicators
         df = self.calculate_ema(df, [9, 21, 50])
-
-        # Momentum Indicators
         df = self.calculate_rsi(df, 14)
-
-        # Volatility Indicators
         df = self.calculate_bollinger_bands(df, 20, 2)
         df = self.calculate_atr(df, 14)
-
-        # Volume Indicators
         df = self.calculate_obv(df)
         df = self.calculate_cmf(df, 20)
-
-        # Market State Indicators
         df = self.calculate_adx(df, 14)
         df = self.calculate_macd(df, 12, 26, 9)
-
-        # Additional Indicators
         df = self.calculate_sma(df, [200])
         df = self.calculate_bb_width(df)
 
@@ -52,13 +38,11 @@ class IndicatorUtil:
             except:
                 return df_out
 
-        # Hour features - sin/cos encoding for cyclical nature
         hours = df_out.index.hour
         df_out['hour_sin'] = np.sin(2 * np.pi * hours / 24.0)
         df_out['hour_cos'] = np.cos(2 * np.pi * hours / 24.0)
 
-        # Day of week features - sin/cos encoding for cyclical nature
-        day_of_week = df_out.index.dayofweek  # 0=Monday, 6=Sunday
+        day_of_week = df_out.index.dayofweek
         df_out['day_of_week_sin'] = np.sin(2 * np.pi * day_of_week / 7.0)
         df_out['day_of_week_cos'] = np.cos(2 * np.pi * day_of_week / 7.0)
 
@@ -118,7 +102,6 @@ class IndicatorUtil:
 
     def calculate_bollinger_bands(self, df: pd.DataFrame, period: int = 20, std_dev: float = 2) -> pd.DataFrame:
         df_out = df.copy()
-
         bb_middle = f'bb_middle_{period}'
         bb_upper = f'bb_upper_{period}'
         bb_lower = f'bb_lower_{period}'
@@ -156,7 +139,7 @@ class IndicatorUtil:
 
         if np.any(valid_sma):
             bb_width[valid_sma] = (df_out['bb_upper_20'].values[valid_sma] - df_out['bb_lower_20'].values[valid_sma]) / \
-                                  df_out['bb_middle_20'].values[valid_sma]
+                                df_out['bb_middle_20'].values[valid_sma]
 
         df_out['bb_width_20'] = pd.Series(bb_width, index=df.index)
         self.indicators_cache['bb_width_20'] = df_out['bb_width_20'].values
@@ -217,8 +200,8 @@ class IndicatorUtil:
         valid_range = ~np.isnan(high_low_diff) & (high_low_diff > 0)
         if np.any(valid_range):
             money_flow_multiplier[valid_range] = ((df['close'].values[valid_range] - df['low'].values[valid_range]) -
-                                                  (df['high'].values[valid_range] - df['close'].values[valid_range])) / \
-                                                 high_low_diff.values[valid_range]
+                                                (df['high'].values[valid_range] - df['close'].values[valid_range])) / \
+                                                high_low_diff.values[valid_range]
 
         money_flow_volume = money_flow_multiplier * df['volume'].values
 
@@ -288,7 +271,7 @@ class IndicatorUtil:
         return df_out
 
     def calculate_macd(self, df: pd.DataFrame, fast_period: int = 12, slow_period: int = 26,
-                       signal_period: int = 9) -> pd.DataFrame:
+                      signal_period: int = 9) -> pd.DataFrame:
         df_out = df.copy()
         macd_col = f'macd_{fast_period}_{slow_period}'
         macd_signal_col = f'macd_signal_{fast_period}_{slow_period}_{signal_period}'
@@ -317,7 +300,6 @@ class IndicatorUtil:
         if df.empty or len(df) < 50:
             return "neutral"
 
-        # Ensure necessary indicators are calculated
         required_indicators = ['ema_9', 'ema_21', 'ema_50', 'adx_14', 'bb_width_20']
         for indicator in required_indicators:
             if indicator not in df.columns:
@@ -328,16 +310,12 @@ class IndicatorUtil:
         recent_ema9 = df['ema_9'].iloc[-1]
         recent_ema21 = df['ema_21'].iloc[-1]
         recent_ema50 = df['ema_50'].iloc[-1]
-
         adx = df['adx_14'].iloc[-1]
         bb_width = df['bb_width_20'].iloc[-1]
-
-        # Calculate more momentum indicators for a more robust analysis
         ema9_slope = (df['ema_9'].iloc[-1] / df['ema_9'].iloc[-5] - 1) * 100
         ema21_slope = (df['ema_21'].iloc[-1] / df['ema_21'].iloc[-5] - 1) * 100
         price_momentum = (df['close'].iloc[-1] / df['close'].iloc[-5] - 1) * 100
 
-        # Volume trend
         volume_trend = 0
         if 'volume' in df.columns:
             recent_vol = df['volume'].iloc[-3:].mean()
@@ -345,51 +323,34 @@ class IndicatorUtil:
             if past_vol > 0:
                 volume_trend = (recent_vol / past_vol) - 1
 
-        # Enhanced trend detection with reduced RSI dependency
         strong_uptrend = False
         strong_downtrend = False
-
-        # Price is above key EMAs
         price_above_emas = recent_close > recent_ema9 > recent_ema21 > recent_ema50
-
-        # Price is below key EMAs
         price_below_emas = recent_close < recent_ema9 < recent_ema21 < recent_ema50
 
-        # Strong uptrend requires:
-        # 1. Price above all EMAs
-        # 2. Positive EMA slopes
-        # 3. Strong ADX or good momentum
         if price_above_emas and ema9_slope > 0.18 and ema21_slope > 0.08:
             if adx > 25 or (price_momentum > 0.2 and volume_trend > 0.1):
                 strong_uptrend = True
 
-        # Strong downtrend requires:
-        # 1. Price below all EMAs
-        # 2. Negative EMA slopes
-        # 3. Strong ADX or good momentum
         if price_below_emas and ema9_slope < -0.18 and ema21_slope < -0.08:
             if adx > 25 or (price_momentum < -0.2 and volume_trend > 0.1):
                 strong_downtrend = True
 
-        # Support/resistance detection with added momentum context
         support_resistance_levels = self.identify_support_resistance(df)
         nearest_level, distance = self.get_nearest_level(recent_close, support_resistance_levels)
 
-        # Ranging market now checks more conditions
         is_ranging = abs(ema21_slope) < 0.18 and adx < 20 and distance < 0.022
 
         if is_ranging:
-            # Add volume analysis to ranging detection
             if 'volume' in df.columns:
                 last_10_volume = df['volume'].iloc[-10:].values
                 volume_stable = np.std(last_10_volume) / np.mean(last_10_volume) < 0.5
                 if not volume_stable:
                     is_ranging = False
 
-            # Check price action pattern
             last_5_candles = df.iloc[-5:]
             range_size = (last_5_candles['high'].max() - last_5_candles['low'].min()) / recent_close
-            if range_size > 0.03:  # More than 3% range in last 5 candles
+            if range_size > 0.03:
                 is_ranging = False
 
         if strong_uptrend:
@@ -430,7 +391,6 @@ class IndicatorUtil:
         pivots = []
 
         for i in range(window, len(df) - window):
-            # High pivot
             if df['high'].iloc[i] == df['high'].iloc[i - window:i + window + 1].max():
                 pivots.append({
                     'type': 'high',
@@ -439,7 +399,6 @@ class IndicatorUtil:
                     'strength': 1
                 })
 
-            # Low pivot
             if df['low'].iloc[i] == df['low'].iloc[i - window:i + window + 1].min():
                 pivots.append({
                     'type': 'low',
@@ -465,85 +424,27 @@ class IndicatorUtil:
 
         return nearest_level, min_distance
 
-    def get_signal_reason(self, ema_cross_up, ema_cross_down, macd_cross_up, macd_cross_down, rsi_oversold,
-                          rsi_overbought) -> str:
-        reasons = []
-
-        if ema_cross_up:
-            reasons.append("EMA9 crossed above EMA21")
-        if ema_cross_down:
-            reasons.append("EMA9 crossed below EMA21")
-        if macd_cross_up:
-            reasons.append("MACD crossed above Signal")
-        if macd_cross_down:
-            reasons.append("MACD crossed below Signal")
-        if rsi_oversold:
-            reasons.append("RSI oversold")
-        if rsi_overbought:
-            reasons.append("RSI overbought")
-
-        if not reasons:
-            return "No clear signal"
-
-        return ", ".join(reasons)
-
-    def check_volume_confirmation(self, df: pd.DataFrame) -> bool:
-        if len(df) < 5:
-            return False
-
-        if 'obv' not in df.columns:
-            df = self.calculate_obv(df)
-
-        volumes = df['volume'].values[-5:]
-        closes = df['close'].values[-5:]
-        obv_values = df['obv'].values[-5:]
-
-        # Volume confirmation based on price movement and OBV
-        price_change = closes[-1] / closes[-2] - 1
-        obv_change = obv_values[-1] - obv_values[-2]
-
-        # Volume trend confirmation
-        short_avg_volume = np.mean(volumes[-4:-1])
-        current_volume = volumes[-1]
-        volume_sufficient = current_volume > short_avg_volume * 0.85
-
-        if price_change > 0 and obv_change > 0 and volume_sufficient:
-            return True
-
-        if price_change < 0 and obv_change < 0 and volume_sufficient:
-            return True
-
-        return False
-
     def detect_volatility_regime(self, df: pd.DataFrame) -> float:
         if len(df) < 20:
             return 0.5
 
-        # Calculate or retrieve Bollinger Band width
         if 'bb_width_20' not in df.columns:
             df = self.calculate_bb_width(df)
 
         bb_width = df['bb_width_20'].iloc[-1]
 
-        # Convert BB width to volatility regime (0-1 scale)
         if np.isnan(bb_width):
             return 0.5
 
-        # Historical volatility from recent price changes
         if len(df) >= 20:
             returns = df['close'].pct_change().values[-20:]
             returns = returns[~np.isnan(returns)]
-            hist_vol = np.std(returns) * np.sqrt(48)  # Annualized for 30-min data
+            hist_vol = np.std(returns) * np.sqrt(48)
         else:
             hist_vol = 0.01
 
-        # Combine BB width and historical volatility
         bb_vol = min(0.9, max(0.1, (bb_width - 0.01) * 10))
-
-        # Scale historical volatility to 0-1
         hist_vol_scaled = min(0.9, max(0.1, hist_vol * 10))
-
-        # Weighted combination
         volatility_regime = 0.7 * bb_vol + 0.3 * hist_vol_scaled
 
         return volatility_regime
