@@ -322,6 +322,28 @@ class Config:
                 "enhanced_exit_analysis": True,
                 "track_exit_performance": True,
                 "optimize_every_n_iterations": 3
+            },
+            "rl": {
+                "enabled": True,
+                "mode": "hybrid",  # hybrid, standalone, or disabled
+                "state_size": 24,  # Will be calculated dynamically
+                "action_size": 3,  # 0: Hold, 1: Buy, 2: Sell
+                "buffer_capacity": 10000,
+                "batch_size": 64,
+                "gamma": 0.95,
+                "epsilon_start": 1.0,
+                "epsilon_min": 0.01,
+                "epsilon_decay": 0.995,
+                "learning_rate": 0.001,
+                "update_target_frequency": 10,
+                "training_frequency": 5,
+                "max_hold_periods": 48,
+                "transaction_cost": 0.001,
+                "reward_scale": 100.0,
+                "use_pretrained": True,
+                "train_during_backtest": True,
+                "confidence_threshold": 0.65,
+                "ensemble_weight": 0.5
             }
         }
 

@@ -291,6 +291,10 @@ class BacktestEngine:
         self.exporter.export_monthly_performance(self.metric_calculator.monthly_returns)
         self.optimization_engine.export_optimization_results(self.results_dir)
 
+        # Save the RL model after the backtest is complete
+        if hasattr(self.signal_generator, 'rl_signal_generator'):
+            self.signal_generator.rl_signal_generator.save_model()
+
     def _create_results_dataframe(self, all_results: List[Dict[str, Any]]) -> pd.DataFrame:
         if not all_results:
             return pd.DataFrame()
