@@ -4,7 +4,43 @@ import pandas as pd
 from typing import Dict, List, Tuple, Any, Optional, Union
 from collections import deque
 import math
+from enum import Enum
+from datetime import datetime, timedelta
 
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+class MarketPhase(Enum):
+    STRONG_UPTREND = "Strong Uptrend"
+    UPTREND = "Uptrend" 
+    WEAK_UPTREND = "Weak Uptrend"
+    UPTREND_TRANSITION = "Uptrend Transition"
+    RANGING = "Ranging"
+    VOLATILE = "Volatile"
+    DOWNTREND_TRANSITION = "Downtrend Transition"
+    WEAK_DOWNTREND = "Weak Downtrend"
+    DOWNTREND = "Downtrend"
+    STRONG_DOWNTREND = "Strong Downtrend"
+
+class SignalType(Enum):
+    STRONG_BUY = "StrongBuy"
+    BUY = "Buy"
+    SELL = "Sell"
+    STRONG_SELL = "StrongSell"
+    NEUTRAL = "Neutral"
+
+class ExitReason(Enum):
+    PROFIT_TARGET = "ProfitTarget"
+    QUICK_PROFIT = "QuickProfit"
+    QUICK_PROFIT_TAKEN = "QuickProfitTaken"
+    STAGNANT_EXIT = "StagnantExit"
+    STOP_LOSS = "StopLoss"
+    TIME_LIMIT = "TimeLimit"
+    TRAILING_STOP = "TrailingStop"
+    REVERSAL_SIGNAL = "ReversalSignal"
+    TARGET_RESISTANCE = "TargetResistance"
+    TARGET_SUPPORT = "TargetSupport"
 
 class IndicatorFactory:
     def create_indicator(self, name, params=None):
@@ -2369,3 +2405,425 @@ class SignalGenerator:
             }
 
         return {"signal_type": "NoTrade", "reason": "OutsideFibonacciZones"}
+
+class SignalProcessor:
+    def __init__(self, config):
+        self.config = config
+        
+        # Load configuration values from config
+        self.ensemble_thresholds = config.get("signal", "ensemble_thresholds", {})
+        self.direction_bias = config.get("signal", "direction_bias", {})
+        self.position_sizing = config.get("signal", "position_sizing", {})
+        self.duration_limits = config.get("signal", "duration_limits", {})
+        self.profit_targets = config.get("signal", "profit_targets", {})
+        self.stop_losses = config.get("signal", "stop_losses", {})
+        self.quick_profit_threshold = config.get("signal", "quick_profit_threshold", 0.7)
+        self.stagnant_threshold = config.get("signal", "stagnant_threshold", 0.6)
+        self.enabled_phases = config.get("signal", "enabled_phases", {})
+        self.direction_restrictions = config.get("signal", "direction_restrictions", {})
+        
+        # Advanced exit parameters
+        self.trailing_stop_activation = config.get("signal", "trailing_stop_activation", 0.5)  # % of target to activate
+        self.trailing_stop_distance = config.get("signal", "trailing_stop_distance", 0.3)  # % of price
+        self.reversal_sensitivity = config.get("signal", "reversal_sensitivity", 0.6)  # 0-1, higher is more sensitive
+        self.time_decay_factor = config.get("signal", "time_decay_factor", 0.8)  # Reduces target over time
+        
+        # Performance tracking for adaptive adjustments
+        self.recent_trades = []
+        self.win_streak = 0
+        self.loss_streak = 0
+        self.last_adjustment_time = datetime.now()
+        self.adjustment_cooldown = timedelta(hours=config.get("signal", "adjustment_cooldown", 24))
+        
+        # Market condition context
+        self.key_levels = {}  # Support/resistance levels by market phase
+        self.volatility_history = []  # Track recent volatility
+        
+        logger.info("Advanced SignalProcessor initialized with optimized configuration")
+    
+    def process_signals(self, market_phase, signals, ensemble_score):
+        """
+        Process trading signals based on market phase and ensemble score
+        
+        Args:
+            market_phase (MarketPhase): Current market phase
+            signals (dict): Raw signals from various indicators
+            ensemble_score (float): Score from 0-1 indicating signal strength
+            
+        Returns:
+            dict: Processed signal with trading decision
+        """
+        # Map MarketPhase enum to string for config lookup
+        phase_str = market_phase.name
+        
+        # Skip processing if market phase is disabled
+        if not self.enabled_phases.get(phase_str, False):
+            return {"decision": "no_trade", "reason": "market_phase_disabled"}
+        
+        # Get threshold for current market phase
+        threshold = self.ensemble_thresholds.get(phase_str, 0.7)
+        
+        # Adjust threshold based on recent performance
+        threshold = self._adjust_threshold_dynamically(threshold, phase_str)
+        
+        # Apply direction bias based on market phase
+        direction_bias = self.direction_bias.get(phase_str, 0.0)
+        
+        # Apply time-of-day bias if available in signals
+        if 'time_of_day' in signals:
+            tod_bias = self._calculate_time_of_day_bias(signals['time_of_day'], phase_str)
+            direction_bias += tod_bias
+        
+        # Apply volatility bias
+        if 'volatility' in signals:
+            vol_bias = self._calculate_volatility_bias(signals['volatility'], phase_str)
+            direction_bias += vol_bias
+        
+        # Determine signal direction (buy or sell)
+        raw_direction = 1 if ensemble_score > 0.5 else -1  # 1 for buy, -1 for sell
+        
+        # Apply direction bias
+        biased_score = ensemble_score + (direction_bias * 0.1)
+        biased_score = min(max(biased_score, 0.0), 1.0)  # Clamp between 0 and 1
+        
+        # Check direction restrictions
+        is_long = biased_score > 0.5
+        direction_allowed = self.direction_restrictions.get(
+            phase_str, {"long": True, "short": True}
+        )
+        
+        if (is_long and not direction_allowed["long"]) or (not is_long and not direction_allowed["short"]):
+            return {"decision": "no_trade", "reason": "direction_restricted"}
+        
+        # Check if we're near key levels that could block the trade
+        if 'price' in signals and self._is_near_opposing_key_level(signals['price'], is_long, phase_str):
+            return {"decision": "no_trade", "reason": "opposing_key_level"}
+        
+        # Calculate position size multiplier
+        position_multiplier = self.position_sizing.get(phase_str, 1.0)
+        # Adjust position sizing based on signal strength and volatility
+        if 'volatility' in signals:
+            position_multiplier = self._adjust_position_size(position_multiplier, biased_score, signals['volatility'])
+        
+        # Determine trade duration limit
+        duration_limit = self.duration_limits.get(phase_str, 2.0)
+        
+        # Calculate profit target and stop loss
+        profit_target = self.profit_targets.get(phase_str, 1.5)
+        stop_loss = self.stop_losses.get(phase_str, 0.8)
+        
+        # Adjust targets based on volatility
+        if 'volatility' in signals:
+            profit_target, stop_loss = self._adjust_targets_for_volatility(
+                profit_target, stop_loss, signals['volatility'], phase_str
+            )
+        
+        # Determine signal type based on biased score
+        signal_type = self._determine_signal_type(biased_score)
+        
+        # Check if signal meets threshold
+        if biased_score < threshold:
+            return {"decision": "no_trade", "reason": "below_threshold"}
+        
+        # Build the final processed signal
+        processed_signal = {
+            "decision": "long" if is_long else "short",
+            "signal_type": signal_type.value,
+            "ensemble_score": ensemble_score,
+            "biased_score": biased_score,
+            "position_size": position_multiplier,
+            "duration_limit": duration_limit,
+            "profit_target": profit_target,
+            "stop_loss": stop_loss,
+            "quick_profit_threshold": self.quick_profit_threshold,
+            "stagnant_threshold": self.stagnant_threshold,
+            "market_phase": market_phase.value,
+            "time_decay_factor": self.time_decay_factor,
+            "trailing_stop": {
+                "activation": self.trailing_stop_activation,
+                "distance": self.trailing_stop_distance
+            }
+        }
+        
+        # Add key levels if available
+        if phase_str in self.key_levels:
+            processed_signal["key_levels"] = self.key_levels[phase_str]
+            
+        logger.info(f"Generated signal: {processed_signal['decision']} in {market_phase.value} phase")
+        return processed_signal
+    
+    def _adjust_threshold_dynamically(self, base_threshold, phase_str):
+        """Dynamically adjust threshold based on recent performance and market phase"""
+        if self.win_streak >= 3:
+            # Be more selective after winning streak (higher threshold)
+            adjusted = base_threshold + (0.05 * min(self.win_streak, 5) / 5)
+            logger.debug(f"Adjusted threshold up due to win streak: {base_threshold} -> {adjusted}")
+            return adjusted
+        elif self.loss_streak >= 2:
+            # Be more cautious after losing streak
+            adjusted = base_threshold + (0.03 * min(self.loss_streak, 4) / 4)
+            logger.debug(f"Adjusted threshold up due to loss streak: {base_threshold} -> {adjusted}")
+            return adjusted
+        return base_threshold
+    
+    def _calculate_time_of_day_bias(self, time_of_day, phase_str):
+        """Calculate bias based on time of day performance patterns"""
+        # Here you would implement logic based on your time-of-day analysis
+        # This is a placeholder implementation
+        morning_bias = 0.05  # Slight bias toward longs in morning
+        afternoon_bias = -0.05  # Slight bias toward shorts in afternoon
+        
+        if 9 <= time_of_day < 12:  # Morning
+            return morning_bias
+        elif 12 <= time_of_day < 16:  # Afternoon
+            return afternoon_bias
+        return 0.0
+    
+    def _calculate_volatility_bias(self, volatility, phase_str):
+        """Calculate bias based on current volatility relative to historical"""
+        # Store volatility for historical reference
+        self.volatility_history.append(volatility)
+        if len(self.volatility_history) > 20:
+            self.volatility_history.pop(0)
+        
+        # If we don't have enough history, return no bias
+        if len(self.volatility_history) < 5:
+            return 0.0
+        
+        avg_volatility = sum(self.volatility_history) / len(self.volatility_history)
+        
+        # If current volatility is significantly higher than average
+        if volatility > avg_volatility * 1.5:
+            # In volatile markets, we found shorts perform better
+            return -0.1
+        # If current volatility is significantly lower than average
+        elif volatility < avg_volatility * 0.7:
+            # In low volatility, we found longs in uptrends perform better
+            if "UPTREND" in phase_str:
+                return 0.1
+        
+        return 0.0
+    
+    def _is_near_opposing_key_level(self, price, is_long, phase_str):
+        """Check if price is near a key level that would oppose our trade direction"""
+        if phase_str not in self.key_levels:
+            return False
+            
+        for level_type, level_price in self.key_levels[phase_str].items():
+            # If going long, check resistance proximity
+            if is_long and level_type == "resistance":
+                if 0 < (level_price - price) / price < 0.005:  # Within 0.5% of resistance
+                    return True
+            # If going short, check support proximity
+            elif not is_long and level_type == "support":
+                if 0 < (price - level_price) / price < 0.005:  # Within 0.5% of support
+                    return True
+        
+        return False
+    
+    def _adjust_position_size(self, base_size, score, volatility):
+        """Adjust position size based on signal strength and volatility"""
+        # Stronger signals get larger position sizes
+        score_factor = 0.8 + (0.4 * (score - 0.5))  # 0.8-1.2 range based on score
+        
+        # Higher volatility means smaller positions for risk management
+        vol_factor = 1.0
+        if volatility > 0.015:  # High volatility
+            vol_factor = 0.7
+        elif volatility < 0.005:  # Low volatility
+            vol_factor = 1.2
+            
+        return base_size * score_factor * vol_factor
+    
+    def _adjust_targets_for_volatility(self, profit_target, stop_loss, volatility, phase_str):
+        """Adjust profit targets and stop losses based on market volatility"""
+        avg_volatility = 0.01  # Baseline volatility (1%)
+        
+        if len(self.volatility_history) >= 5:
+            avg_volatility = sum(self.volatility_history) / len(self.volatility_history)
+        
+        volatility_ratio = volatility / avg_volatility
+        
+        # In high volatility, widen both targets and stops proportionally
+        if volatility_ratio > 1.3:
+            adjusted_profit = profit_target * min(1.5, volatility_ratio)
+            adjusted_stop = stop_loss * min(1.3, volatility_ratio)
+            return adjusted_profit, adjusted_stop
+            
+        # In low volatility, tighten both slightly
+        elif volatility_ratio < 0.7:
+            adjusted_profit = profit_target * max(0.8, volatility_ratio)
+            adjusted_stop = stop_loss * max(0.85, volatility_ratio)
+            return adjusted_profit, adjusted_stop
+            
+        return profit_target, stop_loss
+    
+    def _determine_signal_type(self, score):
+        """Determine signal type based on ensemble score"""
+        if score >= 0.8:
+            return SignalType.STRONG_BUY
+        elif score >= 0.6:
+            return SignalType.BUY
+        elif score <= 0.2:
+            return SignalType.STRONG_SELL
+        elif score <= 0.4:
+            return SignalType.SELL
+        else:
+            return SignalType.NEUTRAL
+    
+    def determine_exit_strategy(self, current_price, entry_price, direction, 
+                               market_phase, profit_target, stop_loss, elapsed_time, 
+                               duration_limit, max_price, min_price, signals=None):
+        """
+        Determine if position should be exited based on various criteria
+        
+        Args:
+            signals: Optional dict with additional market signals for enhanced exit decisions
+            
+        Returns:
+            dict: Exit decision with reason
+        """
+        is_long = direction == "long"
+        current_pnl_pct = ((current_price / entry_price) - 1) * (1 if is_long else -1) * 100
+        
+        # Check stop loss
+        if current_pnl_pct <= -stop_loss:
+            return {"exit": True, "reason": ExitReason.STOP_LOSS.value, "pnl_pct": current_pnl_pct}
+        
+        # Apply time decay to profit target based on elapsed time percentage
+        time_percentage = min(1.0, elapsed_time / duration_limit)
+        decay_factor = 1.0 - (time_percentage * self.time_decay_factor * 0.2)  # Max 20% reduction
+        adjusted_profit_target = profit_target * decay_factor
+        
+        # Check profit target (adjusted for time decay)
+        if current_pnl_pct >= adjusted_profit_target:
+            return {"exit": True, "reason": ExitReason.PROFIT_TARGET.value, "pnl_pct": current_pnl_pct}
+        
+        # Calculate highest reached PnL
+        max_pnl_pct = ((max_price / entry_price) - 1) * 100 if is_long else ((min_price / entry_price) - 1) * -100
+        
+        # Check trailing stop (if activated)
+        if max_pnl_pct >= profit_target * self.trailing_stop_activation:
+            trailing_stop_level = max_pnl_pct * (1 - self.trailing_stop_distance)
+            if current_pnl_pct <= trailing_stop_level:
+                return {"exit": True, "reason": ExitReason.TRAILING_STOP.value, "pnl_pct": current_pnl_pct}
+        
+        # Check quick profit (if we've reached a certain % of target)
+        quick_profit_threshold = profit_target * self.quick_profit_threshold
+        if current_pnl_pct >= quick_profit_threshold:
+            # If we've pulled back significantly from maximum profit, take the quick profit
+            if max_pnl_pct - current_pnl_pct > profit_target * 0.3:
+                return {"exit": True, "reason": ExitReason.QUICK_PROFIT_TAKEN.value, "pnl_pct": current_pnl_pct}
+            
+            # If we've been in the trade for more than 70% of duration limit, take profit
+            if elapsed_time > duration_limit * 0.7:
+                return {"exit": True, "reason": ExitReason.QUICK_PROFIT.value, "pnl_pct": current_pnl_pct}
+        
+        # Check time limit - exit as we approach the time limit if in profit
+        if elapsed_time >= duration_limit:
+            if current_pnl_pct > 0:
+                return {"exit": True, "reason": ExitReason.TIME_LIMIT.value, "pnl_pct": current_pnl_pct}
+            # If not in profit but close to breakeven, still exit at time limit
+            elif current_pnl_pct > -0.3:
+                return {"exit": True, "reason": ExitReason.TIME_LIMIT.value, "pnl_pct": current_pnl_pct}
+            # If in significant loss, allow a bit more time to potentially recover
+            elif elapsed_time >= duration_limit * 1.2:
+                return {"exit": True, "reason": ExitReason.TIME_LIMIT.value, "pnl_pct": current_pnl_pct}
+        
+        # Check for stagnant price
+        if elapsed_time > duration_limit * self.stagnant_threshold and current_pnl_pct < profit_target * 0.3:
+            return {"exit": True, "reason": ExitReason.STAGNANT_EXIT.value, "pnl_pct": current_pnl_pct}
+        
+        # Check for reversal signals if they're provided
+        if signals and 'reversal_indicator' in signals:
+            reversal_value = signals['reversal_indicator']
+            threshold = self.reversal_sensitivity
+            
+            # For long positions, check bearish reversals
+            if is_long and reversal_value < -threshold and elapsed_time > duration_limit * 0.3:
+                return {"exit": True, "reason": ExitReason.REVERSAL_SIGNAL.value, "pnl_pct": current_pnl_pct}
+            # For short positions, check bullish reversals
+            elif not is_long and reversal_value > threshold and elapsed_time > duration_limit * 0.3:
+                return {"exit": True, "reason": ExitReason.REVERSAL_SIGNAL.value, "pnl_pct": current_pnl_pct}
+                
+        # Check for target level approaches
+        if signals and 'price' in signals and 'key_levels' in signals:
+            for level_type, level_price in signals['key_levels'].items():
+                # For long positions, check proximity to resistance
+                if is_long and level_type == "resistance":
+                    if 0 < (level_price - current_price) / current_price < 0.002:  # Very close to resistance
+                        if current_pnl_pct > profit_target * 0.5:  # If we have decent profit
+                            return {"exit": True, "reason": ExitReason.TARGET_RESISTANCE.value, "pnl_pct": current_pnl_pct}
+                
+                # For short positions, check proximity to support
+                elif not is_long and level_type == "support":
+                    if 0 < (current_price - level_price) / current_price < 0.002:  # Very close to support
+                        if current_pnl_pct > profit_target * 0.5:  # If we have decent profit
+                            return {"exit": True, "reason": ExitReason.TARGET_SUPPORT.value, "pnl_pct": current_pnl_pct}
+        
+        return {"exit": False, "reason": "continue_holding", "pnl_pct": current_pnl_pct}
+    
+    def update_performance(self, trade_result):
+        """Update performance metrics for adaptive adjustments"""
+        self.recent_trades.append(trade_result)
+        if len(self.recent_trades) > 20:
+            self.recent_trades.pop(0)
+            
+        # Update streaks
+        if trade_result['profitable']:
+            self.win_streak += 1
+            self.loss_streak = 0
+        else:
+            self.loss_streak += 1
+            self.win_streak = 0
+            
+        # Check if we should adjust parameters
+        now = datetime.now()
+        if now - self.last_adjustment_time > self.adjustment_cooldown:
+            self._adjust_parameters_from_recent_performance()
+            self.last_adjustment_time = now
+    
+    def _adjust_parameters_from_recent_performance(self):
+        """Adjust parameters based on recent trade performance"""
+        if len(self.recent_trades) < 5:
+            return  # Not enough data
+            
+        # Calculate metrics
+        win_rate = sum(1 for t in self.recent_trades if t['profitable']) / len(self.recent_trades)
+        avg_profit = sum(t['profit_pct'] for t in self.recent_trades if t['profitable']) / max(1, sum(1 for t in self.recent_trades if t['profitable']))
+        avg_loss = sum(abs(t['profit_pct']) for t in self.recent_trades if not t['profitable']) / max(1, sum(1 for t in self.recent_trades if not t['profitable']))
+        
+        logger.info(f"Performance update - Win rate: {win_rate:.2f}, Avg profit: {avg_profit:.2f}%, Avg loss: {avg_loss:.2f}%")
+        
+        # Adjust trailing stop based on performance
+        if win_rate < 0.4 and avg_loss > 1.0:
+            # We're letting losses run too far, tighten trailing stops
+            self.trailing_stop_activation = max(0.3, self.trailing_stop_activation - 0.05)
+            self.trailing_stop_distance = max(0.15, self.trailing_stop_distance - 0.05)
+            logger.info(f"Adjusted trailing stops - activation: {self.trailing_stop_activation}, distance: {self.trailing_stop_distance}")
+        
+        elif win_rate > 0.6 and avg_profit < 0.7:
+            # We're taking profits too early, loosen trailing stops
+            self.trailing_stop_activation = min(0.7, self.trailing_stop_activation + 0.05)
+            self.trailing_stop_distance = min(0.4, self.trailing_stop_distance + 0.05)
+            logger.info(f"Adjusted trailing stops - activation: {self.trailing_stop_activation}, distance: {self.trailing_stop_distance}")
+            
+        # Adjust time decay factor
+        if avg_profit < 0.6 and win_rate > 0.55:
+            # We're winning but not making enough, reduce time decay
+            self.time_decay_factor = max(0.5, self.time_decay_factor - 0.1)
+            logger.info(f"Reduced time decay factor to {self.time_decay_factor}")
+        elif avg_loss > 1.2:
+            # Losses are too big, increase time decay to exit faster
+            self.time_decay_factor = min(1.0, self.time_decay_factor + 0.1)
+            logger.info(f"Increased time decay factor to {self.time_decay_factor}")
+    
+    def update_key_levels(self, market_phase, levels):
+        """Update tracked key price levels for market phase"""
+        if isinstance(market_phase, MarketPhase):
+            phase_str = market_phase.name
+        else:
+            phase_str = market_phase
+            
+        self.key_levels[phase_str] = levels
+        logger.debug(f"Updated key levels for {phase_str}: {levels}")

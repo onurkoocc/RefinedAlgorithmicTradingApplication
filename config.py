@@ -3,9 +3,21 @@ import json
 import logging
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Union, TypeVar, cast, Tuple, Set
+from enum import Enum
 
 T = TypeVar('T')
 
+class MarketPhase(Enum):
+    STRONG_UPTREND = "Strong Uptrend"
+    UPTREND = "Uptrend" 
+    WEAK_UPTREND = "Weak Uptrend"
+    UPTREND_TRANSITION = "Uptrend Transition"
+    RANGING = "Ranging"
+    VOLATILE = "Volatile"
+    DOWNTREND_TRANSITION = "Downtrend Transition"
+    WEAK_DOWNTREND = "Weak Downtrend"
+    DOWNTREND = "Downtrend"
+    STRONG_DOWNTREND = "Strong Downtrend"
 
 class Config:
     def __init__(self, config_path: Optional[str] = None):
@@ -263,7 +275,105 @@ class Config:
                 "fibonacci_short_block_end": 0.382,
                 "enable_fibonacci_partial_exits": True,
                 "fibonacci_partial_exit_levels_long": [0.618, 0.764, 1.0],
-                "fibonacci_partial_exit_levels_short":  [0.382, 0.236, 0.0]
+                "fibonacci_partial_exit_levels_short":  [0.382, 0.236, 0.0],
+                "ensemble_thresholds": {
+                    "STRONG_UPTREND": 0.65,
+                    "UPTREND": 0.70, 
+                    "WEAK_UPTREND": 0.65,
+                    "UPTREND_TRANSITION": 0.60,
+                    "RANGING": 0.65,
+                    "VOLATILE": 0.70,
+                    "DOWNTREND_TRANSITION": 0.65,
+                    "WEAK_DOWNTREND": 0.60,
+                    "DOWNTREND": 0.70,
+                    "STRONG_DOWNTREND": 0.75,
+                },
+                "direction_bias": {
+                    "STRONG_UPTREND": 0.8,     # Strong long bias (52.33% win rate)
+                    "UPTREND": 0.5,            # Moderate long bias (44.19% win rate but needs improvement)
+                    "WEAK_UPTREND": 0.3,        # Slight long bias
+                    "UPTREND_TRANSITION": 0.9,  # Strong long bias (66.67% win rate)
+                    "RANGING": 0.1,             # Slight bias toward longs
+                    "VOLATILE": -0.7,           # Strong short bias (100% win rate in shorts)
+                    "DOWNTREND_TRANSITION": -0.2, # Slight short bias
+                    "WEAK_DOWNTREND": 0.3,      # Slightly favor longs surprisingly
+                    "DOWNTREND": -0.3,          # Moderate short bias
+                    "STRONG_DOWNTREND": 0.6,    # Favor longs (avoid shorts at 12.5% win rate)
+                },
+                "position_sizing": {
+                    "STRONG_UPTREND": 1.2,
+                    "UPTREND": 0.8,
+                    "WEAK_UPTREND": 0.9,
+                    "UPTREND_TRANSITION": 1.3,
+                    "RANGING": 1.0,
+                    "VOLATILE": 0.7,
+                    "DOWNTREND_TRANSITION": 0.9,
+                    "WEAK_DOWNTREND": 1.3,      # Best performance
+                    "DOWNTREND": 0.8,
+                    "STRONG_DOWNTREND": 0.7,
+                },
+                "duration_limits": {
+                    "STRONG_UPTREND": 2.0,      # 1-2 hours optimal
+                    "UPTREND": 1.0,             # <1 hour optimal (64.71% win rate)
+                    "WEAK_UPTREND": 2.0,
+                    "UPTREND_TRANSITION": 2.0,
+                    "RANGING": 2.0,
+                    "VOLATILE": 3.0,            # 2-4 hours optimal (66.67% win rate)
+                    "DOWNTREND_TRANSITION": 2.0,
+                    "WEAK_DOWNTREND": 2.0,
+                    "DOWNTREND": 2.0,
+                    "STRONG_DOWNTREND": 1.5,
+                },
+                "profit_targets": {
+                    "STRONG_UPTREND": 1.5,
+                    "UPTREND": 1.0,
+                    "WEAK_UPTREND": 1.2,
+                    "UPTREND_TRANSITION": 1.8,
+                    "RANGING": 1.3,
+                    "VOLATILE": 2.0,
+                    "DOWNTREND_TRANSITION": 1.5,
+                    "WEAK_DOWNTREND": 1.7,
+                    "DOWNTREND": 1.2,
+                    "STRONG_DOWNTREND": 1.0,
+                },
+                "stop_losses": {
+                    "STRONG_UPTREND": 0.7,
+                    "UPTREND": 0.6,
+                    "WEAK_UPTREND": 0.7,
+                    "UPTREND_TRANSITION": 0.8,
+                    "RANGING": 0.7,
+                    "VOLATILE": 0.6,
+                    "DOWNTREND_TRANSITION": 0.7,
+                    "WEAK_DOWNTREND": 0.8,
+                    "DOWNTREND": 0.6,
+                    "STRONG_DOWNTREND": 0.5,
+                },
+                "quick_profit_threshold": 0.7,
+                "stagnant_threshold": 0.6,
+                "enabled_phases": {
+                    "STRONG_UPTREND": True,
+                    "UPTREND": True,
+                    "WEAK_UPTREND": True,
+                    "UPTREND_TRANSITION": True,
+                    "RANGING": True,
+                    "VOLATILE": True,
+                    "DOWNTREND_TRANSITION": True,
+                    "WEAK_DOWNTREND": True,
+                    "DOWNTREND": True,
+                    "STRONG_DOWNTREND": True,
+                },
+                "direction_restrictions": {
+                    "STRONG_UPTREND": {"long": True, "short": True},
+                    "UPTREND": {"long": True, "short": False},  # Disable shorts in uptrends
+                    "WEAK_UPTREND": {"long": True, "short": True},
+                    "UPTREND_TRANSITION": {"long": True, "short": False},  # Disable shorts
+                    "RANGING": {"long": True, "short": True},
+                    "VOLATILE": {"long": False, "short": True},  # Disable longs
+                    "DOWNTREND_TRANSITION": {"long": True, "short": True},
+                    "WEAK_DOWNTREND": {"long": True, "short": True},
+                    "DOWNTREND": {"long": True, "short": True},
+                    "STRONG_DOWNTREND": {"long": True, "short": False},  # Disable shorts
+                }
             },
             "model": {
                 "sequence_length": 72,
