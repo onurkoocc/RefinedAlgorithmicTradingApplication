@@ -289,6 +289,7 @@ class BacktestEngine:
         )
 
         self.exporter.export_monthly_performance(self.metric_calculator.monthly_returns)
+
         self.optimization_engine.export_optimization_results(self.results_dir)
 
         # Save the RL model after the backtest is complete

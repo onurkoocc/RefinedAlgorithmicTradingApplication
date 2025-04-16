@@ -120,7 +120,7 @@ class Config:
                 "max_risk_per_trade": 0.025,
                 "min_risk_per_trade": 0.008,
                 "max_portfolio_risk": 0.20,
-                "max_drawdown_percent": 0.20,
+                "max_drawdown_percent": 0.25,
                 "kelly_fraction": 0.5,
                 "use_adaptive_kelly": True,
                 "volatility_scaling": True,
@@ -299,7 +299,7 @@ class Config:
                     "mask_probability": 0.2
                 },
                 "risk_management": {
-                    "max_drawdown_threshold": 0.15,
+                    "max_drawdown_threshold": 0.25,
                     "consecutive_loss_scale": 0.85,
                     "max_position_size": 0.5,
                     "max_trades_per_day": 5,

@@ -1609,6 +1609,103 @@ class SignalGenerator:
                 "direction": "long" if isinstance(model_pred, (int, float)) and model_pred > 0 else "short"
             }
 
+    def _ensemble_signals(self, traditional_signal, rl_signal):
+        if traditional_signal is None or rl_signal is None:
+            return traditional_signal or rl_signal or {"signal_type": "NoTrade", "reason": "EmptySignals"}
+
+        traditional_type = traditional_signal.get("signal_type", "NoTrade")
+        rl_type = rl_signal.get("signal_type", "NoTrade")
+
+        # Ensure market_phase is a string in both signals
+        if "market_phase" in traditional_signal and not isinstance(traditional_signal["market_phase"], str):
+            if isinstance(traditional_signal["market_phase"], (float, np.float64, np.float32, int, np.int64, np.int32)):
+                # Convert numeric value to string representation
+                value = float(traditional_signal["market_phase"])
+                if value > 0.5:
+                    traditional_signal["market_phase"] = "uptrend"
+                elif value < -0.5:
+                    traditional_signal["market_phase"] = "downtrend"
+                else:
+                    traditional_signal["market_phase"] = "neutral"
+            else:
+                traditional_signal["market_phase"] = "neutral"
+
+        if "market_phase" in rl_signal and not isinstance(rl_signal["market_phase"], str):
+            if isinstance(rl_signal["market_phase"], (float, np.float64, np.float32, int, np.int64, np.int32)):
+                # Convert numeric value to string representation
+                value = float(rl_signal["market_phase"])
+                if value > 0.5:
+                    rl_signal["market_phase"] = "uptrend"
+                elif value < -0.5:
+                    rl_signal["market_phase"] = "downtrend"
+                else:
+                    rl_signal["market_phase"] = "neutral"
+            else:
+                rl_signal["market_phase"] = "neutral"
+
+        # Both agree - use the stronger signal
+        if (traditional_type.endswith("Buy") and rl_type.endswith("Buy")) or \
+                (traditional_type.endswith("Sell") and rl_type.endswith("Sell")):
+            rl_confidence = rl_signal.get("rl_confidence", 0.5)
+            traditional_score = traditional_signal.get("ensemble_score", 0.5)
+
+            if rl_confidence > traditional_score:
+                final_signal = rl_signal.copy()
+                final_signal["ensemble_score"] = rl_confidence
+                final_signal["signal_source"] = "RL_Dominant"
+            else:
+                final_signal = traditional_signal.copy()
+                final_signal["signal_source"] = "Traditional_Dominant"
+
+            # Boost confidence when both agree
+            final_signal["ensemble_score"] = min(0.95, final_signal["ensemble_score"] * 1.1)
+            return final_signal
+
+        # Disagreement - use weighted ensemble
+        rl_weight = self.rl_ensemble_weight
+        traditional_weight = 1 - rl_weight
+
+        rl_confidence = rl_signal.get("rl_confidence", 0.5)
+        traditional_score = traditional_signal.get("ensemble_score", 0.5)
+
+        rl_value = 1 if rl_type.endswith("Buy") else (-1 if rl_type.endswith("Sell") else 0)
+        traditional_value = 1 if traditional_type.endswith("Buy") else (-1 if traditional_type.endswith("Sell") else 0)
+
+        weighted_signal = (rl_value * rl_weight * rl_confidence) + \
+                          (traditional_value * traditional_weight * traditional_score)
+
+        if abs(weighted_signal) < 0.2:
+            return {
+                "signal_type": "NoTrade",
+                "reason": "EnsembleDisagreement",
+                "direction": "long" if weighted_signal > 0 else "short",
+                "ensemble_score": abs(weighted_signal) + 0.3,
+                "rl_contribution": rl_value * rl_weight * rl_confidence,
+                "traditional_contribution": traditional_value * traditional_weight * traditional_score
+            }
+
+        direction = "long" if weighted_signal > 0 else "short"
+        signal_type = "Buy" if direction == "long" else "Sell"
+
+        if abs(weighted_signal) > 0.5:
+            signal_type = f"Strong{signal_type}"
+
+        # Take metadata from dominant signal
+        base_signal = rl_signal if abs(rl_value * rl_weight * rl_confidence) > abs(
+            traditional_value * traditional_weight * traditional_score) else traditional_signal
+
+        final_signal = {
+            "signal_type": signal_type,
+            "direction": direction,
+            "predicted_return": base_signal.get("predicted_return", 0),
+            "market_phase": base_signal.get("market_phase", "neutral"),
+            "ensemble_score": abs(weighted_signal) + 0.3,
+            "rl_contribution": rl_value * rl_weight * rl_confidence,
+            "traditional_contribution": traditional_value * traditional_weight * traditional_score,
+            "signal_source": "Ensemble"
+        }
+
+        return final_signal
     def _generate_base_signal(self, model_pred, df, market_regime):
         """
         Generate the base signal with robust error handling for all calculations.
@@ -1784,104 +1881,6 @@ class SignalGenerator:
             signal["multi_timeframe"] = multi_timeframe_signals
             signal["volume_profile"] = volume_profile
             return signal
-
-    def _ensemble_signals(self, traditional_signal, rl_signal):
-        if traditional_signal is None or rl_signal is None:
-            return traditional_signal or rl_signal or {"signal_type": "NoTrade", "reason": "EmptySignals"}
-
-        traditional_type = traditional_signal.get("signal_type", "NoTrade")
-        rl_type = rl_signal.get("signal_type", "NoTrade")
-
-        # Ensure market_phase is a string in both signals
-        if "market_phase" in traditional_signal and not isinstance(traditional_signal["market_phase"], str):
-            if isinstance(traditional_signal["market_phase"], (float, np.float64, np.float32, int, np.int64, np.int32)):
-                # Convert numeric value to string representation
-                value = float(traditional_signal["market_phase"])
-                if value > 0.5:
-                    traditional_signal["market_phase"] = "uptrend"
-                elif value < -0.5:
-                    traditional_signal["market_phase"] = "downtrend"
-                else:
-                    traditional_signal["market_phase"] = "neutral"
-            else:
-                traditional_signal["market_phase"] = "neutral"
-
-        if "market_phase" in rl_signal and not isinstance(rl_signal["market_phase"], str):
-            if isinstance(rl_signal["market_phase"], (float, np.float64, np.float32, int, np.int64, np.int32)):
-                # Convert numeric value to string representation
-                value = float(rl_signal["market_phase"])
-                if value > 0.5:
-                    rl_signal["market_phase"] = "uptrend"
-                elif value < -0.5:
-                    rl_signal["market_phase"] = "downtrend"
-                else:
-                    rl_signal["market_phase"] = "neutral"
-            else:
-                rl_signal["market_phase"] = "neutral"
-
-        # Both agree - use the stronger signal
-        if (traditional_type.endswith("Buy") and rl_type.endswith("Buy")) or \
-                (traditional_type.endswith("Sell") and rl_type.endswith("Sell")):
-            rl_confidence = rl_signal.get("rl_confidence", 0.5)
-            traditional_score = traditional_signal.get("ensemble_score", 0.5)
-
-            if rl_confidence > traditional_score:
-                final_signal = rl_signal.copy()
-                final_signal["ensemble_score"] = rl_confidence
-                final_signal["signal_source"] = "RL_Dominant"
-            else:
-                final_signal = traditional_signal.copy()
-                final_signal["signal_source"] = "Traditional_Dominant"
-
-            # Boost confidence when both agree
-            final_signal["ensemble_score"] = min(0.95, final_signal["ensemble_score"] * 1.1)
-            return final_signal
-
-        # Disagreement - use weighted ensemble
-        rl_weight = self.rl_ensemble_weight
-        traditional_weight = 1 - rl_weight
-
-        rl_confidence = rl_signal.get("rl_confidence", 0.5)
-        traditional_score = traditional_signal.get("ensemble_score", 0.5)
-
-        rl_value = 1 if rl_type.endswith("Buy") else (-1 if rl_type.endswith("Sell") else 0)
-        traditional_value = 1 if traditional_type.endswith("Buy") else (-1 if traditional_type.endswith("Sell") else 0)
-
-        weighted_signal = (rl_value * rl_weight * rl_confidence) + \
-                          (traditional_value * traditional_weight * traditional_score)
-
-        if abs(weighted_signal) < 0.2:
-            return {
-                "signal_type": "NoTrade",
-                "reason": "EnsembleDisagreement",
-                "direction": "long" if weighted_signal > 0 else "short",
-                "ensemble_score": abs(weighted_signal) + 0.3,
-                "rl_contribution": rl_value * rl_weight * rl_confidence,
-                "traditional_contribution": traditional_value * traditional_weight * traditional_score
-            }
-
-        direction = "long" if weighted_signal > 0 else "short"
-        signal_type = "Buy" if direction == "long" else "Sell"
-
-        if abs(weighted_signal) > 0.5:
-            signal_type = f"Strong{signal_type}"
-
-        # Take metadata from dominant signal
-        base_signal = rl_signal if abs(rl_value * rl_weight * rl_confidence) > abs(
-            traditional_value * traditional_weight * traditional_score) else traditional_signal
-
-        final_signal = {
-            "signal_type": signal_type,
-            "direction": direction,
-            "predicted_return": base_signal.get("predicted_return", 0),
-            "market_phase": base_signal.get("market_phase", "neutral"),
-            "ensemble_score": abs(weighted_signal) + 0.3,
-            "rl_contribution": rl_value * rl_weight * rl_confidence,
-            "traditional_contribution": traditional_value * traditional_weight * traditional_score,
-            "signal_source": "Ensemble"
-        }
-
-        return final_signal
 
     def _apply_thresholds(self, signal, thresholds, adaptive_mode=False, win_streak=0, loss_streak=0):
         """

@@ -49,7 +49,7 @@ class OptimizedGrowthMetricCallback(tf.keras.callbacks.Callback):
         }
         self.historical_returns = []
         self.threshold_history = []
-        self.max_drawdown_threshold = 0.15
+        self.max_drawdown_threshold = 0.25
         self.consecutive_loss_scale = 0.85
         self.max_position_size = 0.5
 
