@@ -169,9 +169,9 @@ class Config:
                 "min_stop_percent": 0.015,  # 1.5% minimum stop distance
                 "enable_volatility_tp_scaling": True,
                 "volatility_tp_factors": {
-                    "low": 0.95,    # 5% lower targets in low volatility
+                    "low": 0.95,  # 5% lower targets in low volatility
                     "medium": 1.0,  # Base level
-                    "high": 1.3,    # 30% higher targets in high volatility (increased from 1.2)
+                    "high": 1.3,  # 30% higher targets in high volatility (increased from 1.2)
                     "extreme": 1.6  # 60% higher targets in extreme volatility (increased from 1.4)
                 },
                 "enable_emergency_stop_adjustment": True,
@@ -186,11 +186,11 @@ class Config:
                     "volatile": {"long": 4.3, "short": 4.3}  # Significantly increased for volatile markets
                 },
                 "profit_targets": {
-                    "micro": 0.005,    # Increased from 0.003
-                    "quick": 0.0075,   # Increased from 0.006
-                    "small": 0.012,    # Increased from 0.01
-                    "medium": 0.018,   # Increased from 0.015
-                    "large": 0.030,    # Increased from 0.025
+                    "micro": 0.005,  # Increased from 0.003
+                    "quick": 0.0075,  # Increased from 0.006
+                    "small": 0.012,  # Increased from 0.01
+                    "medium": 0.018,  # Increased from 0.015
+                    "large": 0.030,  # Increased from 0.025
                     "extended": 0.048  # Increased from 0.04
                 }
             },
@@ -203,20 +203,20 @@ class Config:
                 "medium_term_lookback": 6,
                 "long_term_lookback": 12,
                 "profit_targets": {
-                    "micro": 0.005,    # Increased from 0.003
-                    "quick": 0.0075,   # Increased from 0.006
-                    "small": 0.012,    # Increased from 0.01
-                    "medium": 0.018,   # Increased from 0.015
-                    "large": 0.030,    # Increased from 0.025
+                    "micro": 0.005,  # Increased from 0.003
+                    "quick": 0.0075,  # Increased from 0.006
+                    "small": 0.012,  # Increased from 0.01
+                    "medium": 0.018,  # Increased from 0.015
+                    "large": 0.030,  # Increased from 0.025
                     "extended": 0.048  # Increased from 0.04
                 },
                 "max_position_age": {
-                    "neutral": 24.0,                # Increased from 18.0
-                    "uptrend": 18.0,                # Increased from 14.0
-                    "downtrend": 16.0,              # Increased from 12.0
-                    "ranging_at_support": 10.0,     # Increased from 8.0
-                    "ranging_at_resistance": 6.0,   # Increased from 4.0
-                    "volatile": 10.0                # Increased from 8.0
+                    "neutral": 24.0,  # Increased from 18.0
+                    "uptrend": 18.0,  # Increased from 14.0
+                    "downtrend": 16.0,  # Increased from 12.0
+                    "ranging_at_support": 10.0,  # Increased from 8.0
+                    "ranging_at_resistance": 6.0,  # Increased from 4.0
+                    "volatile": 10.0  # Increased from 8.0
                 },
                 "phase_exit_preferences": {
                     "neutral": {
@@ -263,7 +263,7 @@ class Config:
                 "fibonacci_short_block_end": 0.382,
                 "enable_fibonacci_partial_exits": True,
                 "fibonacci_partial_exit_levels_long": [0.618, 0.764, 1.0],
-                "fibonacci_partial_exit_levels_short":  [0.382, 0.236, 0.0]
+                "fibonacci_partial_exit_levels_short": [0.382, 0.236, 0.0]
             },
             "model": {
                 "sequence_length": 72,
