@@ -7,9 +7,10 @@ from enum import Enum
 
 T = TypeVar('T')
 
+
 class MarketPhase(Enum):
     STRONG_UPTREND = "Strong Uptrend"
-    UPTREND = "Uptrend" 
+    UPTREND = "Uptrend"
     WEAK_UPTREND = "Weak Uptrend"
     UPTREND_TRANSITION = "Uptrend Transition"
     RANGING = "Ranging"
@@ -18,6 +19,7 @@ class MarketPhase(Enum):
     WEAK_DOWNTREND = "Weak Downtrend"
     DOWNTREND = "Downtrend"
     STRONG_DOWNTREND = "Strong Downtrend"
+
 
 class Config:
     def __init__(self, config_path: Optional[str] = None):
@@ -132,7 +134,7 @@ class Config:
                 "max_risk_per_trade": 0.025,
                 "min_risk_per_trade": 0.008,
                 "max_portfolio_risk": 0.20,
-                "max_drawdown_percent": 0.20,
+                "max_drawdown_percent": 0.25,
                 "kelly_fraction": 0.5,
                 "use_adaptive_kelly": True,
                 "volatility_scaling": True,
@@ -181,9 +183,9 @@ class Config:
                 "min_stop_percent": 0.015,  # 1.5% minimum stop distance
                 "enable_volatility_tp_scaling": True,
                 "volatility_tp_factors": {
-                    "low": 0.95,    # 5% lower targets in low volatility
+                    "low": 0.95,  # 5% lower targets in low volatility
                     "medium": 1.0,  # Base level
-                    "high": 1.3,    # 30% higher targets in high volatility (increased from 1.2)
+                    "high": 1.3,  # 30% higher targets in high volatility (increased from 1.2)
                     "extreme": 1.6  # 60% higher targets in extreme volatility (increased from 1.4)
                 },
                 "enable_emergency_stop_adjustment": True,
@@ -198,11 +200,11 @@ class Config:
                     "volatile": {"long": 4.3, "short": 4.3}  # Significantly increased for volatile markets
                 },
                 "profit_targets": {
-                    "micro": 0.005,    # Increased from 0.003
-                    "quick": 0.0075,   # Increased from 0.006
-                    "small": 0.012,    # Increased from 0.01
-                    "medium": 0.018,   # Increased from 0.015
-                    "large": 0.030,    # Increased from 0.025
+                    "micro": 0.005,  # Increased from 0.003
+                    "quick": 0.0075,  # Increased from 0.006
+                    "small": 0.012,  # Increased from 0.01
+                    "medium": 0.018,  # Increased from 0.015
+                    "large": 0.030,  # Increased from 0.025
                     "extended": 0.048  # Increased from 0.04
                 }
             },
@@ -215,20 +217,20 @@ class Config:
                 "medium_term_lookback": 6,
                 "long_term_lookback": 12,
                 "profit_targets": {
-                    "micro": 0.005,    # Increased from 0.003
-                    "quick": 0.0075,   # Increased from 0.006
-                    "small": 0.012,    # Increased from 0.01
-                    "medium": 0.018,   # Increased from 0.015
-                    "large": 0.030,    # Increased from 0.025
+                    "micro": 0.005,  # Increased from 0.003
+                    "quick": 0.0075,  # Increased from 0.006
+                    "small": 0.012,  # Increased from 0.01
+                    "medium": 0.018,  # Increased from 0.015
+                    "large": 0.030,  # Increased from 0.025
                     "extended": 0.048  # Increased from 0.04
                 },
                 "max_position_age": {
-                    "neutral": 24.0,                # Increased from 18.0
-                    "uptrend": 18.0,                # Increased from 14.0
-                    "downtrend": 16.0,              # Increased from 12.0
-                    "ranging_at_support": 10.0,     # Increased from 8.0
-                    "ranging_at_resistance": 6.0,   # Increased from 4.0
-                    "volatile": 10.0                # Increased from 8.0
+                    "neutral": 24.0,  # Increased from 18.0
+                    "uptrend": 18.0,  # Increased from 14.0
+                    "downtrend": 16.0,  # Increased from 12.0
+                    "ranging_at_support": 10.0,  # Increased from 8.0
+                    "ranging_at_resistance": 6.0,  # Increased from 4.0
+                    "volatile": 10.0  # Increased from 8.0
                 },
                 "phase_exit_preferences": {
                     "neutral": {
@@ -275,10 +277,10 @@ class Config:
                 "fibonacci_short_block_end": 0.382,
                 "enable_fibonacci_partial_exits": True,
                 "fibonacci_partial_exit_levels_long": [0.618, 0.764, 1.0],
-                "fibonacci_partial_exit_levels_short":  [0.382, 0.236, 0.0],
+                "fibonacci_partial_exit_levels_short": [0.382, 0.236, 0.0],
                 "ensemble_thresholds": {
                     "STRONG_UPTREND": 0.65,
-                    "UPTREND": 0.70, 
+                    "UPTREND": 0.70,
                     "WEAK_UPTREND": 0.65,
                     "UPTREND_TRANSITION": 0.60,
                     "RANGING": 0.65,
@@ -289,16 +291,16 @@ class Config:
                     "STRONG_DOWNTREND": 0.75,
                 },
                 "direction_bias": {
-                    "STRONG_UPTREND": 0.8,     # Strong long bias (52.33% win rate)
-                    "UPTREND": 0.5,            # Moderate long bias (44.19% win rate but needs improvement)
-                    "WEAK_UPTREND": 0.3,        # Slight long bias
+                    "STRONG_UPTREND": 0.8,  # Strong long bias (52.33% win rate)
+                    "UPTREND": 0.5,  # Moderate long bias (44.19% win rate but needs improvement)
+                    "WEAK_UPTREND": 0.3,  # Slight long bias
                     "UPTREND_TRANSITION": 0.9,  # Strong long bias (66.67% win rate)
-                    "RANGING": 0.1,             # Slight bias toward longs
-                    "VOLATILE": -0.7,           # Strong short bias (100% win rate in shorts)
-                    "DOWNTREND_TRANSITION": -0.2, # Slight short bias
-                    "WEAK_DOWNTREND": 0.3,      # Slightly favor longs surprisingly
-                    "DOWNTREND": -0.3,          # Moderate short bias
-                    "STRONG_DOWNTREND": 0.6,    # Favor longs (avoid shorts at 12.5% win rate)
+                    "RANGING": 0.1,  # Slight bias toward longs
+                    "VOLATILE": -0.7,  # Strong short bias (100% win rate in shorts)
+                    "DOWNTREND_TRANSITION": -0.2,  # Slight short bias
+                    "WEAK_DOWNTREND": 0.3,  # Slightly favor longs surprisingly
+                    "DOWNTREND": -0.3,  # Moderate short bias
+                    "STRONG_DOWNTREND": 0.6,  # Favor longs (avoid shorts at 12.5% win rate)
                 },
                 "position_sizing": {
                     "STRONG_UPTREND": 1.2,
@@ -308,17 +310,17 @@ class Config:
                     "RANGING": 1.0,
                     "VOLATILE": 0.7,
                     "DOWNTREND_TRANSITION": 0.9,
-                    "WEAK_DOWNTREND": 1.3,      # Best performance
+                    "WEAK_DOWNTREND": 1.3,  # Best performance
                     "DOWNTREND": 0.8,
                     "STRONG_DOWNTREND": 0.7,
                 },
                 "duration_limits": {
-                    "STRONG_UPTREND": 2.0,      # 1-2 hours optimal
-                    "UPTREND": 1.0,             # <1 hour optimal (64.71% win rate)
+                    "STRONG_UPTREND": 2.0,  # 1-2 hours optimal
+                    "UPTREND": 1.0,  # <1 hour optimal (64.71% win rate)
                     "WEAK_UPTREND": 2.0,
                     "UPTREND_TRANSITION": 2.0,
                     "RANGING": 2.0,
-                    "VOLATILE": 3.0,            # 2-4 hours optimal (66.67% win rate)
+                    "VOLATILE": 3.0,  # 2-4 hours optimal (66.67% win rate)
                     "DOWNTREND_TRANSITION": 2.0,
                     "WEAK_DOWNTREND": 2.0,
                     "DOWNTREND": 2.0,
@@ -380,15 +382,15 @@ class Config:
                 "horizon": 16,
                 "normalize_method": "feature_specific",
                 "train_ratio": 0.7,
-                "epochs": 24,
+                "epochs": 32,
                 "batch_size": 128,
                 "use_mixed_precision": True,
                 "early_stopping_patience": 12,
-                "dropout_rate": 0.35,
-                "recurrent_dropout": 0.25,
-                "recurrent_units": 32,
-                "dense_units1": 48,
-                "dense_units2": 24,
+                "dropout_rate": 0.3,  # Reduced from 0.35
+                "recurrent_dropout": 0.2,  # Reduced from 0.25
+                "recurrent_units": 48,  # Increased from 32
+                "dense_units1": 48,  # Increased from 48
+                "dense_units2": 24,  # Increased from 24
                 "l2_reg": 1e-3,
                 "attention_enabled": True,
                 "initial_learning_rate": 5e-5,
@@ -397,10 +399,10 @@ class Config:
                 "clipnorm": 1.0,
                 "model_path": "path/to/results_dir/models/best_model.keras",
                 "transformer_params": {
-                    "projection_size": 48,
-                    "transformer_heads": 3,
-                    "transformer_dropout": 0.4,
-                    "layers": 1
+                    "projection_size": 96,  # Increased from 48
+                    "transformer_heads": 4,  # Increased from 3
+                    "transformer_dropout": 0.3,  # Reduced from 0.4
+                    "transformer_layers": 2  # New parameter
                 },
                 "data_augmentation": {
                     "enabled": True,
@@ -409,7 +411,7 @@ class Config:
                     "mask_probability": 0.2
                 },
                 "risk_management": {
-                    "max_drawdown_threshold": 0.15,
+                    "max_drawdown_threshold": 0.25,
                     "consecutive_loss_scale": 0.85,
                     "max_position_size": 0.5,
                     "max_trades_per_day": 5,
@@ -439,7 +441,7 @@ class Config:
                 "state_size": 24,  # Will be calculated dynamically
                 "action_size": 3,  # 0: Hold, 1: Buy, 2: Sell
                 "buffer_capacity": 10000,
-                "batch_size": 64,
+                "batch_size": 128,
                 "gamma": 0.95,
                 "epsilon_start": 1.0,
                 "epsilon_min": 0.01,

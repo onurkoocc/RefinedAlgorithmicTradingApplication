@@ -37,7 +37,7 @@ class DQNAgent:
         self.epsilon_decay = config.get("rl", "epsilon_decay", 0.995)
         self.learning_rate = config.get("rl", "learning_rate", 0.001)
         self.update_target_frequency = config.get("rl", "update_target_frequency", 10)
-        self.batch_size = config.get("rl", "batch_size", 64)
+        self.batch_size = config.get("rl", "batch_size", 128)
 
         self.model = self._build_model()
         self.target_model = self._build_model()
@@ -48,6 +48,7 @@ class DQNAgent:
         self.model_dir.mkdir(exist_ok=True, parents=True)
 
     def _build_model(self):
+        # Using the Functional API instead of Sequential with input_shape
         inputs = tf.keras.layers.Input(shape=(self.state_size,))
         x = tf.keras.layers.Dense(64, activation='relu')(inputs)
         x = tf.keras.layers.Dropout(0.2)(x)
@@ -443,6 +444,18 @@ class RLSignalGenerator:
                 "ensemble_score": 0.4
             }
 
+    def _calculate_action_confidence(self, state):
+        act_values = self.agent.model.predict(np.array([state]), verbose=0)[0]
+        max_q_value = np.max(act_values)
+        min_q_value = np.min(act_values)
+        range_q = max(abs(max_q_value - min_q_value), 1e-5)
+
+        # Normalize the confidence
+        normalized_confidence = 0.5 + 0.5 * (max_q_value / range_q)
+
+        # Clip to reasonable values
+        return min(normalized_confidence, 0.95)
+
     def save_model(self):
         if self.enabled and hasattr(self, 'agent'):
             self.agent.save()
@@ -455,15 +468,3 @@ class RLSignalGenerator:
                 self.logger.info("RL model loaded successfully")
             else:
                 self.logger.warning("No pretrained RL model found, using new model")
-
-    def _calculate_action_confidence(self, state):
-        act_values = self.agent.model.predict(np.array([state]), verbose=0)[0]
-        max_q_value = np.max(act_values)
-        min_q_value = np.min(act_values)
-        range_q = max(abs(max_q_value - min_q_value), 1e-5)
-
-        # Normalize the confidence
-        normalized_confidence = 0.5 + 0.5 * (max_q_value / range_q)
-
-        # Clip to reasonable values
-        return min(normalized_confidence, 0.95)

@@ -4,8 +4,8 @@ import numpy as np
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import Input, Model
-from tensorflow.keras import layers
-from tensorflow.keras.layers import Dense, BatchNormalization, GRU, Dropout, Lambda
+from tensorflow.keras import layers, backend as K
+from tensorflow.keras.layers import Dense, BatchNormalization, GRU, Dropout, Lambda, Concatenate, Bidirectional
 from tensorflow.keras.layers import Add, LayerNormalization, GlobalAveragePooling1D, Multiply, Layer
 from tensorflow.keras.optimizers import AdamW
 from tensorflow.keras.regularizers import l2
@@ -49,7 +49,7 @@ class OptimizedGrowthMetricCallback(tf.keras.callbacks.Callback):
         }
         self.historical_returns = []
         self.threshold_history = []
-        self.max_drawdown_threshold = 0.15
+        self.max_drawdown_threshold = 0.25
         self.consecutive_loss_scale = 0.85
         self.max_position_size = 0.5
 
@@ -378,44 +378,68 @@ class OptimizedHybridModel:
         self.model = None
         self.logger = logging.getLogger("OptimizedHybridModel")
         self.training_metrics = []
-        self.best_params = {
-            "projection_size": 48, "transformer_heads": 3, "transformer_dropout": 0.4,
-            "recurrent_units": 32, "recurrent_dropout": 0.25, "dropout": 0.35,
-            "dense_units1": 48, "dense_units2": 24, "l2_lambda": 1e-3,
-            "learning_rate": 5e-5, "epochs": 24
+        self.best_params = {                 # Dene
+            "projection_size": 96,           # 48-96
+            "transformer_heads": 4,          #
+            "transformer_layers": 2,         #
+            "transformer_dropout": 0.3,      #
+            "recurrent_units": 48,           # 48
+            "recurrent_dropout": 0.2,        #
+            "dropout": 0.3,                  #
+            "dense_units1": 48,              # 48
+            "dense_units2": 24,              # 24
+            "l2_lambda": 1e-3,
+            "learning_rate": 5e-5,
+            "epochs": 32
         }
 
     def build_model(self):
         tf.keras.backend.clear_session()
         inputs = Input(shape=self.input_shape, dtype=tf.float32, name="hybrid_input")
+
+        # Initial normalization and projection
         x = BatchNormalization(momentum=0.99, epsilon=1e-5)(inputs)
         projection_size = self.best_params["projection_size"]
         transformer_heads = self.best_params["transformer_heads"]
+        transformer_layers = self.best_params["transformer_layers"]
         transformer_dropout = self.best_params["transformer_dropout"]
+
         x = Dense(projection_size, activation='linear')(x)
         pos_encoding = self._positional_encoding(self.input_shape[0], projection_size)
         x = Lambda(lambda x: x + tf.cast(pos_encoding, x.dtype))(x)
 
-        x = self._transformer_encoder_layer(x, units=projection_size,
-                                            num_heads=transformer_heads,
-                                            dropout=transformer_dropout,
-                                            name="hybrid_transformer_0")
+        # Apply multiple transformer encoder layers
+        for i in range(transformer_layers):
+            x = self._transformer_encoder_layer(
+                x,
+                units=projection_size,
+                num_heads=transformer_heads,
+                dropout=transformer_dropout,
+                name=f"hybrid_transformer_{i}"
+            )
 
+        # Bidirectional GRU layer
         recurrent_units = self.best_params["recurrent_units"]
         recurrent_dropout = self.best_params["recurrent_dropout"]
         dropout_rate = self.best_params["dropout"]
 
-        recurrent_out = GRU(recurrent_units, return_sequences=True,
-                            recurrent_dropout=recurrent_dropout)(x)
-        recurrent_out = BatchNormalization()(recurrent_out)
-        recurrent_out = Dropout(dropout_rate)(recurrent_out)
-        x = recurrent_out
+        # Method 1: Use Bidirectional wrapper instead of manual implementation
+        bidirectional_gru = Bidirectional(
+            GRU(recurrent_units, return_sequences=True, recurrent_dropout=recurrent_dropout),
+            name='bidirectional_gru'
+        )(x)
 
+        x = bidirectional_gru
+        x = BatchNormalization()(x)
+        x = Dropout(dropout_rate)(x)
+
+        # Self-attention mechanism
         attention_score = Dense(1, activation='tanh')(x)
         attention_weights = SoftmaxLayer(axis=1)(attention_score)
         context_vector = Multiply()([x, attention_weights])
         x = GlobalAveragePooling1D()(context_vector)
 
+        # Final dense layers
         dense_units1 = self.best_params["dense_units1"]
         dense_units2 = self.best_params["dense_units2"]
         l2_lambda = self.best_params["l2_lambda"]
@@ -427,10 +451,12 @@ class OptimizedHybridModel:
         x = BatchNormalization()(x)
         x = Dropout(dropout_rate)(x)
         outputs = Dense(1, activation='tanh', kernel_regularizer=l2(l2_lambda), dtype='float32')(x)
+
         model = Model(inputs, outputs, name="optimized_hybrid_model")
         learning_rate = self.best_params["learning_rate"]
         optimizer = AdamW(learning_rate=learning_rate, weight_decay=1e-4, clipnorm=1.0)
         model.compile(optimizer=optimizer, loss=self._direction_enhanced_mse, metrics=['mae'])
+
         self.model = model
         return model
 
@@ -445,12 +471,19 @@ class OptimizedHybridModel:
         return pos * angle_rates
 
     def _transformer_encoder_layer(self, inputs, units, num_heads, dropout, name):
-        attention_output = layers.MultiHeadAttention(num_heads=num_heads, key_dim=units // num_heads, dropout=dropout,
-                                                     name=f"{name}_attention")(inputs, inputs)
+        attention_output = layers.MultiHeadAttention(
+            num_heads=num_heads,
+            key_dim=units // num_heads,
+            dropout=dropout,
+            name=f"{name}_attention"
+        )(inputs, inputs)
+
         attention_output = LayerNormalization(epsilon=1e-6, name=f"{name}_norm1")(inputs + attention_output)
-        ffn_output = Dense(units * 2, activation='swish', name=f"{name}_ffn1")(attention_output)
+
+        ffn_output = Dense(units * 4, activation='swish', name=f"{name}_ffn1")(attention_output)
         ffn_output = Dropout(dropout)(ffn_output)
         ffn_output = Dense(units, name=f"{name}_ffn2")(ffn_output)
+
         return LayerNormalization(epsilon=1e-6, name=f"{name}_norm2")(attention_output + ffn_output)
 
     def _direction_enhanced_mse(self, y_true, y_pred):
@@ -529,7 +562,7 @@ class TradingModel:
         self.sequence_length = 72
         self.horizon = 16
         self.batch_size = config.get("model", "batch_size", 128)
-        self.epochs = config.get("model", "epochs", 24)
+        self.epochs = config.get("model", "epochs", 32)
         self.early_stopping_patience = config.get("model", "early_stopping_patience", 12)
         self.initial_learning_rate = config.get("model", "initial_learning_rate", 5e-5)
         self.results_dir = Path(config.results_dir)

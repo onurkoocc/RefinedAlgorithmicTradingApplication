@@ -922,7 +922,7 @@ class RiskManager:
         self.performance_tracker = PerformanceTracker()
         self.regime_adapter = MarketRegimeAdapter(config)
         self.current_drawdown = 0.0
-        self.max_drawdown = config.get("risk", "max_drawdown_percent", 0.20)
+        self.max_drawdown = config.get("risk", "max_drawdown_percent", 0.25)
         self.drawdown_state = "normal"
         self.max_trades_per_day = config.get("risk", "max_trades_per_day", 24)
         self.daily_trade_count = {}
