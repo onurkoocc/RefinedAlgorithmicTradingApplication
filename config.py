@@ -386,11 +386,11 @@ class Config:
                 "batch_size": 128,
                 "use_mixed_precision": True,
                 "early_stopping_patience": 12,
-                "dropout_rate": 0.3,  # Reduced from 0.35
-                "recurrent_dropout": 0.2,  # Reduced from 0.25
-                "recurrent_units": 48,  # Increased from 32
-                "dense_units1": 48,  # Increased from 48
-                "dense_units2": 24,  # Increased from 24
+                "dropout_rate": 0.3,
+                "recurrent_dropout": 0.2,
+                "recurrent_units": 48,
+                "dense_units1": 48,
+                "dense_units2": 24,
                 "l2_reg": 1e-3,
                 "attention_enabled": True,
                 "initial_learning_rate": 5e-5,
@@ -399,10 +399,10 @@ class Config:
                 "clipnorm": 1.0,
                 "model_path": "path/to/results_dir/models/best_model.keras",
                 "transformer_params": {
-                    "projection_size": 96,  # Increased from 48
-                    "transformer_heads": 4,  # Increased from 3
-                    "transformer_dropout": 0.3,  # Reduced from 0.4
-                    "transformer_layers": 2  # New parameter
+                    "projection_size": 96,
+                    "transformer_heads": 4,
+                    "transformer_dropout": 0.3,
+                    "transformer_layers": 2
                 },
                 "data_augmentation": {
                     "enabled": True,
@@ -416,6 +416,16 @@ class Config:
                     "max_position_size": 0.5,
                     "max_trades_per_day": 5,
                     "min_threshold": 0.001
+                },
+                "growth_metric_callback": {
+                    "monthly_target": 0.08,
+                    "threshold_pct": 0.6,
+                    "transaction_cost": 0.001,
+                    "drawdown_weight": 1.8,
+                    "avg_return_weight": 2.0,
+                    "consistency_weight": 1.0,
+                    "adaptive_threshold": True,
+                    "min_trades_penalty": True
                 }
             },
             "backtest": {

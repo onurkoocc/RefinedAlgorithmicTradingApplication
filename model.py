@@ -24,7 +24,7 @@ class SoftmaxLayer(Layer):
 
 class OptimizedGrowthMetricCallback(tf.keras.callbacks.Callback):
     def __init__(self, X_val, y_val, fwd_returns_val, monthly_target=0.08, threshold_pct=0.6, model_idx=None,
-                 transaction_cost=0.001, drawdown_weight=1.8, avg_return_weight=1.0, consistency_weight=1.2,
+                 transaction_cost=0.001, drawdown_weight=1.8, avg_return_weight=2.0, consistency_weight=1.0,
                  fixed_threshold=None, volatility_lookback=30, adaptive_threshold=True, min_trades_penalty=True):
         super().__init__()
         self.X_val = X_val
@@ -105,7 +105,16 @@ class OptimizedGrowthMetricCallback(tf.keras.callbacks.Callback):
         elif market_regime == "volatile":
             regime_factor = 1.5
 
-        return base_threshold * volatility_factor * regime_factor
+        # Add performance-based adjustment
+        performance_factor = 1.0
+        if len(self.historical_returns) >= 5:
+            recent_epochs = self.historical_returns[-5:]
+            recent_scores = [h.get('growth_score', 0) for h in recent_epochs]
+            avg_recent_score = np.mean(recent_scores) if recent_scores else 0
+            # If average score is low, increase threshold; if high, decrease
+            performance_factor = 1.0 - np.clip((avg_recent_score - 0.5) * 0.4, -0.2, 0.2)
+
+        return max(base_threshold * volatility_factor * regime_factor * performance_factor, 0.0005)
 
     def _calculate_volatility(self):
         lookback = min(self.volatility_lookback, len(self.fwd_returns_val))
@@ -267,13 +276,26 @@ class OptimizedGrowthMetricCallback(tf.keras.callbacks.Callback):
         avg_recovery = np.mean(recovery_periods) if recovery_periods else n_trades
         recovery_efficiency = n_trades / max(avg_recovery, 1.0)
 
-        growth_distance = min(2.0, monthly_growth / self.monthly_target)
+        # Reward exceeding the target more significantly
+        target_achieved_bonus = 0.0
+        if monthly_growth >= self.monthly_target:
+            target_achieved_bonus = min(0.5, (monthly_growth / self.monthly_target - 1.0) * 0.5)
+
+        # Penalize falling short more sharply
+        growth_distance = 0.0
+        if monthly_growth > 0:
+            growth_distance = (monthly_growth / self.monthly_target) ** 0.7
+
         dd_penalty = np.exp(-6.0 * max_drawdown)
+
+        # Incorporate bonus into the score
         growth_score = (
                                self.avg_return_weight * growth_distance +
                                self.drawdown_weight * dd_penalty +
-                               self.consistency_weight * min(3.0, consistency_score)
-                       ) / (self.avg_return_weight + self.drawdown_weight + self.consistency_weight)
+                               self.consistency_weight * min(3.0, consistency_score) +
+                               target_achieved_bonus
+                       ) / (self.avg_return_weight + self.drawdown_weight + self.consistency_weight + 1.0)
+
         growth_score += 0.2 * min(1.0, sortino_ratio / 2.0)
         profit_factor_term = 0.4 + 0.6 * min(1.0, profit_factor / 2.0)
         growth_score *= profit_factor_term
@@ -378,16 +400,16 @@ class OptimizedHybridModel:
         self.model = None
         self.logger = logging.getLogger("OptimizedHybridModel")
         self.training_metrics = []
-        self.best_params = {                 # Dene
-            "projection_size": 96,           # 48-96
-            "transformer_heads": 4,          #
-            "transformer_layers": 2,         #
-            "transformer_dropout": 0.3,      #
-            "recurrent_units": 48,           # 48
-            "recurrent_dropout": 0.2,        #
-            "dropout": 0.3,                  #
-            "dense_units1": 48,              # 48
-            "dense_units2": 24,              # 24
+        self.best_params = {
+            "projection_size": 96,
+            "transformer_heads": 4,
+            "transformer_layers": 2,
+            "transformer_dropout": 0.3,
+            "recurrent_units": 48,
+            "recurrent_dropout": 0.2,
+            "dropout": 0.3,
+            "dense_units1": 48,
+            "dense_units2": 24,
             "l2_lambda": 1e-3,
             "learning_rate": 5e-5,
             "epochs": 32
@@ -397,7 +419,6 @@ class OptimizedHybridModel:
         tf.keras.backend.clear_session()
         inputs = Input(shape=self.input_shape, dtype=tf.float32, name="hybrid_input")
 
-        # Initial normalization and projection
         x = BatchNormalization(momentum=0.99, epsilon=1e-5)(inputs)
         projection_size = self.best_params["projection_size"]
         transformer_heads = self.best_params["transformer_heads"]
@@ -408,7 +429,6 @@ class OptimizedHybridModel:
         pos_encoding = self._positional_encoding(self.input_shape[0], projection_size)
         x = Lambda(lambda x: x + tf.cast(pos_encoding, x.dtype))(x)
 
-        # Apply multiple transformer encoder layers
         for i in range(transformer_layers):
             x = self._transformer_encoder_layer(
                 x,
@@ -418,12 +438,10 @@ class OptimizedHybridModel:
                 name=f"hybrid_transformer_{i}"
             )
 
-        # Bidirectional GRU layer
         recurrent_units = self.best_params["recurrent_units"]
         recurrent_dropout = self.best_params["recurrent_dropout"]
         dropout_rate = self.best_params["dropout"]
 
-        # Method 1: Use Bidirectional wrapper instead of manual implementation
         bidirectional_gru = Bidirectional(
             GRU(recurrent_units, return_sequences=True, recurrent_dropout=recurrent_dropout),
             name='bidirectional_gru'
@@ -433,13 +451,11 @@ class OptimizedHybridModel:
         x = BatchNormalization()(x)
         x = Dropout(dropout_rate)(x)
 
-        # Self-attention mechanism
         attention_score = Dense(1, activation='tanh')(x)
         attention_weights = SoftmaxLayer(axis=1)(attention_score)
         context_vector = Multiply()([x, attention_weights])
         x = GlobalAveragePooling1D()(context_vector)
 
-        # Final dense layers
         dense_units1 = self.best_params["dense_units1"]
         dense_units2 = self.best_params["dense_units2"]
         l2_lambda = self.best_params["l2_lambda"]
@@ -598,7 +614,7 @@ class TradingModel:
             ),
             tf.keras.callbacks.LearningRateScheduler(
                 lambda epoch, lr: self.initial_learning_rate * (
-                            0.85 ** ((epoch - 5) // 3)) if epoch >= 5 else self.initial_learning_rate
+                        0.85 ** ((epoch - 5) // 3)) if epoch >= 5 else self.initial_learning_rate
             )
         ]
 
