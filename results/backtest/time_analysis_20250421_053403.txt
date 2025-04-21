@@ -1,0 +1,82 @@
+Time-Based Trading Analysis
+==========================
+
+Exit Type Performance
+--------------------
+StagnantExit:
+  Count: 120
+  Win Rate: 27.5%
+  Avg PnL: $-19.22
+  Avg Duration: 0.0h
+  Total PnL: $-2305.92
+
+ProfitTarget:
+  Count: 255
+  Win Rate: 100.0%
+  Avg PnL: $90.53
+  Avg Duration: 0.0h
+  Total PnL: $23084.79
+
+StopLoss:
+  Count: 284
+  Win Rate: 0.0%
+  Avg PnL: $-84.93
+  Avg Duration: 0.0h
+  Total PnL: $-24119.47
+
+PartialExit_25pct:
+  Count: 6
+  Win Rate: 100.0%
+  Avg PnL: $17.26
+  Avg Duration: 0.0h
+  Total PnL: $103.56
+
+QuickProfit:
+  Count: 80
+  Win Rate: 100.0%
+  Avg PnL: $77.27
+  Avg Duration: 0.0h
+  Total PnL: $6181.59
+
+RSIExtreme:
+  Count: 15
+  Win Rate: 100.0%
+  Avg PnL: $63.00
+  Avg Duration: 0.0h
+  Total PnL: $944.97
+
+QuickProfitTaken:
+  Count: 33
+  Win Rate: 100.0%
+  Avg PnL: $51.01
+  Avg Duration: 0.0h
+  Total PnL: $1683.32
+
+EarlyLossExit:
+  Count: 3
+  Win Rate: 0.0%
+  Avg PnL: $-77.89
+  Avg Duration: 0.0h
+  Total PnL: $-233.67
+
+EndOfTest:
+  Count: 10
+  Win Rate: 20.0%
+  Avg PnL: $-45.43
+  Avg Duration: 0.0h
+  Total PnL: $-454.26
+
+StagnantTrade:
+  Count: 1
+  Win Rate: 0.0%
+  Avg PnL: $-11.85
+  Avg Duration: 0.0h
+  Total PnL: $-11.85
+
+Optimal Trade Duration
+---------------------
+Optimal Hold Time: 24.0h
+Confidence: low
+Data Points: 0
+Avg Trade Duration: 0.0h
+Avg Profitable Duration: 0.0h

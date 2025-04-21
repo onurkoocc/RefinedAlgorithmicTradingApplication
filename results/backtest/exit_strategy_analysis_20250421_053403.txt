@@ -1,0 +1,48 @@
+Enhanced Exit Strategy Analysis
+==============================
+
+Exit Strategy Performance
+-----------------------
+Total trades analyzed: 807
+Total partial exits executed: 6
+Total quick profit exits executed: 33
+
+Exit Strategy Performance by Type:
+Top Performing Exit Strategies
+----------------------------
+No best exit strategies identified.
+
+Market Phase Performance
+-----------------------
+ranging: 236 occurrences
+strong_uptrend: 189 occurrences
+neutral: 130 occurrences
+weak_uptrend: 66 occurrences
+weak_downtrend: 61 occurrences
+uptrend: 50 occurrences
+volatile: 31 occurrences
+strong_downtrend: 21 occurrences
+uptrend_transition: 12 occurrences
+downtrend: 11 occurrences
+
+Top Performing Market Phases
+--------------------------
+No best performing phases identified.
+
+Trading Timing Analysis
+----------------------
+Average trade holding time: 2.55 hours
+
+Exit Strategy Recommendations
+---------------------------
+Insufficient data for exit strategy recommendations.
+
+Multi-timeframe Exit Confirmation Strategy
+---------------------------------------
+1. Primary timeframe exit signals should be confirmed with:
+   - Momentum indicators on higher timeframe (e.g., 4h MACD for 30m trades)
+   - Support/resistance levels on lower timeframe (e.g., 5m price action)
+2. Exit strategy matrix:
+   - Strong trend: Use trailing stops only
+   - Ranging market: Use fixed take-profit levels
+   - Mixed signals: Use partial exits at key levels

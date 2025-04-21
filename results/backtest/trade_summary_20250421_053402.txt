@@ -1,0 +1,59 @@
+Trading Results Summary
+======================
+
+Total Trades: 807
+Initial Balance: $10000.00
+Final Balance: $14873.08
+Total Profit/Loss: $4873.08
+Return: 48.73%
+
+Win Rate: 52.54%
+Average Win: $76.62
+Best Trade: $687.22
+Average Loss: $-72.09
+Worst Trade: $-226.73
+Profit Factor: 1.18
+Sharpe Ratio: 0.31
+Sortino Ratio: 0.64
+Max Drawdown: 10.42%
+Max Drawdown Duration: 258 trades
+
+Average Trade Duration: 2.6 hours
+Max Win Streak: 9
+Max Loss Streak: 11
+
+Best Month: 2025-02 (0.31%)
+Worst Month: 2025-04 (-0.20%)
+
+Indicator Statistics
+-------------------
+Average Entry RSI: 50.95
+Average Exit RSI: 50.47
+Winning Trades Avg Entry MACD Histogram: 0.000000
+Winning Trades Avg Exit MACD Histogram: 0.000000
+
+Exit Reason Statistics
+----------------------
+EarlyLossExit: 3.0 trades, Avg P&L: $-77.89, Total P&L: $-233.66, Avg Duration: 6.2h
+EndOfTest: 10.0 trades, Avg P&L: $-45.43, Total P&L: $-454.26, Avg Duration: 1.6h
+PartialExit_25pct: 6.0 trades, Avg P&L: $17.26, Total P&L: $103.56, Avg Duration: 2.7h
+ProfitTarget: 255.0 trades, Avg P&L: $90.53, Total P&L: $23084.84, Avg Duration: 1.2h
+QuickProfit: 80.0 trades, Avg P&L: $77.27, Total P&L: $6181.58, Avg Duration: 3.2h
+QuickProfitTaken: 33.0 trades, Avg P&L: $51.01, Total P&L: $1683.31, Avg Duration: 4.8h
+RSIExtreme: 15.0 trades, Avg P&L: $63.00, Total P&L: $944.98, Avg Duration: 2.4h
+StagnantExit: 120.0 trades, Avg P&L: $-19.22, Total P&L: $-2305.86, Avg Duration: 5.8h
+StagnantTrade: 1.0 trades, Avg P&L: $-11.85, Total P&L: $-11.85, Avg Duration: 12.0h
+StopLoss: 284.0 trades, Avg P&L: $-84.93, Total P&L: $-24119.48, Avg Duration: 1.9h
+
+Market Phase Statistics
+----------------------
+downtrend: 11.0 trades, Avg P&L: $-7.38, Total P&L: $-81.22, Avg Duration: 1.9h
+neutral: 130.0 trades, Avg P&L: $3.20, Total P&L: $415.89, Avg Duration: 2.6h
+ranging: 236.0 trades, Avg P&L: $0.55, Total P&L: $129.80, Avg Duration: 2.5h
+strong_downtrend: 21.0 trades, Avg P&L: $2.89, Total P&L: $60.68, Avg Duration: 3.9h
+strong_uptrend: 189.0 trades, Avg P&L: $9.35, Total P&L: $1766.83, Avg Duration: 2.5h
+uptrend: 50.0 trades, Avg P&L: $23.01, Total P&L: $1150.63, Avg Duration: 2.4h
+uptrend_transition: 12.0 trades, Avg P&L: $19.34, Total P&L: $232.06, Avg Duration: 2.8h
+volatile: 31.0 trades, Avg P&L: $-18.06, Total P&L: $-559.97, Avg Duration: 2.9h
+weak_downtrend: 61.0 trades, Avg P&L: $26.48, Total P&L: $1615.16, Avg Duration: 2.2h
+weak_uptrend: 66.0 trades, Avg P&L: $2.17, Total P&L: $143.30, Avg Duration: 2.7h

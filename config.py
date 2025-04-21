@@ -398,12 +398,6 @@ class Config:
                 "direction_loss_weight": 1.0,
                 "clipnorm": 1.0,
                 "model_path": "path/to/results_dir/models/best_model.keras",
-                "transformer_params": {
-                    "projection_size": 96,
-                    "transformer_heads": 4,
-                    "transformer_dropout": 0.3,
-                    "transformer_layers": 2
-                },
                 "data_augmentation": {
                     "enabled": True,
                     "noise_level": 0.01,

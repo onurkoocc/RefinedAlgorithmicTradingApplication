@@ -1,0 +1,1928 @@
+[
+  {
+    "timestamp": "2025-04-21 04:03:05",
+    "type": "exit_strategies",
+    "best_exits": [
+      "QuickProfit",
+      "ProfitTarget"
+    ],
+    "parameters": {
+      "profit_target_factor": 0.95,
+      "trailing_activation_factor": 1.1,
+      "enable_partial_exits": false,
+      "quick_profit_threshold_factor": 0.9
+    },
+    "exit_performance": {
+      "StagnantExit": {
+        "count": 24,
+        "win_count": 5,
+        "total_pnl": -480.58357492046895,
+        "avg_pnl": -20.024315621686206,
+        "win_rate": 0.20833333333333334
+      },
+      "ProfitTarget": {
+        "count": 37,
+        "win_count": 37,
+        "total_pnl": 1907.2064739989823,
+        "avg_pnl": 51.54612091889142,
+        "win_rate": 1.0
+      },
+      "StopLoss": {
+        "count": 29,
+        "win_count": 0,
+        "total_pnl": -2234.5693819336416,
+        "avg_pnl": -77.05411661840144,
+        "win_rate": 0.0
+      },
+      "PartialExit_25pct": {
+        "count": 1,
+        "win_count": 1,
+        "total_pnl": 13.865021379681481,
+        "avg_pnl": 13.865021379681481,
+        "win_rate": 1.0
+      },
+      "QuickProfit": {
+        "count": 12,
+        "win_count": 12,
+        "total_pnl": 647.6149412838599,
+        "avg_pnl": 53.967911773655,
+        "win_rate": 1.0
+      },
+      "RSIExtreme": {
+        "count": 1,
+        "win_count": 1,
+        "total_pnl": 23.76043849795944,
+        "avg_pnl": 23.76043849795944,
+        "win_rate": 1.0
+      },
+      "QuickProfitTaken": {
+        "count": 3,
+        "win_count": 3,
+        "total_pnl": 76.89395531513284,
+        "avg_pnl": 25.631318438377615,
+        "win_rate": 1.0
+      },
+      "EarlyLossExit": {
+        "count": 1,
+        "win_count": 0,
+        "total_pnl": -74.23913321287112,
+        "avg_pnl": -74.23913321287112,
+        "win_rate": 0.0
+      }
+    }
+  },
+  {
+    "timestamp": "2025-04-21 04:03:05",
+    "type": "signal_thresholds",
+    "parameters": {
+      "threshold_adjustments": {
+        "strong_downtrend": {
+          "long": 0.85
+        },
+        "weak_uptrend": {
+          "short": 0.85
+        },
+        "ranging": {
+          "long": 0.85,
+          "short": 0.85
+        },
+        "volatile": {
+          "long": 0.85
+        },
+        "neutral": {
+          "long": 1.2,
+          "short": 1.2
+        },
+        "strong_uptrend": {
+          "long": 1.2
+        }
+      },
+      "use_adaptive_thresholds": true
+    },
+    "phase_performance": {
+      "strong_downtrend": {
+        "long": {
+          "count": 8,
+          "win_count": 6,
+          "total_pnl": 314.50390664504476,
+          "win_rate": 0.75,
+          "avg_pnl": 39.312988330630596
+        },
+        "short": {
+          "count": 1,
+          "win_count": 1,
+          "total_pnl": 6.28589704597442,
+          "win_rate": 1.0,
+          "avg_pnl": 6.28589704597442
+        }
+      },
+      "ranging": {
+        "long": {
+          "count": 16,
+          "win_count": 10,
+          "total_pnl": 61.223661664081135,
+          "win_rate": 0.625,
+          "avg_pnl": 3.826478854005071
+        },
+        "short": {
+          "count": 15,
+          "win_count": 6,
+          "total_pnl": 14.521147532661885,
+          "win_rate": 0.4,
+          "avg_pnl": 0.968076502177459
+        }
+      },
+      "neutral": {
+        "long": {
+          "count": 13,
+          "win_count": 6,
+          "total_pnl": -223.5051482826728,
+          "win_rate": 0.46153846153846156,
+          "avg_pnl": -17.192703714051753
+        },
+        "short": {
+          "count": 9,
+          "win_count": 2,
+          "total_pnl": -377.62461407498984,
+          "win_rate": 0.2222222222222222,
+          "avg_pnl": -41.95829045277665
+        }
+      },
+      "weak_uptrend": {
+        "long": {
+          "count": 4,
+          "win_count": 3,
+          "total_pnl": 129.19188438515522,
+          "win_rate": 0.75,
+          "avg_pnl": 32.297971096288805
+        },
+        "short": {
+          "count": 12,
+          "win_count": 7,
+          "total_pnl": 66.62473083289949,
+          "win_rate": 0.5833333333333334,
+          "avg_pnl": 5.552060902741624
+        }
+      },
+      "strong_uptrend": {
+        "long": {
+          "count": 12,
+          "win_count": 6,
+          "total_pnl": -222.03443687421222,
+          "win_rate": 0.5,
+          "avg_pnl": -18.502869739517685
+        },
+        "short": {
+          "count": 3,
+          "win_count": 0,
+          "total_pnl": -77.37809778372886,
+          "win_rate": 0.0,
+          "avg_pnl": -25.792699261242955
+        }
+      },
+      "weak_downtrend": {
+        "long": {
+          "count": 4,
+          "win_count": 4,
+          "total_pnl": 197.14514388073897,
+          "win_rate": 1.0,
+          "avg_pnl": 49.28628597018474
+        },
+        "short": {
+          "count": 0,
+          "win_count": 0,
+          "total_pnl": 0,
+          "win_rate": 0,
+          "avg_pnl": 0
+        }
+      },
+      "volatile": {
+        "long": {
+          "count": 7,
+          "win_count": 4,
+          "total_pnl": -105.78985306790794,
+          "win_rate": 0.5714285714285714,
+          "avg_pnl": -15.112836152558277
+        },
+        "short": {
+          "count": 0,
+          "win_count": 0,
+          "total_pnl": 0,
+          "win_rate": 0,
+          "avg_pnl": 0
+        }
+      },
+      "downtrend": {
+        "long": {
+          "count": 3,
+          "win_count": 3,
+          "total_pnl": 67.43925816185231,
+          "win_rate": 1.0,
+          "avg_pnl": 22.479752720617437
+        },
+        "short": {
+          "count": 0,
+          "win_count": 0,
+          "total_pnl": 0,
+          "win_rate": 0,
+          "avg_pnl": 0
+        }
+      },
+      "uptrend": {
+        "long": {
+          "count": 1,
+          "win_count": 1,
+          "total_pnl": 29.34526034373805,
+          "win_rate": 1.0,
+          "avg_pnl": 29.34526034373805
+        },
+        "short": {
+          "count": 0,
+          "win_count": 0,
+          "total_pnl": 0,
+          "win_rate": 0,
+          "avg_pnl": 0
+        }
+      }
+    }
+  },
+  {
+    "timestamp": "2025-04-21 04:19:12",
+    "type": "exit_strategies",
+    "best_exits": [
+      "ProfitTarget",
+      "QuickProfit",
+      "QuickProfitTaken"
+    ],
+    "parameters": {
+      "profit_target_factor": 0.95,
+      "trailing_activation_factor": 1.1,
+      "enable_partial_exits": false,
+      "quick_profit_threshold_factor": 0.9
+    },
+    "exit_performance": {
+      "StagnantExit": {
+        "count": 46,
+        "win_count": 11,
+        "total_pnl": -777.1848791891049,
+        "avg_pnl": -16.895323460632714,
+        "win_rate": 0.2391304347826087
+      },
+      "ProfitTarget": {
+        "count": 90,
+        "win_count": 90,
+        "total_pnl": 5316.138247710526,
+        "avg_pnl": 59.06820275233918,
+        "win_rate": 1.0
+      },
+      "StopLoss": {
+        "count": 60,
+        "win_count": 0,
+        "total_pnl": -5095.634594268002,
+        "avg_pnl": -84.92724323780003,
+        "win_rate": 0.0
+      },
+      "PartialExit_25pct": {
+        "count": 1,
+        "win_count": 1,
+        "total_pnl": 13.865021379681481,
+        "avg_pnl": 13.865021379681481,
+        "win_rate": 1.0
+      },
+      "QuickProfit": {
+        "count": 17,
+        "win_count": 17,
+        "total_pnl": 990.8943439130894,
+        "avg_pnl": 58.28790258312291,
+        "win_rate": 1.0
+      },
+      "RSIExtreme": {
+        "count": 2,
+        "win_count": 2,
+        "total_pnl": 73.25458293635394,
+        "avg_pnl": 36.62729146817697,
+        "win_rate": 1.0
+      },
+      "QuickProfitTaken": {
+        "count": 10,
+        "win_count": 10,
+        "total_pnl": 340.91273417450594,
+        "avg_pnl": 34.091273417450594,
+        "win_rate": 1.0
+      },
+      "EarlyLossExit": {
+        "count": 1,
+        "win_count": 0,
+        "total_pnl": -74.23913321287112,
+        "avg_pnl": -74.23913321287112,
+        "win_rate": 0.0
+      },
+      "EndOfTest": {
+        "count": 3,
+        "win_count": 1,
+        "total_pnl": -22.275020829342868,
+        "avg_pnl": -7.4250069431142895,
+        "win_rate": 0.3333333333333333
+      }
+    }
+  },
+  {
+    "timestamp": "2025-04-21 04:19:12",
+    "type": "signal_thresholds",
+    "parameters": {
+      "threshold_adjustments": {
+        "weak_downtrend": {
+          "long": 0.85
+        },
+        "strong_downtrend": {
+          "long": 0.85
+        },
+        "uptrend": {
+          "short": 0.85
+        },
+        "volatile": {
+          "short": 0.85,
+          "long": 1.2
+        },
+        "ranging": {
+          "long": 0.85,
+          "short": 1.2
+        },
+        "neutral": {
+          "long": 1.2,
+          "short": 1.2
+        },
+        "strong_uptrend": {
+          "short": 1.2
+        }
+      },
+      "use_adaptive_thresholds": true
+    },
+    "phase_performance": {
+      "strong_downtrend": {
+        "long": {
+          "count": 8,
+          "win_count": 6,
+          "total_pnl": 314.50390664504476,
+          "win_rate": 0.75,
+          "avg_pnl": 39.312988330630596
+        },
+        "short": {
+          "count": 1,
+          "win_count": 1,
+          "total_pnl": 6.28589704597442,
+          "win_rate": 1.0,
+          "avg_pnl": 6.28589704597442
+        }
+      },
+      "ranging": {
+        "long": {
+          "count": 42,
+          "win_count": 27,
+          "total_pnl": 551.2648372189913,
+          "win_rate": 0.6428571428571429,
+          "avg_pnl": 13.12535326711884
+        },
+        "short": {
+          "count": 49,
+          "win_count": 22,
+          "total_pnl": -404.4021102440314,
+          "win_rate": 0.4489795918367347,
+          "avg_pnl": -8.253104290694518
+        }
+      },
+      "neutral": {
+        "long": {
+          "count": 13,
+          "win_count": 6,
+          "total_pnl": -223.5051482826728,
+          "win_rate": 0.46153846153846156,
+          "avg_pnl": -17.192703714051753
+        },
+        "short": {
+          "count": 11,
+          "win_count": 3,
+          "total_pnl": -414.8463995485175,
+          "win_rate": 0.2727272727272727,
+          "avg_pnl": -37.71330904986523
+        }
+      },
+      "weak_uptrend": {
+        "long": {
+          "count": 4,
+          "win_count": 3,
+          "total_pnl": 129.19188438515522,
+          "win_rate": 0.75,
+          "avg_pnl": 32.297971096288805
+        },
+        "short": {
+          "count": 13,
+          "win_count": 7,
+          "total_pnl": 58.01368617842522,
+          "win_rate": 0.5384615384615384,
+          "avg_pnl": 4.462591244494248
+        }
+      },
+      "strong_uptrend": {
+        "long": {
+          "count": 36,
+          "win_count": 23,
+          "total_pnl": 299.4135398675053,
+          "win_rate": 0.6388888888888888,
+          "avg_pnl": 8.317042774097368
+        },
+        "short": {
+          "count": 14,
+          "win_count": 4,
+          "total_pnl": -412.54362440611607,
+          "win_rate": 0.2857142857142857,
+          "avg_pnl": -29.467401743294005
+        }
+      },
+      "weak_downtrend": {
+        "long": {
+          "count": 6,
+          "win_count": 5,
+          "total_pnl": 290.8714913829299,
+          "win_rate": 0.8333333333333334,
+          "avg_pnl": 48.47858189715498
+        },
+        "short": {
+          "count": 0,
+          "win_count": 0,
+          "total_pnl": 0,
+          "win_rate": 0,
+          "avg_pnl": 0
+        }
+      },
+      "volatile": {
+        "long": {
+          "count": 7,
+          "win_count": 4,
+          "total_pnl": -105.78985306790794,
+          "win_rate": 0.5714285714285714,
+          "avg_pnl": -15.112836152558277
+        },
+        "short": {
+          "count": 10,
+          "win_count": 8,
+          "total_pnl": 206.21402691172233,
+          "win_rate": 0.8,
+          "avg_pnl": 20.621402691172232
+        }
+      },
+      "downtrend": {
+        "long": {
+          "count": 3,
+          "win_count": 3,
+          "total_pnl": 67.43925816185231,
+          "win_rate": 1.0,
+          "avg_pnl": 22.479752720617437
+        },
+        "short": {
+          "count": 0,
+          "win_count": 0,
+          "total_pnl": 0,
+          "win_rate": 0,
+          "avg_pnl": 0
+        }
+      },
+      "uptrend": {
+        "long": {
+          "count": 2,
+          "win_count": 1,
+          "total_pnl": 4.738921924154862,
+          "win_rate": 0.5,
+          "avg_pnl": 2.369460962077431
+        },
+        "short": {
+          "count": 8,
+          "win_count": 7,
+          "total_pnl": 314.4008041293948,
+          "win_rate": 0.875,
+          "avg_pnl": 39.30010051617435
+        }
+      },
+      "uptrend_transition": {
+        "long": {
+          "count": 1,
+          "win_count": 1,
+          "total_pnl": 63.55673106447686,
+          "win_rate": 1.0,
+          "avg_pnl": 63.55673106447686
+        },
+        "short": {
+          "count": 2,
+          "win_count": 1,
+          "total_pnl": 20.92345324845675,
+          "win_rate": 0.5,
+          "avg_pnl": 10.461726624228374
+        }
+      }
+    }
+  },
+  {
+    "timestamp": "2025-04-21 04:33:47",
+    "type": "exit_strategies",
+    "best_exits": [
+      "ProfitTarget",
+      "QuickProfit",
+      "RSIExtreme",
+      "QuickProfitTaken"
+    ],
+    "parameters": {
+      "profit_target_factor": 0.95,
+      "trailing_activation_factor": 1.1,
+      "enable_partial_exits": false,
+      "quick_profit_threshold_factor": 0.9
+    },
+    "exit_performance": {
+      "StagnantExit": {
+        "count": 56,
+        "win_count": 15,
+        "total_pnl": -905.6619953367207,
+        "avg_pnl": -16.17253563101287,
+        "win_rate": 0.26785714285714285
+      },
+      "ProfitTarget": {
+        "count": 132,
+        "win_count": 132,
+        "total_pnl": 8418.219243446765,
+        "avg_pnl": 63.77438820793004,
+        "win_rate": 1.0
+      },
+      "StopLoss": {
+        "count": 129,
+        "win_count": 0,
+        "total_pnl": -9342.871558793377,
+        "avg_pnl": -72.42536092087889,
+        "win_rate": 0.0
+      },
+      "PartialExit_25pct": {
+        "count": 2,
+        "win_count": 2,
+        "total_pnl": 29.16829670957153,
+        "avg_pnl": 14.584148354785764,
+        "win_rate": 1.0
+      },
+      "QuickProfit": {
+        "count": 28,
+        "win_count": 28,
+        "total_pnl": 1657.874658286326,
+        "avg_pnl": 59.20980922451164,
+        "win_rate": 1.0
+      },
+      "RSIExtreme": {
+        "count": 5,
+        "win_count": 5,
+        "total_pnl": 211.03272627754268,
+        "avg_pnl": 42.20654525550854,
+        "win_rate": 1.0
+      },
+      "QuickProfitTaken": {
+        "count": 15,
+        "win_count": 15,
+        "total_pnl": 602.6149869928702,
+        "avg_pnl": 40.174332466191345,
+        "win_rate": 1.0
+      },
+      "EarlyLossExit": {
+        "count": 1,
+        "win_count": 0,
+        "total_pnl": -74.23913321287112,
+        "avg_pnl": -74.23913321287112,
+        "win_rate": 0.0
+      },
+      "EndOfTest": {
+        "count": 4,
+        "win_count": 1,
+        "total_pnl": -47.884913234683644,
+        "avg_pnl": -11.971228308670911,
+        "win_rate": 0.25
+      }
+    }
+  },
+  {
+    "timestamp": "2025-04-21 04:33:47",
+    "type": "signal_thresholds",
+    "parameters": {
+      "threshold_adjustments": {
+        "strong_downtrend": {
+          "long": 0.85
+        },
+        "uptrend": {
+          "short": 0.85
+        },
+        "weak_downtrend": {
+          "long": 0.85
+        },
+        "uptrend_transition": {
+          "long": 0.85
+        },
+        "volatile": {
+          "short": 0.85,
+          "long": 1.2
+        },
+        "weak_uptrend": {
+          "short": 1.2
+        },
+        "ranging": {
+          "short": 1.2
+        },
+        "neutral": {
+          "short": 1.2
+        },
+        "strong_uptrend": {
+          "short": 1.2
+        }
+      },
+      "use_adaptive_thresholds": true
+    },
+    "phase_performance": {
+      "strong_downtrend": {
+        "long": {
+          "count": 8,
+          "win_count": 6,
+          "total_pnl": 314.50390664504476,
+          "win_rate": 0.75,
+          "avg_pnl": 39.312988330630596
+        },
+        "short": {
+          "count": 1,
+          "win_count": 1,
+          "total_pnl": 6.28589704597442,
+          "win_rate": 1.0,
+          "avg_pnl": 6.28589704597442
+        }
+      },
+      "ranging": {
+        "long": {
+          "count": 79,
+          "win_count": 45,
+          "total_pnl": 427.0692964509967,
+          "win_rate": 0.569620253164557,
+          "avg_pnl": 5.405940461405022
+        },
+        "short": {
+          "count": 61,
+          "win_count": 26,
+          "total_pnl": -676.2821434273453,
+          "win_rate": 0.4262295081967213,
+          "avg_pnl": -11.086592515202382
+        }
+      },
+      "neutral": {
+        "long": {
+          "count": 24,
+          "win_count": 13,
+          "total_pnl": -8.722917315102464,
+          "win_rate": 0.5416666666666666,
+          "avg_pnl": -0.36345488812926935
+        },
+        "short": {
+          "count": 17,
+          "win_count": 5,
+          "total_pnl": -388.79690498792394,
+          "win_rate": 0.29411764705882354,
+          "avg_pnl": -22.87040617576023
+        }
+      },
+      "weak_uptrend": {
+        "long": {
+          "count": 10,
+          "win_count": 5,
+          "total_pnl": 131.94385233610393,
+          "win_rate": 0.5,
+          "avg_pnl": 13.194385233610394
+        },
+        "short": {
+          "count": 21,
+          "win_count": 9,
+          "total_pnl": -64.04056643890111,
+          "win_rate": 0.42857142857142855,
+          "avg_pnl": -3.0495507828048147
+        }
+      },
+      "strong_uptrend": {
+        "long": {
+          "count": 65,
+          "win_count": 34,
+          "total_pnl": 156.6958965314095,
+          "win_rate": 0.5230769230769231,
+          "avg_pnl": 2.410706100483223
+        },
+        "short": {
+          "count": 17,
+          "win_count": 6,
+          "total_pnl": -395.4320623725296,
+          "win_rate": 0.35294117647058826,
+          "avg_pnl": -23.26070955132527
+        }
+      },
+      "weak_downtrend": {
+        "long": {
+          "count": 11,
+          "win_count": 9,
+          "total_pnl": 409.8455573594752,
+          "win_rate": 0.8181818181818182,
+          "avg_pnl": 37.25868703267957
+        },
+        "short": {
+          "count": 0,
+          "win_count": 0,
+          "total_pnl": 0,
+          "win_rate": 0,
+          "avg_pnl": 0
+        }
+      },
+      "volatile": {
+        "long": {
+          "count": 12,
+          "win_count": 7,
+          "total_pnl": -209.38425413267896,
+          "win_rate": 0.5833333333333334,
+          "avg_pnl": -17.448687844389912
+        },
+        "short": {
+          "count": 10,
+          "win_count": 8,
+          "total_pnl": 206.21402691172233,
+          "win_rate": 0.8,
+          "avg_pnl": 20.621402691172232
+        }
+      },
+      "downtrend": {
+        "long": {
+          "count": 3,
+          "win_count": 3,
+          "total_pnl": 67.43925816185231,
+          "win_rate": 1.0,
+          "avg_pnl": 22.479752720617437
+        },
+        "short": {
+          "count": 0,
+          "win_count": 0,
+          "total_pnl": 0,
+          "win_rate": 0,
+          "avg_pnl": 0
+        }
+      },
+      "uptrend": {
+        "long": {
+          "count": 18,
+          "win_count": 10,
+          "total_pnl": 104.64880333405759,
+          "win_rate": 0.5555555555555556,
+          "avg_pnl": 5.813822407447644
+        },
+        "short": {
+          "count": 8,
+          "win_count": 7,
+          "total_pnl": 314.4008041293948,
+          "win_rate": 0.875,
+          "avg_pnl": 39.30010051617435
+        }
+      },
+      "uptrend_transition": {
+        "long": {
+          "count": 5,
+          "win_count": 3,
+          "total_pnl": 130.940407655415,
+          "win_rate": 0.6,
+          "avg_pnl": 26.188081531082997
+        },
+        "short": {
+          "count": 2,
+          "win_count": 1,
+          "total_pnl": 20.92345324845675,
+          "win_rate": 0.5,
+          "avg_pnl": 10.461726624228374
+        }
+      }
+    }
+  },
+  {
+    "timestamp": "2025-04-21 04:44:50",
+    "type": "exit_strategies",
+    "best_exits": [
+      "ProfitTarget",
+      "QuickProfit",
+      "QuickProfitTaken",
+      "RSIExtreme"
+    ],
+    "parameters": {
+      "profit_target_factor": 0.95,
+      "trailing_activation_factor": 1.1,
+      "enable_partial_exits": false,
+      "quick_profit_threshold_factor": 0.9
+    },
+    "exit_performance": {
+      "StagnantExit": {
+        "count": 73,
+        "win_count": 24,
+        "total_pnl": -947.8034224136171,
+        "avg_pnl": -12.983608526213933,
+        "win_rate": 0.3287671232876712
+      },
+      "ProfitTarget": {
+        "count": 168,
+        "win_count": 168,
+        "total_pnl": 11857.664393696828,
+        "avg_pnl": 70.58133567676684,
+        "win_rate": 1.0
+      },
+      "StopLoss": {
+        "count": 189,
+        "win_count": 0,
+        "total_pnl": -13287.267221753165,
+        "avg_pnl": -70.30300117329718,
+        "win_rate": 0.0
+      },
+      "PartialExit_25pct": {
+        "count": 3,
+        "win_count": 3,
+        "total_pnl": 44.41765817751063,
+        "avg_pnl": 14.805886059170211,
+        "win_rate": 1.0
+      },
+      "QuickProfit": {
+        "count": 45,
+        "win_count": 45,
+        "total_pnl": 2882.261436991672,
+        "avg_pnl": 64.05025415537048,
+        "win_rate": 1.0
+      },
+      "RSIExtreme": {
+        "count": 6,
+        "win_count": 6,
+        "total_pnl": 234.58416623851366,
+        "avg_pnl": 39.09736103975228,
+        "win_rate": 1.0
+      },
+      "QuickProfitTaken": {
+        "count": 21,
+        "win_count": 21,
+        "total_pnl": 905.7337992294582,
+        "avg_pnl": 43.130180915688484,
+        "win_rate": 1.0
+      },
+      "EarlyLossExit": {
+        "count": 1,
+        "win_count": 0,
+        "total_pnl": -74.23913321287112,
+        "avg_pnl": -74.23913321287112,
+        "win_rate": 0.0
+      },
+      "EndOfTest": {
+        "count": 6,
+        "win_count": 1,
+        "total_pnl": -160.84822948977788,
+        "avg_pnl": -26.808038248296313,
+        "win_rate": 0.16666666666666666
+      }
+    }
+  },
+  {
+    "timestamp": "2025-04-21 04:44:50",
+    "type": "signal_thresholds",
+    "parameters": {
+      "threshold_adjustments": {
+        "strong_downtrend": {
+          "long": 0.85
+        },
+        "uptrend": {
+          "short": 0.85
+        },
+        "volatile": {
+          "short": 0.85,
+          "long": 1.2
+        },
+        "weak_downtrend": {
+          "long": 0.85
+        },
+        "weak_uptrend": {
+          "long": 0.85,
+          "short": 1.2
+        },
+        "ranging": {
+          "short": 1.2
+        },
+        "neutral": {
+          "short": 1.2
+        },
+        "strong_uptrend": {
+          "short": 1.2
+        }
+      },
+      "use_adaptive_thresholds": true
+    },
+    "phase_performance": {
+      "strong_downtrend": {
+        "long": {
+          "count": 8,
+          "win_count": 6,
+          "total_pnl": 314.50390664504476,
+          "win_rate": 0.75,
+          "avg_pnl": 39.312988330630596
+        },
+        "short": {
+          "count": 1,
+          "win_count": 1,
+          "total_pnl": 6.28589704597442,
+          "win_rate": 1.0,
+          "avg_pnl": 6.28589704597442
+        }
+      },
+      "ranging": {
+        "long": {
+          "count": 105,
+          "win_count": 61,
+          "total_pnl": 1099.7380296240972,
+          "win_rate": 0.580952380952381,
+          "avg_pnl": 10.473695520229496
+        },
+        "short": {
+          "count": 69,
+          "win_count": 30,
+          "total_pnl": -813.01193318685,
+          "win_rate": 0.43478260869565216,
+          "avg_pnl": -11.78278164038913
+        }
+      },
+      "neutral": {
+        "long": {
+          "count": 43,
+          "win_count": 22,
+          "total_pnl": 22.5473429594457,
+          "win_rate": 0.5116279069767442,
+          "avg_pnl": 0.5243568130103651
+        },
+        "short": {
+          "count": 21,
+          "win_count": 6,
+          "total_pnl": -437.04991456728294,
+          "win_rate": 0.2857142857142857,
+          "avg_pnl": -20.81190069368014
+        }
+      },
+      "weak_uptrend": {
+        "long": {
+          "count": 16,
+          "win_count": 8,
+          "total_pnl": 179.06116147904012,
+          "win_rate": 0.5,
+          "avg_pnl": 11.191322592440008
+        },
+        "short": {
+          "count": 24,
+          "win_count": 10,
+          "total_pnl": -99.1935735691741,
+          "win_rate": 0.4166666666666667,
+          "avg_pnl": -4.133065565382254
+        }
+      },
+      "strong_uptrend": {
+        "long": {
+          "count": 118,
+          "win_count": 62,
+          "total_pnl": 679.6967957032014,
+          "win_rate": 0.5254237288135594,
+          "avg_pnl": 5.760142336467808
+        },
+        "short": {
+          "count": 17,
+          "win_count": 6,
+          "total_pnl": -395.4320623725296,
+          "win_rate": 0.35294117647058826,
+          "avg_pnl": -23.26070955132527
+        }
+      },
+      "weak_downtrend": {
+        "long": {
+          "count": 24,
+          "win_count": 15,
+          "total_pnl": 443.32665608080384,
+          "win_rate": 0.625,
+          "avg_pnl": 18.471944003366826
+        },
+        "short": {
+          "count": 1,
+          "win_count": 1,
+          "total_pnl": 142.4213461838168,
+          "win_rate": 1.0,
+          "avg_pnl": 142.4213461838168
+        }
+      },
+      "volatile": {
+        "long": {
+          "count": 12,
+          "win_count": 7,
+          "total_pnl": -209.38425413267896,
+          "win_rate": 0.5833333333333334,
+          "avg_pnl": -17.448687844389912
+        },
+        "short": {
+          "count": 10,
+          "win_count": 8,
+          "total_pnl": 206.21402691172233,
+          "win_rate": 0.8,
+          "avg_pnl": 20.621402691172232
+        }
+      },
+      "downtrend": {
+        "long": {
+          "count": 4,
+          "win_count": 3,
+          "total_pnl": -28.219426545720367,
+          "win_rate": 0.75,
+          "avg_pnl": -7.054856636430092
+        },
+        "short": {
+          "count": 0,
+          "win_count": 0,
+          "total_pnl": 0,
+          "win_rate": 0,
+          "avg_pnl": 0
+        }
+      },
+      "uptrend": {
+        "long": {
+          "count": 23,
+          "win_count": 11,
+          "total_pnl": -25.194886532455897,
+          "win_rate": 0.4782608695652174,
+          "avg_pnl": -1.095429849237213
+        },
+        "short": {
+          "count": 8,
+          "win_count": 7,
+          "total_pnl": 314.4008041293948,
+          "win_rate": 0.875,
+          "avg_pnl": 39.30010051617435
+        }
+      },
+      "uptrend_transition": {
+        "long": {
+          "count": 6,
+          "win_count": 3,
+          "total_pnl": 32.8700783602376,
+          "win_rate": 0.5,
+          "avg_pnl": 5.4783463933729335
+        },
+        "short": {
+          "count": 2,
+          "win_count": 1,
+          "total_pnl": 20.92345324845675,
+          "win_rate": 0.5,
+          "avg_pnl": 10.461726624228374
+        }
+      }
+    }
+  },
+  {
+    "timestamp": "2025-04-21 05:01:45",
+    "type": "exit_strategies",
+    "best_exits": [
+      "ProfitTarget",
+      "QuickProfit",
+      "RSIExtreme",
+      "QuickProfitTaken",
+      "PartialExit_25pct"
+    ],
+    "parameters": {
+      "profit_target_factor": 0.95,
+      "trailing_activation_factor": 1.1,
+      "enable_partial_exits": false,
+      "quick_profit_threshold_factor": 0.9
+    },
+    "exit_performance": {
+      "StagnantExit": {
+        "count": 90,
+        "win_count": 26,
+        "total_pnl": -1520.2923918577062,
+        "avg_pnl": -16.892137687307848,
+        "win_rate": 0.28888888888888886
+      },
+      "ProfitTarget": {
+        "count": 200,
+        "win_count": 200,
+        "total_pnl": 16588.789717954605,
+        "avg_pnl": 82.94394858977303,
+        "win_rate": 1.0
+      },
+      "StopLoss": {
+        "count": 222,
+        "win_count": 0,
+        "total_pnl": -16533.552410490527,
+        "avg_pnl": -74.47546130851589,
+        "win_rate": 0.0
+      },
+      "PartialExit_25pct": {
+        "count": 5,
+        "win_count": 5,
+        "total_pnl": 81.58095527983858,
+        "avg_pnl": 16.316191055967714,
+        "win_rate": 1.0
+      },
+      "QuickProfit": {
+        "count": 58,
+        "win_count": 58,
+        "total_pnl": 4097.291971772701,
+        "avg_pnl": 70.64296503056381,
+        "win_rate": 1.0
+      },
+      "RSIExtreme": {
+        "count": 8,
+        "win_count": 8,
+        "total_pnl": 410.94135058201033,
+        "avg_pnl": 51.36766882275129,
+        "win_rate": 1.0
+      },
+      "QuickProfitTaken": {
+        "count": 27,
+        "win_count": 27,
+        "total_pnl": 1306.3644359570758,
+        "avg_pnl": 48.38386799841022,
+        "win_rate": 1.0
+      },
+      "EarlyLossExit": {
+        "count": 1,
+        "win_count": 0,
+        "total_pnl": -74.23913321287112,
+        "avg_pnl": -74.23913321287112,
+        "win_rate": 0.0
+      },
+      "EndOfTest": {
+        "count": 7,
+        "win_count": 1,
+        "total_pnl": -179.4862219765327,
+        "avg_pnl": -25.640888853790386,
+        "win_rate": 0.14285714285714285
+      }
+    }
+  },
+  {
+    "timestamp": "2025-04-21 05:01:45",
+    "type": "signal_thresholds",
+    "parameters": {
+      "threshold_adjustments": {
+        "weak_downtrend": {
+          "short": 0.85,
+          "long": 0.85
+        },
+        "uptrend": {
+          "short": 0.85
+        },
+        "strong_downtrend": {
+          "long": 0.85
+        },
+        "volatile": {
+          "short": 0.85,
+          "long": 1.2
+        },
+        "uptrend_transition": {
+          "long": 1.2
+        },
+        "weak_uptrend": {
+          "long": 1.2
+        },
+        "strong_uptrend": {
+          "short": 1.2
+        },
+        "ranging": {
+          "short": 1.2
+        }
+      },
+      "use_adaptive_thresholds": true
+    },
+    "phase_performance": {
+      "strong_downtrend": {
+        "long": {
+          "count": 8,
+          "win_count": 6,
+          "total_pnl": 314.50390664504476,
+          "win_rate": 0.75,
+          "avg_pnl": 39.312988330630596
+        },
+        "short": {
+          "count": 1,
+          "win_count": 1,
+          "total_pnl": 6.28589704597442,
+          "win_rate": 1.0,
+          "avg_pnl": 6.28589704597442
+        }
+      },
+      "ranging": {
+        "long": {
+          "count": 121,
+          "win_count": 67,
+          "total_pnl": 971.8143854764627,
+          "win_rate": 0.5537190082644629,
+          "avg_pnl": 8.031523846912915
+        },
+        "short": {
+          "count": 79,
+          "win_count": 32,
+          "total_pnl": -1371.2300141449798,
+          "win_rate": 0.4050632911392405,
+          "avg_pnl": -17.357341951202276
+        }
+      },
+      "neutral": {
+        "long": {
+          "count": 58,
+          "win_count": 31,
+          "total_pnl": 383.4874379940565,
+          "win_rate": 0.5344827586206896,
+          "avg_pnl": 6.611852379207871
+        },
+        "short": {
+          "count": 33,
+          "win_count": 14,
+          "total_pnl": 312.41082491354945,
+          "win_rate": 0.42424242424242425,
+          "avg_pnl": 9.466994694349983
+        }
+      },
+      "weak_uptrend": {
+        "long": {
+          "count": 20,
+          "win_count": 8,
+          "total_pnl": -119.70988390334844,
+          "win_rate": 0.4,
+          "avg_pnl": -5.985494195167422
+        },
+        "short": {
+          "count": 28,
+          "win_count": 13,
+          "total_pnl": 291.17264169363483,
+          "win_rate": 0.4642857142857143,
+          "avg_pnl": 10.399022917629816
+        }
+      },
+      "strong_uptrend": {
+        "long": {
+          "count": 137,
+          "win_count": 71,
+          "total_pnl": 943.2112934583778,
+          "win_rate": 0.5182481751824818,
+          "avg_pnl": 6.884753966849473
+        },
+        "short": {
+          "count": 22,
+          "win_count": 9,
+          "total_pnl": -320.2804313157549,
+          "win_rate": 0.4090909090909091,
+          "avg_pnl": -14.558201423443405
+        }
+      },
+      "weak_downtrend": {
+        "long": {
+          "count": 34,
+          "win_count": 22,
+          "total_pnl": 1357.1048702814144,
+          "win_rate": 0.6470588235294118,
+          "avg_pnl": 39.91484912592395
+        },
+        "short": {
+          "count": 5,
+          "win_count": 4,
+          "total_pnl": 378.88004905219486,
+          "win_rate": 0.8,
+          "avg_pnl": 75.77600981043898
+        }
+      },
+      "volatile": {
+        "long": {
+          "count": 12,
+          "win_count": 7,
+          "total_pnl": -209.38425413267896,
+          "win_rate": 0.5833333333333334,
+          "avg_pnl": -17.448687844389912
+        },
+        "short": {
+          "count": 10,
+          "win_count": 8,
+          "total_pnl": 206.21402691172233,
+          "win_rate": 0.8,
+          "avg_pnl": 20.621402691172232
+        }
+      },
+      "downtrend": {
+        "long": {
+          "count": 4,
+          "win_count": 3,
+          "total_pnl": -28.219426545720367,
+          "win_rate": 0.75,
+          "avg_pnl": -7.054856636430092
+        },
+        "short": {
+          "count": 0,
+          "win_count": 0,
+          "total_pnl": 0,
+          "win_rate": 0,
+          "avg_pnl": 0
+        }
+      },
+      "uptrend": {
+        "long": {
+          "count": 27,
+          "win_count": 15,
+          "total_pnl": 368.2039898864746,
+          "win_rate": 0.5555555555555556,
+          "avg_pnl": 13.637184810610169
+        },
+        "short": {
+          "count": 11,
+          "win_count": 10,
+          "total_pnl": 639.1394290834609,
+          "win_rate": 0.9090909090909091,
+          "avg_pnl": 58.10358446213281
+        }
+      },
+      "uptrend_transition": {
+        "long": {
+          "count": 6,
+          "win_count": 3,
+          "total_pnl": 32.8700783602376,
+          "win_rate": 0.5,
+          "avg_pnl": 5.4783463933729335
+        },
+        "short": {
+          "count": 2,
+          "win_count": 1,
+          "total_pnl": 20.92345324845675,
+          "win_rate": 0.5,
+          "avg_pnl": 10.461726624228374
+        }
+      }
+    }
+  },
+  {
+    "timestamp": "2025-04-21 05:18:12",
+    "type": "exit_strategies",
+    "best_exits": [
+      "ProfitTarget",
+      "QuickProfit",
+      "RSIExtreme",
+      "QuickProfitTaken",
+      "PartialExit_25pct"
+    ],
+    "parameters": {
+      "profit_target_factor": 0.95,
+      "trailing_activation_factor": 1.1,
+      "enable_partial_exits": false,
+      "quick_profit_threshold_factor": 0.9
+    },
+    "exit_performance": {
+      "StagnantExit": {
+        "count": 102,
+        "win_count": 28,
+        "total_pnl": -1892.1530996464703,
+        "avg_pnl": -18.550520584769316,
+        "win_rate": 0.27450980392156865
+      },
+      "ProfitTarget": {
+        "count": 239,
+        "win_count": 239,
+        "total_pnl": 22129.51726559745,
+        "avg_pnl": 92.59212245019853,
+        "win_rate": 1.0
+      },
+      "StopLoss": {
+        "count": 267,
+        "win_count": 0,
+        "total_pnl": -21704.002701523765,
+        "avg_pnl": -81.28839963117515,
+        "win_rate": 0.0
+      },
+      "PartialExit_25pct": {
+        "count": 6,
+        "win_count": 6,
+        "total_pnl": 103.55652780733332,
+        "avg_pnl": 17.259421301222222,
+        "win_rate": 1.0
+      },
+      "QuickProfit": {
+        "count": 74,
+        "win_count": 74,
+        "total_pnl": 5666.677378439772,
+        "avg_pnl": 76.57672133026719,
+        "win_rate": 1.0
+      },
+      "RSIExtreme": {
+        "count": 13,
+        "win_count": 13,
+        "total_pnl": 775.8228628826894,
+        "avg_pnl": 59.67868176020688,
+        "win_rate": 1.0
+      },
+      "QuickProfitTaken": {
+        "count": 31,
+        "win_count": 31,
+        "total_pnl": 1582.3593447400256,
+        "avg_pnl": 51.0438498303234,
+        "win_rate": 1.0
+      },
+      "EarlyLossExit": {
+        "count": 1,
+        "win_count": 0,
+        "total_pnl": -74.23913321287112,
+        "avg_pnl": -74.23913321287112,
+        "win_rate": 0.0
+      },
+      "EndOfTest": {
+        "count": 9,
+        "win_count": 1,
+        "total_pnl": -462.66195145235633,
+        "avg_pnl": -51.40688349470626,
+        "win_rate": 0.1111111111111111
+      }
+    }
+  },
+  {
+    "timestamp": "2025-04-21 05:18:12",
+    "type": "signal_thresholds",
+    "parameters": {
+      "threshold_adjustments": {
+        "weak_downtrend": {
+          "short": 0.85
+        },
+        "uptrend": {
+          "short": 0.85
+        },
+        "strong_downtrend": {
+          "long": 0.85
+        },
+        "uptrend_transition": {
+          "long": 0.85
+        },
+        "volatile": {
+          "short": 0.85,
+          "long": 1.2
+        },
+        "neutral": {
+          "short": 1.2
+        },
+        "weak_uptrend": {
+          "long": 1.2
+        },
+        "downtrend": {
+          "long": 1.2
+        },
+        "ranging": {
+          "short": 1.2
+        }
+      },
+      "use_adaptive_thresholds": true
+    },
+    "phase_performance": {
+      "strong_downtrend": {
+        "long": {
+          "count": 8,
+          "win_count": 6,
+          "total_pnl": 314.50390664504476,
+          "win_rate": 0.75,
+          "avg_pnl": 39.312988330630596
+        },
+        "short": {
+          "count": 2,
+          "win_count": 1,
+          "total_pnl": -56.247989391247685,
+          "win_rate": 0.5,
+          "avg_pnl": -28.123994695623843
+        }
+      },
+      "ranging": {
+        "long": {
+          "count": 133,
+          "win_count": 73,
+          "total_pnl": 1279.2722315293613,
+          "win_rate": 0.5488721804511278,
+          "avg_pnl": 9.61858820698768
+        },
+        "short": {
+          "count": 91,
+          "win_count": 39,
+          "total_pnl": -967.3158900647654,
+          "win_rate": 0.42857142857142855,
+          "avg_pnl": -10.629844945766653
+        }
+      },
+      "neutral": {
+        "long": {
+          "count": 83,
+          "win_count": 44,
+          "total_pnl": 564.305304961293,
+          "win_rate": 0.5301204819277109,
+          "avg_pnl": 6.798859095919193
+        },
+        "short": {
+          "count": 39,
+          "win_count": 17,
+          "total_pnl": 257.95097421211165,
+          "win_rate": 0.4358974358974359,
+          "avg_pnl": 6.614127543900299
+        }
+      },
+      "weak_uptrend": {
+        "long": {
+          "count": 28,
+          "win_count": 13,
+          "total_pnl": -70.05428315136609,
+          "win_rate": 0.4642857142857143,
+          "avg_pnl": -2.5019386839773605
+        },
+        "short": {
+          "count": 32,
+          "win_count": 15,
+          "total_pnl": 339.53674320817095,
+          "win_rate": 0.46875,
+          "avg_pnl": 10.610523225255342
+        }
+      },
+      "strong_uptrend": {
+        "long": {
+          "count": 151,
+          "win_count": 80,
+          "total_pnl": 1130.2634989504052,
+          "win_rate": 0.5298013245033113,
+          "avg_pnl": 7.485188734770895
+        },
+        "short": {
+          "count": 28,
+          "win_count": 14,
+          "total_pnl": 523.9124968452984,
+          "win_rate": 0.5,
+          "avg_pnl": 18.7111606016178
+        }
+      },
+      "weak_downtrend": {
+        "long": {
+          "count": 51,
+          "win_count": 28,
+          "total_pnl": 818.2751954989576,
+          "win_rate": 0.5490196078431373,
+          "avg_pnl": 16.04461167645015
+        },
+        "short": {
+          "count": 8,
+          "win_count": 5,
+          "total_pnl": 757.0914553539156,
+          "win_rate": 0.625,
+          "avg_pnl": 94.63643191923946
+        }
+      },
+      "volatile": {
+        "long": {
+          "count": 14,
+          "win_count": 7,
+          "total_pnl": -437.5871427096981,
+          "win_rate": 0.5,
+          "avg_pnl": -31.25622447926415
+        },
+        "short": {
+          "count": 11,
+          "win_count": 9,
+          "total_pnl": 260.2046220459159,
+          "win_rate": 0.8181818181818182,
+          "avg_pnl": 23.65496564053781
+        }
+      },
+      "downtrend": {
+        "long": {
+          "count": 11,
+          "win_count": 7,
+          "total_pnl": -81.21635833920777,
+          "win_rate": 0.6363636363636364,
+          "avg_pnl": -7.383305303564343
+        },
+        "short": {
+          "count": 0,
+          "win_count": 0,
+          "total_pnl": 0,
+          "win_rate": 0,
+          "avg_pnl": 0
+        }
+      },
+      "uptrend": {
+        "long": {
+          "count": 30,
+          "win_count": 18,
+          "total_pnl": 704.9503559443206,
+          "win_rate": 0.6,
+          "avg_pnl": 23.49834519814402
+        },
+        "short": {
+          "count": 12,
+          "win_count": 11,
+          "total_pnl": 664.6483362186405,
+          "win_rate": 0.9166666666666666,
+          "avg_pnl": 55.38736135155337
+        }
+      },
+      "uptrend_transition": {
+        "long": {
+          "count": 7,
+          "win_count": 4,
+          "total_pnl": 255.0490152366665,
+          "win_rate": 0.5714285714285714,
+          "avg_pnl": 36.43557360523807
+        },
+        "short": {
+          "count": 3,
+          "win_count": 1,
+          "total_pnl": -132.66597936203502,
+          "win_rate": 0.3333333333333333,
+          "avg_pnl": -44.22199312067834
+        }
+      }
+    }
+  },
+  {
+    "timestamp": "2025-04-21 05:34:01",
+    "type": "exit_strategies",
+    "best_exits": [
+      "ProfitTarget",
+      "QuickProfit",
+      "RSIExtreme",
+      "QuickProfitTaken",
+      "PartialExit_25pct"
+    ],
+    "parameters": {
+      "profit_target_factor": 0.95,
+      "trailing_activation_factor": 1.1,
+      "enable_partial_exits": false,
+      "quick_profit_threshold_factor": 0.9
+    },
+    "exit_performance": {
+      "StagnantExit": {
+        "count": 120,
+        "win_count": 33,
+        "total_pnl": -2305.916450399811,
+        "avg_pnl": -19.215970419998424,
+        "win_rate": 0.275
+      },
+      "ProfitTarget": {
+        "count": 255,
+        "win_count": 255,
+        "total_pnl": 23084.79265073121,
+        "avg_pnl": 90.52859863031847,
+        "win_rate": 1.0
+      },
+      "StopLoss": {
+        "count": 284,
+        "win_count": 0,
+        "total_pnl": -24119.47378905951,
+        "avg_pnl": -84.92772460936447,
+        "win_rate": 0.0
+      },
+      "PartialExit_25pct": {
+        "count": 6,
+        "win_count": 6,
+        "total_pnl": 103.55652780733332,
+        "avg_pnl": 17.259421301222222,
+        "win_rate": 1.0
+      },
+      "QuickProfit": {
+        "count": 80,
+        "win_count": 80,
+        "total_pnl": 6181.592887343935,
+        "avg_pnl": 77.26991109179919,
+        "win_rate": 1.0
+      },
+      "RSIExtreme": {
+        "count": 15,
+        "win_count": 15,
+        "total_pnl": 944.9708152664557,
+        "avg_pnl": 62.998054351097046,
+        "win_rate": 1.0
+      },
+      "QuickProfitTaken": {
+        "count": 33,
+        "win_count": 33,
+        "total_pnl": 1683.3230057506812,
+        "avg_pnl": 51.00978805305095,
+        "win_rate": 1.0
+      },
+      "EarlyLossExit": {
+        "count": 3,
+        "win_count": 0,
+        "total_pnl": -233.66572684439308,
+        "avg_pnl": -77.88857561479769,
+        "win_rate": 0.0
+      },
+      "EndOfTest": {
+        "count": 10,
+        "win_count": 2,
+        "total_pnl": -454.25654028202126,
+        "avg_pnl": -45.425654028202125,
+        "win_rate": 0.2
+      },
+      "StagnantTrade": {
+        "count": 1,
+        "win_count": 0,
+        "total_pnl": -11.84773560023599,
+        "avg_pnl": -11.84773560023599,
+        "win_rate": 0.0
+      }
+    }
+  },
+  {
+    "timestamp": "2025-04-21 05:34:01",
+    "type": "signal_thresholds",
+    "parameters": {
+      "threshold_adjustments": {
+        "weak_downtrend": {
+          "short": 0.85
+        },
+        "uptrend": {
+          "short": 0.85
+        },
+        "uptrend_transition": {
+          "long": 0.85
+        },
+        "strong_downtrend": {
+          "long": 0.85,
+          "short": 1.2
+        },
+        "strong_uptrend": {
+          "short": 0.85
+        },
+        "volatile": {
+          "short": 1.2,
+          "long": 1.2
+        },
+        "downtrend": {
+          "long": 1.2
+        },
+        "ranging": {
+          "short": 1.2
+        }
+      },
+      "use_adaptive_thresholds": true
+    },
+    "phase_performance": {
+      "strong_downtrend": {
+        "long": {
+          "count": 8,
+          "win_count": 6,
+          "total_pnl": 314.50390664504476,
+          "win_rate": 0.75,
+          "avg_pnl": 39.312988330630596
+        },
+        "short": {
+          "count": 13,
+          "win_count": 7,
+          "total_pnl": -253.8322325357609,
+          "win_rate": 0.5384615384615384,
+          "avg_pnl": -19.525556348904686
+        }
+      },
+      "ranging": {
+        "long": {
+          "count": 136,
+          "win_count": 74,
+          "total_pnl": 1280.9246135307328,
+          "win_rate": 0.5441176470588235,
+          "avg_pnl": 9.4185633347848
+        },
+        "short": {
+          "count": 100,
+          "win_count": 44,
+          "total_pnl": -1151.1098781512023,
+          "win_rate": 0.44,
+          "avg_pnl": -11.511098781512024
+        }
+      },
+      "neutral": {
+        "long": {
+          "count": 90,
+          "win_count": 47,
+          "total_pnl": 302.3014669618888,
+          "win_rate": 0.5222222222222223,
+          "avg_pnl": 3.3589051884654313
+        },
+        "short": {
+          "count": 40,
+          "win_count": 17,
+          "total_pnl": 113.55934887331745,
+          "win_rate": 0.425,
+          "avg_pnl": 2.8389837218329363
+        }
+      },
+      "weak_uptrend": {
+        "long": {
+          "count": 31,
+          "win_count": 15,
+          "total_pnl": -149.1082408926835,
+          "win_rate": 0.4838709677419355,
+          "avg_pnl": -4.809943254602694
+        },
+        "short": {
+          "count": 35,
+          "win_count": 17,
+          "total_pnl": 292.3797474136982,
+          "win_rate": 0.4857142857142857,
+          "avg_pnl": 8.353707068962807
+        }
+      },
+      "strong_uptrend": {
+        "long": {
+          "count": 156,
+          "win_count": 81,
+          "total_pnl": 919.7996003691032,
+          "win_rate": 0.5192307692307693,
+          "avg_pnl": 5.8961512844173285
+        },
+        "short": {
+          "count": 33,
+          "win_count": 18,
+          "total_pnl": 847.0009243894071,
+          "win_rate": 0.5454545454545454,
+          "avg_pnl": 25.666694678466882
+        }
+      },
+      "weak_downtrend": {
+        "long": {
+          "count": 53,
+          "win_count": 29,
+          "total_pnl": 858.0643670819209,
+          "win_rate": 0.5471698113207547,
+          "avg_pnl": 16.189893718526807
+        },
+        "short": {
+          "count": 8,
+          "win_count": 5,
+          "total_pnl": 757.0914553539156,
+          "win_rate": 0.625,
+          "avg_pnl": 94.63643191923946
+        }
+      },
+      "volatile": {
+        "long": {
+          "count": 17,
+          "win_count": 8,
+          "total_pnl": -477.0859430011632,
+          "win_rate": 0.47058823529411764,
+          "avg_pnl": -28.06387900006842
+        },
+        "short": {
+          "count": 14,
+          "win_count": 9,
+          "total_pnl": -82.90387449250802,
+          "win_rate": 0.6428571428571429,
+          "avg_pnl": -5.92170532089343
+        }
+      },
+      "downtrend": {
+        "long": {
+          "count": 11,
+          "win_count": 7,
+          "total_pnl": -81.21635833920777,
+          "win_rate": 0.6363636363636364,
+          "avg_pnl": -7.383305303564343
+        },
+        "short": {
+          "count": 0,
+          "win_count": 0,
+          "total_pnl": 0,
+          "win_rate": 0,
+          "avg_pnl": 0
+        }
+      },
+      "uptrend": {
+        "long": {
+          "count": 32,
+          "win_count": 18,
+          "total_pnl": 421.16912149591036,
+          "win_rate": 0.5625,
+          "avg_pnl": 13.161535046747199
+        },
+        "short": {
+          "count": 18,
+          "win_count": 16,
+          "total_pnl": 729.4759918563368,
+          "win_rate": 0.8888888888888888,
+          "avg_pnl": 40.52644399201871
+        }
+      },
+      "uptrend_transition": {
+        "long": {
+          "count": 9,
+          "win_count": 5,
+          "total_pnl": 364.7276075168986,
+          "win_rate": 0.5555555555555556,
+          "avg_pnl": 40.52528972409985
+        },
+        "short": {
+          "count": 3,
+          "win_count": 1,
+          "total_pnl": -132.66597936203502,
+          "win_rate": 0.3333333333333333,
+          "avg_pnl": -44.22199312067834
+        }
+      }
+    }
+  }
+]

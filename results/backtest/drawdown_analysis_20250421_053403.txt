@@ -1,0 +1,78 @@
+Drawdown Analysis
+=================
+
+Overall Drawdown Statistics
+---------------------------
+Maximum Drawdown: 0.00%
+Maximum Drawdown Duration: 0 iterations
+
+Recovery Analysis
+-----------------
+Found 4 significant drawdown periods (>5%)
+
+Drawdown #1:
+  Depth: 11.25%
+  Recovery Length: 195 trades
+  Peak Before: $10237.61
+
+Drawdown #2:
+  Depth: 8.82%
+  Recovery Length: 258 trades
+  Peak Before: $11056.39
+
+Drawdown #3:
+  Depth: 5.93%
+  Recovery Length: 16 trades
+  Peak Before: $12353.47
+
+Drawdown #4:
+  Depth: 9.42%
+  Recovery Length: 56 trades
+  Peak Before: $14457.10
+
+Average Recovery Time: 131.2 trades
+Correlation between drawdown depth and recovery time: 0.59
+
+Trade Performance During Drawdowns vs Normal Periods
+-------------------------------------------------
+Trades during drawdowns: 529
+Trades during normal periods: 278
+
+Drawdown period win rate: 50.47%
+Normal period win rate: 56.47%
+
+Avg PnL during drawdowns: $0.73
+Avg PnL during normal periods: $16.14
+
+Winning Exit Types During Drawdowns:
+- ProfitTarget: 167 trades
+- QuickProfit: 47 trades
+- QuickProfitTaken: 22 trades
+- StagnantExit: 22 trades
+- RSIExtreme: 6 trades
+- PartialExit_25pct: 3 trades
+
+Winning Market Phases During Drawdowns:
+- ranging: 78 trades
+- strong_uptrend: 63 trades
+- neutral: 35 trades
+- weak_downtrend: 21 trades
+- uptrend: 19 trades
+- weak_uptrend: 18 trades
+- volatile: 16 trades
+- downtrend: 7 trades
+- strong_downtrend: 6 trades
+- uptrend_transition: 4 trades
+
+Drawdown Recovery Recommendations:
+-------------------------------
+1. During drawdowns, consider these adjustments:
+   - Reduce position size by 30-50%
+   - Focus on shorter-duration trades
+   - Take partial profits earlier
+   - Avoid trading against the dominant trend
+
+2. For faster recovery:
+   - Look for high-probability setups with 2:1 or better risk-reward
+   - Favor market phases that historically perform best during drawdowns
+   - Consider using exit types that have shown the best performance during drawdowns

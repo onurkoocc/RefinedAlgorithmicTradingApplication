@@ -401,10 +401,6 @@ class OptimizedHybridModel:
         self.logger = logging.getLogger("OptimizedHybridModel")
         self.training_metrics = []
         self.best_params = {
-            "projection_size": 96,
-            "transformer_heads": 4,
-            "transformer_layers": 2,
-            "transformer_dropout": 0.3,
             "recurrent_units": 48,
             "recurrent_dropout": 0.2,
             "dropout": 0.3,
@@ -420,23 +416,6 @@ class OptimizedHybridModel:
         inputs = Input(shape=self.input_shape, dtype=tf.float32, name="hybrid_input")
 
         x = BatchNormalization(momentum=0.99, epsilon=1e-5)(inputs)
-        projection_size = self.best_params["projection_size"]
-        transformer_heads = self.best_params["transformer_heads"]
-        transformer_layers = self.best_params["transformer_layers"]
-        transformer_dropout = self.best_params["transformer_dropout"]
-
-        x = Dense(projection_size, activation='linear')(x)
-        pos_encoding = self._positional_encoding(self.input_shape[0], projection_size)
-        x = Lambda(lambda x: x + tf.cast(pos_encoding, x.dtype))(x)
-
-        for i in range(transformer_layers):
-            x = self._transformer_encoder_layer(
-                x,
-                units=projection_size,
-                num_heads=transformer_heads,
-                dropout=transformer_dropout,
-                name=f"hybrid_transformer_{i}"
-            )
 
         recurrent_units = self.best_params["recurrent_units"]
         recurrent_dropout = self.best_params["recurrent_dropout"]
@@ -475,32 +454,6 @@ class OptimizedHybridModel:
 
         self.model = model
         return model
-
-    def _positional_encoding(self, max_len, d_model):
-        angle_rads = self._get_angles(np.arange(max_len)[:, np.newaxis], np.arange(d_model)[np.newaxis, :], d_model)
-        angle_rads[:, 0::2] = np.sin(angle_rads[:, 0::2])
-        angle_rads[:, 1::2] = np.cos(angle_rads[:, 1::2])
-        return tf.cast(angle_rads[np.newaxis, ...], dtype=tf.float32)
-
-    def _get_angles(self, pos, i, d_model):
-        angle_rates = 1 / np.power(10000, (2 * (i // 2)) / np.float32(d_model))
-        return pos * angle_rates
-
-    def _transformer_encoder_layer(self, inputs, units, num_heads, dropout, name):
-        attention_output = layers.MultiHeadAttention(
-            num_heads=num_heads,
-            key_dim=units // num_heads,
-            dropout=dropout,
-            name=f"{name}_attention"
-        )(inputs, inputs)
-
-        attention_output = LayerNormalization(epsilon=1e-6, name=f"{name}_norm1")(inputs + attention_output)
-
-        ffn_output = Dense(units * 4, activation='swish', name=f"{name}_ffn1")(attention_output)
-        ffn_output = Dropout(dropout)(ffn_output)
-        ffn_output = Dense(units, name=f"{name}_ffn2")(ffn_output)
-
-        return LayerNormalization(epsilon=1e-6, name=f"{name}_norm2")(attention_output + ffn_output)
 
     def _direction_enhanced_mse(self, y_true, y_pred):
         mse_loss = tf.reduce_mean(tf.square(y_true - y_pred))
