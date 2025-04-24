@@ -406,7 +406,7 @@ class OptimizedHybridModel:
             "dropout": 0.3,
             "dense_units1": 48,
             "dense_units2": 24,
-            "l2_lambda": 1e-3,
+            "l2_lambda":  5e-3,
             "learning_rate": 5e-5,
             "epochs": 32
         }
