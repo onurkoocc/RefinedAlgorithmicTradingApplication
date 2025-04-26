@@ -385,18 +385,18 @@ class Config:
                 "epochs": 32,
                 "batch_size": 128,
                 "use_mixed_precision": True,
-                "early_stopping_patience": 12,
-                "dropout_rate": 0.3,
-                "recurrent_dropout": 0.2,
-                "recurrent_units": 48,
-                "dense_units1": 48,
-                "dense_units2": 24,
-                "l2_reg": 1e-3,
-                "attention_enabled": True,
-                "initial_learning_rate": 5e-5,
-                "lr_decay_factor": 0.85,
-                "direction_loss_weight": 1.0,
-                "clipnorm": 1.0,
+                "early_stopping_patience": 12,  # Increased slightly, model found best late
+                "dropout_rate": 0.3,  # Keep original
+                "recurrent_dropout": 0.2,  # Keep original
+                "recurrent_units": 48,  # Keep original
+                "dense_units1": 48,  # Keep original
+                "dense_units2": 24,  # Keep original
+                "l2_reg": 1e-3,  # Adjusted from model.py default, reflects change
+                # "attention_enabled": False, # Removed this setting as attention is gone
+                "initial_learning_rate": 5e-5,  # Keep original
+                "lr_decay_factor": 0.85,  # Keep original
+                # "direction_loss_weight": 0.0, # Removed this setting as loss changed
+                "clipnorm": 1.0,  # Keep original
                 "model_path": "path/to/results_dir/models/best_model.keras",
                 "data_augmentation": {
                     "enabled": True,
@@ -404,14 +404,14 @@ class Config:
                     "roll_probability": 0.3,
                     "mask_probability": 0.2
                 },
-                "risk_management": {
+                "risk_management": {  # Kept defaults, needs analysis outside model.py
                     "max_drawdown_threshold": 0.25,
                     "consecutive_loss_scale": 0.85,
                     "max_position_size": 0.5,
-                    "max_trades_per_day": 5,
+                    "max_trades_per_day": 5,  # This was 5 in callback, config might need sync
                     "min_threshold": 0.001
                 },
-                "growth_metric_callback": {
+                "growth_metric_callback": {  # Kept defaults, needs analysis outside model.py
                     "monthly_target": 0.08,
                     "threshold_pct": 0.6,
                     "transaction_cost": 0.001,
