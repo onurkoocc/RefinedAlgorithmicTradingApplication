@@ -629,14 +629,18 @@ class MarketSimulator:
 
             if hasattr(self.portfolio_manager.risk_manager, 'atr_multiplier_map'):
                 atr_multiplier = self.portfolio_manager.risk_manager.atr_multiplier_map.get(
-                    market_phase, {}).get(direction, 2.2)
+                    market_phase, {}).get(direction, 2.6)
             else:
-                atr_multiplier = 2.2
+                atr_multiplier = 2.6
 
             if volatility > 0.7:
-                atr_multiplier *= 0.9
-            elif volatility < 0.3:
+                atr_multiplier *= 1.2
+            elif volatility > 0.5:
                 atr_multiplier *= 1.1
+            elif volatility < 0.3:
+                atr_multiplier *= 0.95
+
+            atr_multiplier = max(atr_multiplier, 2.8)
 
             if direction == 'long':
                 stop_loss = entry_price - (atr * atr_multiplier)

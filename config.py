@@ -157,47 +157,47 @@ class Config:
                 "emergency_stop_buffer": 0.002
             },
             "exit": {
-                "base_atr_multiplier": 3.6,  # Increased from 3.0
+                "base_atr_multiplier": 4.2,
                 "enable_dynamic_trailing": True,
-                "trailing_activation_threshold": 0.015,  # Increased from 0.01
+                "trailing_activation_threshold": 0.022,
                 "enable_partial_exits": True,
                 "partial_exit_levels": 4,
                 "time_based_exits": True,
-                "max_trade_duration_hours": 24.0,
+                "max_trade_duration_hours": 28.0,
                 "rsi_extreme_exit": True,
                 "rsi_overbought": 75,
                 "rsi_oversold": 25,
                 "macd_reversal_exit": True,
                 "enable_early_loss_exit": True,
-                "early_loss_threshold": -0.018,  # Changed from -0.012 for more breathing room
-                "early_loss_time": 3.0,  # Increased from 2.5
+                "early_loss_threshold": -0.022,
+                "early_loss_time": 4.0,
                 "enable_quick_profit_exit": True,
-                "quick_profit_threshold": 0.008,  # Increased from 0.006
-                "min_holding_time": 0.4,  # Increased from 0.3
+                "quick_profit_threshold": 0.009,
+                "min_holding_time": 0.5,
                 "enable_stagnant_exit": True,
-                "stagnant_threshold": 0.004,  # Increased from 0.003
-                "stagnant_time": 3.5,  # Increased from 3.0
+                "stagnant_threshold": 0.005,
+                "stagnant_time": 4.0,
                 "enable_trailing_take_profit": True,
-                "trailing_tp_activation_ratio": 0.5,  # When to start trailing (50% of avg profitable duration)
-                "trailing_tp_atr_multiplier": 1.3,  # Tighter ATR multiplier for take profit trailing
-                "min_stop_percent": 0.015,  # 1.5% minimum stop distance
+                "trailing_tp_activation_ratio": 0.65,
+                "trailing_tp_atr_multiplier": 1.7,
+                "min_stop_percent": 0.020,
                 "enable_volatility_tp_scaling": True,
                 "volatility_tp_factors": {
-                    "low": 0.95,  # 5% lower targets in low volatility
-                    "medium": 1.0,  # Base level
-                    "high": 1.3,  # 30% higher targets in high volatility (increased from 1.2)
-                    "extreme": 1.6  # 60% higher targets in extreme volatility (increased from 1.4)
+                    "low": 0.95,
+                    "medium": 1.0,
+                    "high": 1.3,
+                    "extreme": 1.6
                 },
                 "enable_emergency_stop_adjustment": True,
                 "atr_multiplier_map": {
-                    "strong_uptrend": {"long": 3.8, "short": 3.2},  # All increased
-                    "uptrend": {"long": 3.5, "short": 3.0},
-                    "neutral": {"long": 3.2, "short": 3.2},
-                    "downtrend": {"long": 3.0, "short": 3.5},
-                    "strong_downtrend": {"long": 3.2, "short": 3.8},
-                    "ranging_at_support": {"long": 3.0, "short": 3.6},
-                    "ranging_at_resistance": {"long": 3.6, "short": 3.0},
-                    "volatile": {"long": 4.3, "short": 4.3}  # Significantly increased for volatile markets
+                    "strong_uptrend": {"long": 4.5, "short": 3.8},
+                    "uptrend": {"long": 4.2, "short": 3.6},
+                    "neutral": {"long": 3.8, "short": 3.8},
+                    "downtrend": {"long": 3.6, "short": 4.2},
+                    "strong_downtrend": {"long": 3.8, "short": 4.5},
+                    "ranging_at_support": {"long": 3.6, "short": 4.3},
+                    "ranging_at_resistance": {"long": 4.3, "short": 3.6},
+                    "volatile": {"long": 5.2, "short": 5.2}
                 },
                 "profit_targets": {
                     "micro": 0.005,  # Increased from 0.003

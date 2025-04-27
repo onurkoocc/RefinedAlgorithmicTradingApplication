@@ -211,54 +211,62 @@ class PartialExitTracker:
 class DynamicExitStrategy:
     def __init__(self, config):
         self.config = config
-        self.base_atr_multiplier = config.get("exit", "base_atr_multiplier", 3.0)
+        self.base_atr_multiplier = config.get("exit", "base_atr_multiplier", 4.2)
         self.atr_multiplier_map = {
-            "strong_uptrend": {"long": 3.5, "short": 2.8}, "uptrend": {"long": 3.2, "short": 2.5},
-            "neutral": {"long": 2.8, "short": 2.8}, "downtrend": {"long": 2.5, "short": 3.2},
-            "strong_downtrend": {"long": 2.8, "short": 3.5}, "ranging_at_support": {"long": 2.4, "short": 3.0},
-            "ranging_at_resistance": {"long": 3.0, "short": 2.4}, "volatile": {"long": 3.6, "short": 3.6}
+            "strong_uptrend": {"long": 4.5, "short": 3.8},
+            "uptrend": {"long": 4.2, "short": 3.6},
+            "neutral": {"long": 3.8, "short": 3.8},
+            "downtrend": {"long": 3.6, "short": 4.2},
+            "strong_downtrend": {"long": 3.8, "short": 4.5},
+            "ranging_at_support": {"long": 3.6, "short": 4.3},
+            "ranging_at_resistance": {"long": 4.3, "short": 3.6},
+            "volatile": {"long": 5.2, "short": 5.2}
         }
         self.profit_targets = {
-            "strong_uptrend": {"long": 0.04, "short": 0.025}, "uptrend": {"long": 0.035, "short": 0.02},
-            "neutral": {"long": 0.025, "short": 0.025}, "downtrend": {"long": 0.02, "short": 0.035},
-            "strong_downtrend": {"long": 0.025, "short": 0.04}, "ranging_at_support": {"long": 0.02, "short": 0.015},
-            "ranging_at_resistance": {"long": 0.015, "short": 0.02}, "volatile": {"long": 0.03, "short": 0.03}
+            "strong_uptrend": {"long": 0.04, "short": 0.025},
+            "uptrend": {"long": 0.035, "short": 0.02},
+            "neutral": {"long": 0.025, "short": 0.025},
+            "downtrend": {"long": 0.02, "short": 0.035},
+            "strong_downtrend": {"long": 0.025, "short": 0.04},
+            "ranging_at_support": {"long": 0.02, "short": 0.015},
+            "ranging_at_resistance": {"long": 0.015, "short": 0.02},
+            "volatile": {"long": 0.03, "short": 0.03}
         }
         self.enable_dynamic_trailing = config.get("exit", "enable_dynamic_trailing", True)
-        self.trailing_activation_threshold = config.get("exit", "trailing_activation_threshold", 0.01)
+        self.trailing_activation_threshold = config.get("exit", "trailing_activation_threshold", 0.022)
         self.time_based_exits = config.get("exit", "time_based_exits", True)
-        self.max_trade_duration_hours = config.get("exit", "max_trade_duration_hours", 24.0)
+        self.max_trade_duration_hours = config.get("exit", "max_trade_duration_hours", 28.0)
         self.phase_max_durations = {
             "strong_uptrend": 18.0, "uptrend": 12.0, "neutral": 24.0, "downtrend": 12.0,
             "strong_downtrend": 18.0, "ranging_at_support": 8.0, "ranging_at_resistance": 6.0, "volatile": 8.0
         }
         self.rsi_extreme_exit = config.get("exit", "rsi_extreme_exit", True)
-        self.rsi_overbought = config.get("exit", "rsi_overbought", 70)
-        self.rsi_oversold = config.get("exit", "rsi_oversold", 30)
+        self.rsi_overbought = config.get("exit", "rsi_overbought", 75)
+        self.rsi_oversold = config.get("exit", "rsi_oversold", 25)
         self.macd_reversal_exit = config.get("exit", "macd_reversal_exit", True)
         self.enable_early_loss_exit = config.get("exit", "enable_early_loss_exit", True)
-        self.early_loss_threshold = config.get("exit", "early_loss_threshold", -0.012)
-        self.early_loss_time = config.get("exit", "early_loss_time", 2.5)
+        self.early_loss_threshold = config.get("exit", "early_loss_threshold", -0.022)
+        self.early_loss_time = config.get("exit", "early_loss_time", 4.0)
         self.enable_quick_profit_exit = config.get("exit", "enable_quick_profit_exit", True)
-        self.quick_profit_threshold = config.get("exit", "quick_profit_threshold", 0.006)
-        self.min_holding_time = config.get("exit", "min_holding_time", 0.3)
+        self.quick_profit_threshold = config.get("exit", "quick_profit_threshold", 0.009)
+        self.min_holding_time = config.get("exit", "min_holding_time", 0.5)
         self.enable_stagnant_exit = config.get("exit", "enable_stagnant_exit", True)
-        self.stagnant_threshold = config.get("exit", "stagnant_threshold", 0.003)
-        self.stagnant_time = config.get("exit", "stagnant_time", 3.0)
+        self.stagnant_threshold = config.get("exit", "stagnant_threshold", 0.005)
+        self.stagnant_time = config.get("exit", "stagnant_time", 4.0)
         self.exit_performance = {}
         self.exit_counter = {}
         self.time_dependent_sl_adjustment = True
-        self.sl_time_threshold_hours = 2.0
-        self.sl_time_widening_factor = 1.25
+        self.sl_time_threshold_hours = 3.0
+        self.sl_time_widening_factor = 1.3
 
         self.enable_trailing_take_profit = True
-        self.trailing_tp_activation_ratio = 0.6
-        self.trailing_tp_atr_multiplier = 1.5
+        self.trailing_tp_activation_ratio = 0.65
+        self.trailing_tp_atr_multiplier = 1.7
         self.avg_profitable_duration = 6.0
 
         self.enable_volatility_tp_scaling = True
         self.volatility_tp_factors = {
-            "low": 0.9, "medium": 1.0, "high": 1.2, "extreme": 1.4
+            "low": 0.95, "medium": 1.0, "high": 1.3, "extreme": 1.6
         }
         self.enable_fibonacci_partial_exits = config.get("exit", "enable_fibonacci_partial_exits", True)
         self.fibonacci_partial_exit_levels_long = config.get("exit", "fibonacci_partial_exit_levels_long",
@@ -449,27 +457,41 @@ class DynamicExitStrategy:
 
         if self.enable_early_loss_exit:
             base_early_loss = self.early_loss_threshold * 1.2
+
             if "ranging" in market_phase:
-                base_early_loss *= 0.75
+                base_early_loss *= 0.8
+            elif "volatile" in market_phase:
+                base_early_loss *= 0.85
             elif "strong" in market_phase:
                 base_early_loss *= 1.3
-            if volatility_regime > 0.7:
+
+            if volatility_regime > 0.8:
+                base_early_loss *= 0.75
+            elif volatility_regime > 0.7:
+                base_early_loss *= 0.8
+            elif volatility_regime > 0.5:
                 base_early_loss *= 0.9
+
             if trend_strength < 0.3:
                 base_early_loss *= 0.85
 
             time_threshold = self.early_loss_time
             if "ranging" in market_phase:
                 time_threshold *= 0.8
+            elif "volatile" in market_phase:
+                time_threshold *= 0.7
             elif "strong" in market_phase:
                 time_threshold *= 1.3
+
             if (direction == 'long' and momentum < -0.2) or (direction == 'short' and momentum > 0.2):
                 base_early_loss *= 0.85
                 time_threshold *= 0.85
 
+            base_early_loss = max(base_early_loss, -0.028)
+
             if pnl_pct < base_early_loss and trade_duration > time_threshold:
-                recovery_detected = (direction == 'long' and momentum > 0.1) or (
-                            direction == 'short' and momentum < -0.1)
+                recovery_detected = (direction == 'long' and momentum > 0.15) or (
+                        direction == 'short' and momentum < -0.15)
                 if not recovery_detected:
                     return {"exit": True, "reason": "EarlyLossExit", "exit_price": current_price}
 
@@ -530,53 +552,55 @@ class DynamicExitStrategy:
         if not self.enable_dynamic_trailing:
             return None
 
-        min_profit_for_adjustment = 0.015
+        min_profit_for_adjustment = 0.022
         if pnl_pct < min_profit_for_adjustment:
             return None
 
-        atr_multiplier = self.atr_multiplier_map.get(market_phase, {}).get(direction, 2.8)
+        atr_multiplier = self.atr_multiplier_map.get(market_phase, {}).get(direction, 3.2)
 
         if volatility_regime > 0.8:
-            atr_multiplier *= 1.5
+            atr_multiplier *= 1.6
         elif volatility_regime > 0.7:
-            atr_multiplier *= 1.3
+            atr_multiplier *= 1.4
         elif volatility_regime > 0.5:
-            atr_multiplier *= 1.1
+            atr_multiplier *= 1.2
         elif volatility_regime < 0.3:
-            atr_multiplier *= 0.85
+            atr_multiplier *= 0.9
 
         if self.time_dependent_sl_adjustment and trade_duration > self.sl_time_threshold_hours:
-            time_factor = min(1.6, 1.0 + ((trade_duration - self.sl_time_threshold_hours) / 8.0) * 0.6)
+            time_factor = min(1.8, 1.0 + ((trade_duration - self.sl_time_threshold_hours) / 12.0) * 0.8)
             atr_multiplier *= time_factor
 
         if pnl_pct > 0.045:
-            atr_multiplier *= 0.4
-        elif pnl_pct > 0.035:
             atr_multiplier *= 0.5
-        elif pnl_pct > 0.025:
+        elif pnl_pct > 0.035:
             atr_multiplier *= 0.6
-        elif pnl_pct > 0.015:
+        elif pnl_pct > 0.025:
             atr_multiplier *= 0.7
+        elif pnl_pct > 0.015:
+            atr_multiplier *= 0.8
 
         if ensemble_score > 0.7:
-            atr_multiplier *= 0.85
+            atr_multiplier *= 0.9
         elif ensemble_score < 0.4:
-            atr_multiplier *= 1.3
+            atr_multiplier *= 1.4
 
         if market_phase in ["ranging_at_support", "ranging_at_resistance", "choppy"]:
-            atr_multiplier *= 1.35
+            atr_multiplier *= 1.5
+        elif market_phase == "volatile":
+            atr_multiplier *= 1.6
 
-        profit_levels = [(0.035, 0.02), (0.025, 0.012), (0.018, 0.006), (0.012, 0.002)]
+        profit_levels = [(0.04, 0.025), (0.03, 0.015), (0.022, 0.008), (0.015, 0.004)]
 
         if direction == 'long':
             new_stop = current_price - (atr_multiplier * atr_value)
 
             for pnl_level, profit_lock in profit_levels:
-                if pnl_pct > pnl_level and (trade_duration > 2.0 or pnl_level > 0.025):
+                if pnl_pct > pnl_level and (trade_duration > 1.5 or pnl_level > 0.03):
                     new_stop = max(new_stop, entry_price + (profit_lock * entry_price))
 
-            if market_phase == "ranging_at_resistance" and pnl_pct > 0.012:
-                new_stop = max(new_stop, entry_price + (0.008 * entry_price))
+            if market_phase == "ranging_at_resistance" and pnl_pct > 0.015:
+                new_stop = max(new_stop, entry_price + (0.01 * entry_price))
 
             if new_stop > current_stop:
                 return {"exit": False, "update_stop": True, "new_stop": float(new_stop), "reason": "TrailingStopUpdate"}
@@ -584,11 +608,11 @@ class DynamicExitStrategy:
             new_stop = current_price + (atr_multiplier * atr_value)
 
             for pnl_level, profit_lock in profit_levels:
-                if pnl_pct > pnl_level and (trade_duration > 2.0 or pnl_level > 0.025):
+                if pnl_pct > pnl_level and (trade_duration > 1.5 or pnl_level > 0.03):
                     new_stop = min(new_stop, entry_price - (profit_lock * entry_price))
 
-            if market_phase == "ranging_at_support" and pnl_pct > 0.012:
-                new_stop = min(new_stop, entry_price - (0.008 * entry_price))
+            if market_phase == "ranging_at_support" and pnl_pct > 0.015:
+                new_stop = min(new_stop, entry_price - (0.01 * entry_price))
 
             if new_stop < current_stop:
                 return {"exit": False, "update_stop": True, "new_stop": float(new_stop), "reason": "TrailingStopUpdate"}
