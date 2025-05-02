@@ -43,19 +43,50 @@ class Config:
                 "use_chunking": True,
                 "chunk_size": 2000,
                 "correlation_threshold": 0.9,
-                "use_optuna_features": True,
+                "use_optuna_features": False,
                 "optuna_n_trials": 30,
                 "optuna_timeout": 3600,
                 "optuna_metric": "growth_score", # Options: growth_score, r2, directional_accuracy
                 "feature_selection_method": "importance",
                 "use_adaptive_features": False,
+                "use_only_essential_features": True,
                 "essential_features": [
-                    "open", "high", "low", "close", "volume",
-                    "ema_9", "ema_21", "ema_50", "sma_200",
-                    "rsi_14", "bb_middle_20", "bb_upper_20", "bb_lower_20", "bb_width_20",
-                    "atr_14", "obv", "cmf_20",
-                    "adx_14", "plus_di_14", "minus_di_14",
-                    "macd_12_26", "macd_signal_12_26_9", "macd_histogram_12_26_9"
+                    # Core price data
+                    'open', 'high', 'low', 'close', 'volume',
+
+                    # Volume dynamics
+                    'taker_buy_base_asset_volume', 'cumulative_delta', 'volume_imbalance_ratio',
+                    'volume_price_momentum',
+
+                    # Trend indicators
+                    'ema_9', 'ema_21', 'ema_50', 'sma_200',
+                    'adx_14', 'plus_di_14', 'minus_di_14',
+                    'trend_strength', 'ma_cross_velocity',
+
+                    # Momentum oscillators
+                    'rsi_14', 'rsi_roc_3', 'macd_histogram_12_26_9',
+
+                    # Volatility metrics
+                    'atr_14', 'bb_width_20', 'volatility_regime',
+
+                    # Market context
+                    'market_regime', 'mean_reversion_signal', 'price_impact_ratio',
+
+                    # Support/resistance
+                    'bb_percent_b', 'range_position', 'pullback_strength',
+
+                    # Time-based patterns
+                    'hour_sin', 'hour_cos', 'day_of_week_sin', 'day_of_week_cos',
+                    'cycle_phase', 'cycle_position',
+
+                    # Price action patterns
+                    'relative_candle_size', 'candle_body_ratio', 'gap',
+
+                    # Order flow
+                    'spread_pct', 'close_vwap_diff',
+
+                    # Adaptive volatility features
+                    'vol_norm_close_change', 'vol_norm_momentum'
                 ],
                 "indicators_to_compute": [
                     "ema_9", "ema_21", "ema_50", "sma_200",

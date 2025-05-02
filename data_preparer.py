@@ -40,15 +40,45 @@ class DataPreparer:
 
         self.train_features = None
         self.max_features = config.get("model", "max_features", 70)
+        self.use_only_essential_features = config.get("feature_engineering", "use_only_essential_features", False)
 
         self.essential_features = [
-            "open", "high", "low", "close", "volume",
-            "ema_9", "ema_21", "ema_50",
-            "rsi_14", "bb_middle_20", "bb_upper_20", "bb_lower_20", "bb_width_20",
-            "atr_14", "obv", "cmf_20",
-            "adx_14", "plus_di_14", "minus_di_14",
-            "macd_12_26", "macd_signal_12_26_9", "macd_histogram_12_26_9",
-            "market_regime", "volatility_regime"
+            # Core price data
+            'open', 'high', 'low', 'close', 'volume',
+
+            # Volume dynamics
+            'taker_buy_base_asset_volume', 'cumulative_delta', 'volume_imbalance_ratio',
+            'volume_price_momentum',
+
+            # Trend indicators
+            'ema_9', 'ema_21', 'ema_50', 'sma_200',
+            'adx_14', 'plus_di_14', 'minus_di_14',
+            'trend_strength', 'ma_cross_velocity',
+
+            # Momentum oscillators
+            'rsi_14', 'rsi_roc_3', 'macd_histogram_12_26_9',
+
+            # Volatility metrics
+            'atr_14', 'bb_width_20', 'volatility_regime',
+
+            # Market context
+            'market_regime', 'mean_reversion_signal', 'price_impact_ratio',
+
+            # Support/resistance
+            'bb_percent_b', 'range_position', 'pullback_strength',
+
+            # Time-based patterns
+            'hour_sin', 'hour_cos', 'day_of_week_sin', 'day_of_week_cos',
+            'cycle_phase', 'cycle_position',
+
+            # Price action patterns
+            'relative_candle_size', 'candle_body_ratio', 'gap',
+
+            # Order flow
+            'spread_pct', 'close_vwap_diff',
+
+            # Adaptive volatility features
+            'vol_norm_close_change', 'vol_norm_momentum'
         ]
 
         # Create Optuna feature selector
@@ -315,6 +345,19 @@ class DataPreparer:
 
     def _get_available_features(self, df: pd.DataFrame) -> List[str]:
         available_features = []
+
+        if self.use_only_essential_features:
+            available_essential_features = []
+            df_columns = set(df.columns)
+
+            for feature in self.essential_features:
+                if feature in df_columns:
+                    available_essential_features.append(feature)
+                elif f'm30_{feature}' in df_columns:
+                    available_essential_features.append(f'm30_{feature}')
+
+            self.logger.info(f"Using only {len(available_essential_features)} essential features")
+            return available_essential_features
 
         for feature in self.essential_features:
             if feature in df.columns:
