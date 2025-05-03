@@ -59,7 +59,6 @@ class DQNAgent:
         model = tf.keras.Model(inputs=inputs, outputs=outputs)
         model.compile(loss='mse', optimizer=tf.keras.optimizers.Adam(learning_rate=self.learning_rate))
         return model
-
     def update_target_model(self):
         self.target_model.set_weights(self.model.get_weights())
 
@@ -286,6 +285,7 @@ class RLTradeEnvironment:
         self.position_size = 0
 
         return pnl * 100  # Scale for better learning
+
 
 import numpy as np
 import pandas as pd
