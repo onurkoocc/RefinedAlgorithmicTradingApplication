@@ -46,7 +46,7 @@ class Config:
                 "use_optuna_features": False,
                 "optuna_n_trials": 30,
                 "optuna_timeout": 3600,
-                "optuna_metric": "growth_score", # Options: growth_score, r2, directional_accuracy
+                "optuna_metric": "growth_score",  # Options: growth_score, r2, directional_accuracy
                 "feature_selection_method": "importance",
                 "use_adaptive_features": False,
                 "use_only_essential_features": True,
@@ -164,9 +164,9 @@ class Config:
                 "min_stop_percent": 0.015,  # 1.5% minimum stop distance
                 "enable_volatility_tp_scaling": True,
                 "volatility_tp_factors": {
-                    "low": 0.95,    # 5% lower targets in low volatility
+                    "low": 0.95,  # 5% lower targets in low volatility
                     "medium": 1.0,  # Base level
-                    "high": 1.3,    # 30% higher targets in high volatility (increased from 1.2)
+                    "high": 1.3,  # 30% higher targets in high volatility (increased from 1.2)
                     "extreme": 1.6  # 60% higher targets in extreme volatility (increased from 1.4)
                 },
                 "enable_emergency_stop_adjustment": True,
@@ -181,11 +181,11 @@ class Config:
                     "volatile": {"long": 4.3, "short": 4.3}  # Significantly increased for volatile markets
                 },
                 "profit_targets": {
-                    "micro": 0.005,    # Increased from 0.003
-                    "quick": 0.0075,   # Increased from 0.006
-                    "small": 0.012,    # Increased from 0.01
-                    "medium": 0.018,   # Increased from 0.015
-                    "large": 0.030,    # Increased from 0.025
+                    "micro": 0.005,  # Increased from 0.003
+                    "quick": 0.0075,  # Increased from 0.006
+                    "small": 0.012,  # Increased from 0.01
+                    "medium": 0.018,  # Increased from 0.015
+                    "large": 0.030,  # Increased from 0.025
                     "extended": 0.048  # Increased from 0.04
                 }
             },
@@ -198,20 +198,20 @@ class Config:
                 "medium_term_lookback": 6,
                 "long_term_lookback": 12,
                 "profit_targets": {
-                    "micro": 0.005,    # Increased from 0.003
-                    "quick": 0.0075,   # Increased from 0.006
-                    "small": 0.012,    # Increased from 0.01
-                    "medium": 0.018,   # Increased from 0.015
-                    "large": 0.030,    # Increased from 0.025
+                    "micro": 0.005,  # Increased from 0.003
+                    "quick": 0.0075,  # Increased from 0.006
+                    "small": 0.012,  # Increased from 0.01
+                    "medium": 0.018,  # Increased from 0.015
+                    "large": 0.030,  # Increased from 0.025
                     "extended": 0.048  # Increased from 0.04
                 },
                 "max_position_age": {
-                    "neutral": 24.0,                # Increased from 18.0
-                    "uptrend": 18.0,                # Increased from 14.0
-                    "downtrend": 16.0,              # Increased from 12.0
-                    "ranging_at_support": 10.0,     # Increased from 8.0
-                    "ranging_at_resistance": 6.0,   # Increased from 4.0
-                    "volatile": 10.0                # Increased from 8.0
+                    "neutral": 24.0,  # Increased from 18.0
+                    "uptrend": 18.0,  # Increased from 14.0
+                    "downtrend": 16.0,  # Increased from 12.0
+                    "ranging_at_support": 10.0,  # Increased from 8.0
+                    "ranging_at_resistance": 6.0,  # Increased from 4.0
+                    "volatile": 10.0  # Increased from 8.0
                 },
                 "phase_exit_preferences": {
                     "neutral": {
@@ -252,31 +252,51 @@ class Config:
                 "horizon": 16,
                 "normalize_method": "feature_specific",
                 "train_ratio": 0.7,
-                "epochs": 20,
+                "epochs": 20,  # Increased from original value
                 "batch_size": 256,
                 "use_mixed_precision": True,
-                "early_stopping_patience": 5,
-                "dropout_rate": 0.25,  # Increased from previous value (targeting mid-range of 0.15-0.35)
-                "dropout_min": 0.15,  # New: Min dropout for Optuna search range
-                "dropout_max": 0.35,  # New: Max dropout for Optuna search range
-                "recurrent_dropout_max": 0.2,  # New: Max recurrent dropout for LSTM/GRUs
-                "l2_reg": 1e-5,  # Base L2 regularization value
-                "l2_min": 1e-6,  # New: Min L2 regularization for Optuna search
-                "l2_max": 1e-3,  # New: Max L2 regularization for Optuna search
+                "early_stopping_patience": 7,  # Increased from 5 to allow more training time
+                "dropout_rate": 0.22,  # Adjusted to reduce overfitting
+                "dropout_min": 0.15,
+                "dropout_max": 0.35,
+                "recurrent_dropout_max": 0.18,  # Slightly reduced
+                "l2_reg": 5.8e-5,  # Increased from 1e-5 for better regularization
+                "l2_min": 1e-6,
+                "l2_max": 1e-3,
                 "attention_enabled": True,
                 "use_ensemble": True,
+                "ensemble_size": 3,  # New parameter for number of ensemble models
                 "optuna_trials": 10,
                 "optuna_timeout": 3600,
-                "initial_learning_rate": 3e-4,
-                "lr_decay_factor": 0.4,  # Updated from 0.5 to 0.4 for faster decay
-                "direction_loss_weight": 0.6,
+                "initial_learning_rate": 4.5e-4,  # Adjusted from 3e-4
+                "lr_decay_factor": 0.7,  # Changed from 0.4 to 0.7 for slower decay
+                "direction_loss_weight": 0.7,  # Increased from 0.6 to emphasize direction
                 "max_features": 70,
                 "model_path": str(self.results_dir / "models" / "best_model.keras"),
-                "data_augmentation": {  # New section for data augmentation parameters
+                "data_augmentation": {
                     "enabled": True,
-                    "noise_level": 0.015,  # Increased from 0.01
-                    "roll_probability": 0.4,  # Increased from 0.3
-                    "mask_probability": 0.25  # Increased from 0.2
+                    "noise_level": 0.02,  # Increased from 0.015 for better robustness
+                    "roll_probability": 0.4,
+                    "mask_probability": 0.3,  # Increased from 0.25 for better generalization
+                    "scale_probability": 0.2  # New parameter for random scaling
+                },
+                "growth_metric": {
+                    "monthly_target": 0.08,  # Target 8% monthly growth
+                    "min_target": 0.06,  # Minimum acceptable growth
+                    "max_target": 0.12,  # Maximum desired growth (avoid overfitting)
+                    "drawdown_weight": 1.5,  # Increased from previous value to penalize drawdowns
+                    "consistency_weight": 1.0,  # Increased to prioritize consistency
+                    "avg_return_weight": 0.9,  # Decreased slightly to balance with consistency
+                    "threshold_pct": 0.35  # Adjusted to be more selective on trades
+                },
+                "architecture": {
+                    "projection_size": 128,  # Increased from 96
+                    "transformer_layers": 3,  # Increased from default 2
+                    "transformer_heads": 8,
+                    "transformer_dropout": 0.26,
+                    "recurrent_units": 64,  # Increased from 60
+                    "dense_units1": 80,  # Increased from 68
+                    "dense_units2": 32  # Increased from 18
                 }
             },
             "backtest": {
