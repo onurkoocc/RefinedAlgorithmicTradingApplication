@@ -23,7 +23,7 @@ class DataManager:
         self.csv_30m = config.get("data", "csv_30m")
         self.use_api = config.get("data", "use_api", False)
         self.extended_data = config.get("data", "fetch_extended_data", True)
-        self.min_candles = config.get("data", "min_candles", 15000)
+        self.min_candles = config.get("data", "min_candles", 10000)
 
         self.client = None
         if BINANCE_AVAILABLE and self.use_api:
@@ -44,7 +44,7 @@ class DataManager:
         return df_30m
 
     def fetch_30m_data(self, live: bool = False, extended: bool = True,
-                       min_candles: int = 15000) -> pd.DataFrame:
+                       min_candles: int = 10000) -> pd.DataFrame:
         cache_key = f"30m_{extended}_{min_candles}"
         if not live and cache_key in self.data_cache:
             self.logger.info("Using cached 30m data")
@@ -65,7 +65,7 @@ class DataManager:
         self.logger.info(f"Fetching 30m data from Binance API {'(extended)' if extended else ''}")
 
         try:
-            lookback_candles = min_candles if extended else 15000
+            lookback_candles = min_candles if extended else 10000
             start_time = int((datetime.now().timestamp() - (lookback_candles * 30 * 60)) * 1000)
 
             all_klines = []
@@ -172,20 +172,3 @@ class DataManager:
                 self.data_cache[cache_key] = df
                 return df
             return pd.DataFrame()
-
-    def clear_cache(self) -> None:
-        self.data_cache.clear()
-        self.logger.info("Data cache cleared")
-
-    def align_timeframes(self, df_source: pd.DataFrame, target_index: pd.DatetimeIndex) -> pd.DataFrame:
-        if df_source.empty or len(target_index) == 0:
-            return pd.DataFrame(index=target_index)
-
-        aligned = pd.DataFrame(index=target_index)
-
-        for col in df_source.select_dtypes(include=np.number).columns:
-            aligned[col] = df_source[col].reindex(target_index, method='ffill')
-
-        aligned.fillna(0, inplace=True)
-
-        return aligned

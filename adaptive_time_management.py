@@ -28,7 +28,6 @@ class ExitType:
 class AdaptiveTimeManager:
     def __init__(self, config):
         self.config = config
-
         self.min_holding_time = config.get("time_management", "min_holding_time", 0.5)
         self.max_holding_time = config.get("time_management", "max_holding_time", 36.0)
 
@@ -39,70 +38,124 @@ class AdaptiveTimeManager:
             TimeFrame.LONG: config.get("time_management", "long_profit", 0.035),
             TimeFrame.EXTENDED: config.get("time_management", "extended_profit", 0.05)
         }
-        # Add these new attributes for early loss and stagnant trade detection
+
         self.early_loss_threshold = config.get("exit", "early_loss_threshold", -0.012)
         self.early_loss_time = config.get("exit", "early_loss_time", 2.5)
         self.stagnant_threshold = config.get("exit", "stagnant_threshold", 0.003)
         self.stagnant_time = config.get("exit", "stagnant_time", 3.0)
-        self.market_phase_adjustments = {
-            "uptrend": {"long": 1.2, "short": 0.7},
-            "downtrend": {"long": 0.7, "short": 1.2},
-            "neutral": {"long": 1.0, "short": 1.0},
-            "ranging_at_support": {"long": 1.1, "short": 0.7},
-            "ranging_at_resistance": {"long": 0.7, "short": 1.1},
-            "volatile": {"long": 0.8, "short": 0.8}
-        }
 
-        self.atr_multiplier_map = {
-            "uptrend": {"long": 2.8, "short": 2.2},
-            "downtrend": {"long": 2.2, "short": 2.8},
-            "neutral": {"long": 2.5, "short": 2.5},
-            "ranging_at_support": {"long": 2.0, "short": 3.0},
-            "ranging_at_resistance": {"long": 3.0, "short": 2.0}
-        }
+        # Use the config for market phase adjustments
+        self.market_phase_adjustments = config.get("time_management", "phase_exit_preferences", {})
+        if not self.market_phase_adjustments:
+            self.market_phase_adjustments = {
+                "uptrend": {"long": 1.2, "short": 0.7},
+                "downtrend": {"long": 0.7, "short": 1.2},
+                "neutral": {"long": 1.0, "short": 1.0},
+                "ranging_at_support": {"long": 1.1, "short": 0.7},
+                "ranging_at_resistance": {"long": 0.7, "short": 1.1},
+                "volatile": {"long": 0.8, "short": 0.8}
+            }
 
-        self.partial_exit_strategy = {
-            "uptrend": [
-                {"threshold": 0.012, "portion": 0.2},
-                {"threshold": 0.022, "portion": 0.3},
-                {"threshold": 0.035, "portion": 0.3}
-            ],
-            "downtrend": [
-                {"threshold": 0.01, "portion": 0.25},
-                {"threshold": 0.018, "portion": 0.3},
-                {"threshold": 0.03, "portion": 0.25}
-            ],
-            "neutral": [
-                {"threshold": 0.009, "portion": 0.2},
-                {"threshold": 0.016, "portion": 0.25},
-                {"threshold": 0.028, "portion": 0.3}
-            ]
-        }
+        # Initialize with centralized regime parameters
+        self.atr_multiplier_map = self._get_atr_multiplier_from_config()
+
+        # Get partial exit strategy from config
+        self.partial_exit_strategy = config.get("exit", "partial_exit_strategy", {})
+        if not self.partial_exit_strategy:
+            self.partial_exit_strategy = {
+                "uptrend": [
+                    {"threshold": 0.012, "portion": 0.2},
+                    {"threshold": 0.022, "portion": 0.3},
+                    {"threshold": 0.035, "portion": 0.3}
+                ],
+                "downtrend": [
+                    {"threshold": 0.01, "portion": 0.25},
+                    {"threshold": 0.018, "portion": 0.3},
+                    {"threshold": 0.03, "portion": 0.25}
+                ],
+                "neutral": [
+                    {"threshold": 0.009, "portion": 0.2},
+                    {"threshold": 0.016, "portion": 0.25},
+                    {"threshold": 0.028, "portion": 0.3}
+                ]
+            }
 
         self.exit_stats = {}
         self.optimal_durations = {}
         self.trade_history = deque(maxlen=500)
         self.performance_by_duration = {}
         self.performance_by_phase = {}
-        self.time_decay_factors = {
-            4: 1.0,
-            8: 0.95,
-            16: 0.9,
-            24: 0.85,
-            36: 0.7
-        }
 
-        self.volatility_amplifiers = {
-            "low": 1.2,
-            "medium": 1.0,
-            "high": 0.8,
-            "extreme": 0.6
-        }
+        # Get time decay factors from config
+        self.time_decay_factors = config.get("exit", "time_decay_factors", {})
+        if not self.time_decay_factors:
+            self.time_decay_factors = {
+                4: 1.0,
+                8: 0.95,
+                16: 0.9,
+                24: 0.85,
+                36: 0.7
+            }
+
+        # Get volatility amplifiers from config
+        self.volatility_amplifiers = config.get("exit", "volatility_amplifiers", {})
+        if not self.volatility_amplifiers:
+            self.volatility_amplifiers = {
+                "low": 1.2,
+                "medium": 1.0,
+                "high": 0.8,
+                "extreme": 0.6
+            }
 
         from indicator_util import IndicatorUtil
+        from market_regime_util import MarketRegimeUtil
         self.indicator_util = IndicatorUtil()
+        self.market_regime_util = MarketRegimeUtil(config)
+        self.indicator_util.market_regime_util = self.market_regime_util
+
+    def _get_atr_multiplier_from_config(self):
+        # Get ATR multipliers from the centralized regime parameters
+        atr_multipliers = self.config.get("market_regime", "regime_parameters", {}).get("atr_multipliers", {})
+
+        if not atr_multipliers:
+            # Fallback to default values
+            return {
+                "strong_uptrend": {"long": 2.8, "short": 2.2},
+                "uptrend": {"long": 2.5, "short": 2.0},
+                "neutral": {"long": 2.5, "short": 2.5},
+                "downtrend": {"long": 2.0, "short": 2.5},
+                "strong_downtrend": {"long": 2.2, "short": 2.8},
+                "ranging_at_support": {"long": 2.0, "short": 3.0},
+                "ranging_at_resistance": {"long": 3.0, "short": 2.0}
+            }
+
+        # Create a mapping for legacy market phase names to the new regime names
+        legacy_map = self.config.get("market_regime", "legacy_regime_mapping", {})
+
+        atr_map = {}
+        for old_name, new_name in legacy_map.items():
+            if new_name in atr_multipliers:
+                atr_map[old_name] = atr_multipliers[new_name]
+
+        return atr_map
 
     def evaluate_time_based_exit(self, position, current_price, current_time, market_conditions):
+        # Get the market phase and check if we need to map it to the new regime type
+        market_phase = market_conditions.get('market_phase', 'neutral')
+
+        # Check if there are blended parameters because of regime transition
+        blended_parameters = market_conditions.get('blended_parameters', {})
+
+        # If we have blended parameters, use them instead of the regular parameters
+        if blended_parameters and 'atr_multipliers' in blended_parameters:
+            tmp_atr_map = {market_phase: blended_parameters['atr_multipliers']}
+            original_atr_map = self.atr_multiplier_map
+            self.atr_multiplier_map = tmp_atr_map
+            result = self.evaluate_time_exit(position, current_price, current_time, market_conditions)
+            self.atr_multiplier_map = original_atr_map
+            return result
+
+        # Otherwise, use the standard evaluation
         return self.evaluate_time_exit(position, current_price, current_time, market_conditions)
 
     def evaluate_time_exit(self, position, current_price, current_time, market_conditions):
@@ -116,24 +169,38 @@ class AdaptiveTimeManager:
 
         trade_duration = self._calculate_duration(entry_time, current_time)
         pnl_pct = self._calculate_pnl(direction, entry_price, current_price)
+
+        # Get market phase and regime parameters
         market_phase = market_conditions.get('market_phase', 'neutral')
+
+        # Check for unified regime parameters
+        if hasattr(self, 'market_regime_util'):
+            # Use centralized regime parameters from MarketRegimeUtil
+            market_phase_normalized = self.market_regime_util.map_legacy_phase_to_regime(market_phase)
+            regime_parameters = self.market_regime_util.get_regime_parameters(market_phase_normalized)
+        else:
+            # Fallback to default values
+            regime_parameters = {}
+
+        # Check if we have blended parameters due to transition
+        blended_parameters = market_conditions.get('blended_parameters', {})
+
         volatility = float(market_conditions.get('volatility', 0.5))
         ensemble_score = float(position.get('ensemble_score', 0.5))
         momentum = float(market_conditions.get('momentum', 0))
-
-        # Get volume delta from market conditions
         volume_delta = float(market_conditions.get('volume_delta', 0))
 
-        # Add volume_delta to exit factors analysis
         exit_decision = self._analyze_exit_factors(
             position, current_price, current_time, market_conditions,
-            trade_duration, pnl_pct, market_phase, volatility, ensemble_score, momentum
+            trade_duration, pnl_pct, market_phase, volatility, ensemble_score, momentum,
+            regime_parameters, blended_parameters
         )
 
         if not exit_decision.get("exit", False):
             partial_exit = self._check_partial_exit(
                 direction, entry_price, current_price, market_phase,
-                trade_duration, volatility, momentum
+                trade_duration, volatility, momentum,
+                regime_parameters, blended_parameters
             )
 
             if partial_exit:
@@ -141,7 +208,7 @@ class AdaptiveTimeManager:
 
             trailing_stop = self._update_trailing_stop(
                 position, current_price, market_phase,
-                volatility, pnl_pct
+                volatility, pnl_pct, regime_parameters, blended_parameters
             )
 
             if trailing_stop:
@@ -155,7 +222,6 @@ class AdaptiveTimeManager:
         entry_price = float(position['entry_price'])
         current_stop = float(position['current_stop_loss'])
 
-        # Add additional market data from market_conditions
         macd_histogram = float(market_conditions.get('macd_histogram', 0))
         volume_delta = float(market_conditions.get('volume_delta', 0))
         bb_width = float(market_conditions.get('bb_width', 0))
@@ -192,7 +258,6 @@ class AdaptiveTimeManager:
                 "exit_price": current_price
             }
 
-        # New: Check for volatility expansion exit
         if bb_width > 0.05 and abs(pnl_pct) > 0.005:
             if (direction == 'long' and momentum < -0.1) or (direction == 'short' and momentum > 0.1):
                 return {
@@ -201,7 +266,6 @@ class AdaptiveTimeManager:
                     "exit_price": current_price
                 }
 
-        # New: Check for key level breach
         if price_action and 'key_level_breach' in price_action:
             level_breach = price_action['key_level_breach']
             if level_breach.get('breached', False):
@@ -236,38 +300,30 @@ class AdaptiveTimeManager:
                 "exit_price": current_stop
             }
 
-        # Enhanced early loss detection - get values from config rather than attributes
         early_loss_threshold = self.config.get("exit", "early_loss_threshold", -0.012)
         early_loss_time = self.config.get("exit", "early_loss_time", 2.5)
 
         if pnl_pct < 0:
-            # Scale threshold based on market conditions
             base_early_loss = early_loss_threshold
 
-            # More sensitive early loss detection in ranging markets
             if "ranging" in market_phase:
                 base_early_loss *= 0.7
 
-            # Consider volatility for early loss threshold
             if volatility > 0.7:
-                base_early_loss *= 0.85  # Less sensitive in high volatility
+                base_early_loss *= 0.85
 
-            # Consider trend strength from market conditions
             trend_strength = float(market_conditions.get('trend_strength', 0.5))
-            if trend_strength < 0.3:  # Weak trend
-                base_early_loss *= 0.8  # More sensitive when trend is weak
+            if trend_strength < 0.3:
+                base_early_loss *= 0.8
 
-            # Adaptive time threshold - exit earlier in ranging markets
             time_threshold = early_loss_time
             if "ranging" in market_phase:
                 time_threshold *= 0.7
 
-            # Factor in momentum direction - exit faster on adverse momentum
             if (direction == 'long' and momentum < -0.2) or (direction == 'short' and momentum > 0.2):
                 base_early_loss *= 0.8
                 time_threshold *= 0.8
 
-            # Check for early loss exit condition
             if pnl_pct < base_early_loss and trade_duration > time_threshold:
                 return {
                     "exit": True,
@@ -342,19 +398,16 @@ class AdaptiveTimeManager:
         if pnl_pct <= 0.005 or trade_duration < 1.0:
             return False
 
-        # Check both momentum and MACD histogram for stronger confirmation
         if direction == 'long':
-            # Combined signal using momentum, MACD histogram and volume (if available)
             momentum_signal = momentum < -0.2
             macd_signal = macd_histogram < 0
             volume_signal = volume_delta < -1.0 if abs(volume_delta) > 0 else False
 
-            # Need at least 2 confirming signals (reduced dependency on any single indicator)
             signals = [momentum_signal, macd_signal, volume_signal]
             confirming_signals = sum(1 for signal in signals if signal)
 
             return confirming_signals >= 2
-        else:  # short
+        else:
             momentum_signal = momentum > 0.2
             macd_signal = macd_histogram > 0
             volume_signal = volume_delta > 1.0 if abs(volume_delta) > 0 else False
@@ -405,12 +458,10 @@ class AdaptiveTimeManager:
         return pnl_pct > threshold and trade_duration > self.min_holding_time
 
     def _check_stagnant_trade(self, pnl_pct, trade_duration, market_phase):
-        # Get stagnant threshold from config
         base_threshold = self.config.get("exit", "stagnant_threshold", 0.003)
 
-        # More aggressive thresholds for ranging markets
         phase_thresholds = {
-            "ranging": base_threshold * 0.83,  # Increased sensitivity in ranging markets
+            "ranging": base_threshold * 0.83,
             "ranging_at_support": base_threshold * 0.66,
             "ranging_at_resistance": base_threshold * 0.66,
             "uptrend": base_threshold,
@@ -421,7 +472,6 @@ class AdaptiveTimeManager:
 
         threshold = phase_thresholds.get(market_phase, base_threshold)
 
-        # More dynamic time thresholds - exit earlier in ranging markets
         if "ranging" in market_phase:
             if trade_duration > 3.0 and abs(pnl_pct) < threshold:
                 return True
@@ -430,7 +480,6 @@ class AdaptiveTimeManager:
             if trade_duration > 9.0 and abs(pnl_pct) < threshold * 2:
                 return True
         else:
-            # Standard checks for other market phases
             if trade_duration < 4.0:
                 return False
             if trade_duration > 8.0 and abs(pnl_pct) < threshold:
@@ -519,28 +568,22 @@ class AdaptiveTimeManager:
         current_stop = float(position['current_stop_loss'])
         atr = float(position.get('atr', current_price * 0.01))
 
-        # Don't trail stops until minimum profit threshold
-        min_profit_for_adjustment = 0.008  # Increased from previous value
+        min_profit_for_adjustment = 0.008
         if pnl_pct < min_profit_for_adjustment:
             return None
 
-        # Get base ATR multiplier for the market phase and direction
         atr_multiplier = self.atr_multiplier_map.get(market_phase, {}).get(direction, 2.5)
 
-        # For ranging markets, use wider trailing stops
         if "ranging" in market_phase:
             atr_multiplier *= 1.5
 
-        # Implement smarter trailing logic based on trend_strength
         trend_strength = float(position.get('trend_strength', 0.5))
-        if trend_strength < 0.3:  # Weak trend
-            atr_multiplier *= 1.3  # Wider trailing
+        if trend_strength < 0.3:
+            atr_multiplier *= 1.3
 
-        # Calculate new stop loss with sufficient breathing room
         if direction == 'long':
             new_stop = current_price - (atr_multiplier * atr)
 
-            # Add progressive profit lock logic - move to breakeven faster in ranging markets
             if market_phase == "ranging" and pnl_pct > 0.012:
                 new_stop = max(new_stop, entry_price + (entry_price * 0.001))
 
@@ -554,7 +597,6 @@ class AdaptiveTimeManager:
         else:
             new_stop = current_price + (atr_multiplier * atr)
 
-            # Add progressive profit lock logic
             if market_phase == "ranging" and pnl_pct > 0.012:
                 new_stop = min(new_stop, entry_price - (entry_price * 0.001))
 
@@ -739,16 +781,6 @@ class AdaptiveTimeManager:
                 hours.append(24)
         return hours
 
-    def get_optimal_holding_time(self, market_phase=None, direction=None):
-        if not market_phase:
-            return self.optimal_durations.get('overall', 12.0)
-
-        phase_specific = self.optimal_durations.get(market_phase)
-        if phase_specific:
-            return phase_specific
-
-        return self.optimal_durations.get('overall', 12.0)
-
     def get_exit_performance_stats(self):
         return self.get_exit_performance()
 
@@ -758,54 +790,6 @@ class AdaptiveTimeManager:
             'optimal_durations': self.optimal_durations,
             'performance_by_duration': self.performance_by_duration,
             'performance_by_phase': self.performance_by_phase
-        }
-
-    def calculate_optimal_trade_duration(self, trade_history=None):
-        trades = trade_history or self.trade_history
-
-        if not trades or len(trades) < 10:
-            return {
-                "optimal_hold_time": 12,
-                "confidence": "low",
-                "data_points": len(trades) if trades else 0
-            }
-
-        winning_trades = [t for t in trades if t.get('pnl', 0) > 0]
-        if not winning_trades:
-            return {
-                "optimal_hold_time": 12,
-                "confidence": "low",
-                "data_points": 0
-            }
-
-        trade_durations = [t.get('duration_hours', 0) for t in winning_trades]
-        optimal_duration = min(36, max(6, np.mean(trade_durations) * 1.2))
-
-        phases = {}
-        for trade in winning_trades:
-            phase = trade.get('market_phase', 'neutral')
-            if phase not in phases:
-                phases[phase] = []
-            phases[phase].append(trade.get('duration_hours', 0))
-
-        phase_durations = {}
-        for phase, durations in phases.items():
-            if len(durations) >= 5:
-                phase_durations[phase] = np.mean(durations)
-
-        confidence = "medium"
-        if len(winning_trades) > 30:
-            confidence = "high"
-        elif len(winning_trades) < 10:
-            confidence = "low"
-
-        return {
-            "optimal_hold_time": optimal_duration,
-            "avg_trade_duration": np.mean([t.get('duration_hours', 0) for t in trades]),
-            "avg_profitable_duration": np.mean(trade_durations),
-            "confidence": confidence,
-            "data_points": len(winning_trades),
-            "phase_optimal_durations": phase_durations
         }
 
     def _validate_position(self, position, current_price, current_time):

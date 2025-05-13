@@ -5,349 +5,179 @@ import tensorflow as tf
 from datetime import datetime
 from pathlib import Path
 import traceback
+import gc
 
-from backtest_engine import BacktestEngine
 from config import Config
 from data_manager import DataManager
-from data_preparer import DataPreparer
 from feature_engineering import FeatureEngineer
+from data_preparer import DataPreparer
 from model import TradingModel
-from risk_manager import RiskManager
 from signal_processor import SignalGenerator
-from adaptive_time_management import AdaptiveTimeManager
-from optuna_feature_selector import OptunaFeatureSelector
+from risk_manager import RiskManager
+from backtest_engine import BacktestEngine
 
 
-def setup_logging(config, log_level=logging.INFO):
-    logs_dir = config.results_dir / "logs"
-    logs_dir.mkdir(exist_ok=True)
-
+def setup_logging(config_instance: Config, log_level=logging.INFO) -> logging.Logger:
+    logs_dir = config_instance.results_dir / "logs"
+    logs_dir.mkdir(exist_ok=True, parents=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_file = logs_dir / f"enhanced_bitcoin_trading_{timestamp}.log"
+    log_file = logs_dir / f"bitcoin_trader_{timestamp}.log"
+
+    for handler in logging.root.handlers[:]:
+        logging.root.removeHandler(handler)
 
     logging.basicConfig(
         level=log_level,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        handlers=[
-            logging.FileHandler(log_file),
-            logging.StreamHandler()
-        ]
+        handlers=[logging.FileHandler(log_file), logging.StreamHandler()]
     )
-
-    logger = logging.getLogger(__name__)
-    return logger
+    return logging.getLogger(__name__)
 
 
-def configure_gpu():
-    try:
-        gpus = tf.config.list_physical_devices('GPU')
-        if gpus:
+def configure_gpu_tf():
+    gpus = tf.config.list_physical_devices('GPU')
+    if gpus:
+        try:
             for gpu in gpus:
                 tf.config.experimental.set_memory_growth(gpu, True)
+            logging.info(f"TensorFlow: Enabled memory growth for {len(gpus)} GPU(s).")
+            if tf.keras.mixed_precision.global_policy().name != 'mixed_float16':
+                tf.keras.mixed_precision.set_global_policy('mixed_float16')
+                logging.info("TensorFlow: Mixed precision 'mixed_float16' set globally.")
             return True
-        else:
-            return False
-    except Exception:
-        return False
+        except RuntimeError as e:
+            logging.error(f"TensorFlow: Error setting memory growth or mixed precision: {e}")
+    else:
+        logging.info("TensorFlow: No GPU found, using CPU.")
+    return False
 
 
-def parse_args():
-    parser = argparse.ArgumentParser(
-        description="Enhanced Bitcoin Trading System",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter
-    )
-
-    parser.add_argument(
-        "--mode", "-m",
-        type=str,
-        choices=["backtest", "train", "fetch-data", "optimize-exits", "optimize-features"],
-        default="backtest",
-        help="Operation mode"
-    )
-
-    parser.add_argument(
-        "--data-folder", "-d",
-        type=str,
-        default="data",
-        help="Folder to store data files"
-    )
-
-    parser.add_argument(
-        "--output-folder", "-o",
-        type=str,
-        default="results",
-        help="Folder to store results"
-    )
-
-    parser.add_argument(
-        "--use-api",
-        action="store_true",
-        help="Use API to fetch data instead of cached data"
-    )
-
-    parser.add_argument(
-        "--enhanced-exits",
-        action="store_true",
-        help="Enable enhanced exit strategy optimizations"
-    )
-
-    parser.add_argument(
-        "--optuna-trials",
-        type=int,
-        default=30,
-        help="Number of Optuna trials for feature optimization"
-    )
-
+def parse_arguments():
+    parser = argparse.ArgumentParser(description="Bitcoin Algorithmic Trading System")
+    parser.add_argument("--mode", "-m", type=str, choices=["backtest", "train", "fetch-data"], default="backtest",
+                        help="Operation mode")
+    parser.add_argument("--config", "-c", type=str, default=None, help="Path to custom JSON config file")
+    parser.add_argument("--data-dir", type=str, default=None, help="Override data directory from config")
+    parser.add_argument("--results-dir", type=str, default=None, help="Override results directory from config")
+    parser.add_argument("--use-api", action="store_true", help="Force use of API for data fetching (overrides config)")
+    parser.add_argument("--log-level", type=str, choices=["DEBUG", "INFO", "WARNING", "ERROR"], default="INFO",
+                        help="Logging level")
     return parser.parse_args()
 
 
-def fetch_data(config, use_api=False):
-    if use_api:
-        config.set("data", "use_api", True)
-
-    data_manager = DataManager(config)
-    df_30m = data_manager.fetch_all_data(live=use_api)
-
-    if df_30m is None or df_30m.empty:
-        return None, None
-
-    return df_30m
-
-
-def create_features(config, df_30m):
-    feature_engineer = FeatureEngineer(config)
-    df_features = feature_engineer.process_features(df_30m)
-
-    if df_features.empty:
-        return None
-
-    return df_features
-
-
-def train_model(config, df_features):
-    data_preparer = DataPreparer(config)
-    X_train, y_train, X_val, y_val, df_val, fwd_returns_val = data_preparer.prepare_data(df_features)
-
-    if len(X_train) == 0 or len(y_train) == 0:
-        return None
-
-    model = TradingModel(config)
-    trained_model = model.train_model(
-        X_train, y_train, X_val, y_val, df_val, fwd_returns_val
-    )
-
-    tf.keras.backend.clear_session()
-
-    return model
-
-
-def run_enhanced_backtest(config, df_features):
-    data_preparer = DataPreparer(config)
-    model = TradingModel(config)
-    signal_processor = SignalGenerator(config)
-    risk_manager = RiskManager(config)
-    time_manager = AdaptiveTimeManager(config)
-
-    backtest_engine = BacktestEngine(
-        config,
-        data_preparer,
-        model,
-        signal_processor,
-        risk_manager
-    )
-
-    backtest_engine.time_manager = time_manager
-    results = backtest_engine.run_backtest(df_features)
-
-    if results.empty:
-        return None
-
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    results_dir = Path(config.results_dir) / "backtest"
-    results_file = results_dir / f"enhanced_backtest_results_{timestamp}.csv"
-
-    results.to_csv(results_file, index=False)
-
-    return results
-
-
-def optimize_exit_strategies(config, df_features):
-    config.set("risk", "enhanced_exit_strategy", True)
-    config.set("risk", "momentum_exit_enabled", True)
-    config.set("risk", "dynamic_trailing_stop", True)
-    config.set("backtest", "enhanced_exit_analysis", True)
-    config.set("backtest", "track_exit_performance", True)
-
-    data_preparer = DataPreparer(config)
-    model = TradingModel(config)
-    signal_processor = SignalGenerator(config)
-    risk_manager = RiskManager(config)
-    time_manager = AdaptiveTimeManager(config)
-
-    backtest_engine = BacktestEngine(
-        config,
-        data_preparer,
-        model,
-        signal_processor,
-        risk_manager
-    )
-
-    backtest_engine.time_manager = time_manager
-
-    original_steps = config.get("backtest", "walk_forward_steps")
-    config.set("backtest", "walk_forward_steps", min(5, original_steps))
-
-    results = backtest_engine.run_backtest(df_features)
-    config.set("backtest", "walk_forward_steps", original_steps)
-
-    if results.empty:
-        return None
-
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    results_dir = Path(config.results_dir) / "backtest"
-    results_file = results_dir / f"exit_strategy_optimization_{timestamp}.csv"
-    results.to_csv(results_file, index=False)
-
-    return results
-
-
-def optimize_features(config, df_features):
-    logger = logging.getLogger(__name__)
-    logger.info("Starting feature optimization with Optuna")
-
-    # Update Optuna parameters from command line if provided
-    if hasattr(args, 'optuna_trials') and args.optuna_trials:
-        config.set("feature_engineering", "optuna_n_trials", args.optuna_trials)
-
-    # Create feature selector
-    feature_selector = OptunaFeatureSelector(config)
-
-    # Run optimization
-    optimized_features = feature_selector.optimize_features(df_features)
-
-    # Report results
-    if optimized_features:
-        logger.info(f"Feature optimization complete. Selected {len(optimized_features)} features")
-        essential_features = config.get("feature_engineering", "essential_features", [])
-        non_essential = [f for f in optimized_features if f not in essential_features]
-
-        logger.info(f"Essential features: {len(essential_features)}")
-        logger.info(f"Additional optimized features: {len(non_essential)}")
-
-        # Create a DataPreparer and test with the optimized features
-        data_preparer = DataPreparer(config)
-        data_preparer.optimized_features = optimized_features
-
-        # Run a short test with optimized features
-        X_train, y_train, X_val, y_val, df_val, fwd_returns_val = data_preparer.prepare_data(df_features)
-
-        if len(X_train) > 0 and len(y_train) > 0:
-            logger.info(f"Test successful with optimized features: X_train shape: {X_train.shape}")
-            return optimized_features
-        else:
-            logger.error("Test failed with optimized features")
-            return None
-    else:
-        logger.error("Feature optimization failed")
-        return None
-
-
 def main():
-    global args
-    args = parse_args()
+    args = parse_arguments()
 
     try:
-        config = Config(None)
+        config_instance = Config(args.config)
     except Exception as e:
-        print(f"Error initializing configuration: {e}")
+        print(f"FATAL: Error initializing configuration: {e}")
         return 1
 
-    logger = setup_logging(config)
-    configure_gpu()
-
-    if args.data_folder:
-        data_path = Path(args.data_folder).resolve()
-        config.data_dir = data_path
-        config.set("data", "csv_30m", str(data_path / "btc_30m.csv"))
-
-    if args.output_folder:
-        results_path = Path(args.output_folder).resolve()
-        config.results_dir = results_path
-        config.set("model", "model_path", str(results_path / "models" / "best_model.keras"))
-
-    if args.enhanced_exits:
-        config.set("risk", "enhanced_exit_strategy", True)
-        config.set("risk", "momentum_exit_enabled", True)
-        config.set("risk", "dynamic_trailing_stop", True)
-        config.set("backtest", "enhanced_exit_analysis", True)
-        config.set("backtest", "track_exit_performance", True)
+    if args.data_dir:
+        config_instance.data_dir = Path(args.data_dir).resolve()
+        config_instance.set("data", "csv_30m", str(config_instance.data_dir / "btc_30m.csv"))
+    if args.results_dir:
+        config_instance.results_dir = Path(args.results_dir).resolve()
+        config_instance.set("model", "model_path", str(config_instance.results_dir / "models" / "best_model.keras"))
 
     if args.use_api:
-        config.set("data", "use_api", True)
+        config_instance.set("data", "use_api", True)
+
+    logger = setup_logging(config_instance, getattr(logging, args.log_level.upper()))
+    logger.info(f"Starting application in mode: {args.mode}")
+    logger.info(f"Using data directory: {config_instance.data_dir}")
+    logger.info(f"Using results directory: {config_instance.results_dir}")
+
+    configure_gpu_tf()
 
     try:
+        data_manager = DataManager(config_instance)
+
         if args.mode == "fetch-data":
-            fetch_data(config, live=True)
+            logger.info("Fetching data...")
+            df_ohlcv = data_manager.fetch_all_data(live=True)
+            if df_ohlcv.empty:
+                logger.error("Data fetching failed.")
+                return 1
+            logger.info(f"Data fetched successfully. Shape: {df_ohlcv.shape}")
+            return 0
 
-        elif args.mode == "train":
-            df_30m = fetch_data(config, use_api=args.use_api)
-            if df_30m is None:
+        logger.info("Loading data...")
+        df_ohlcv = data_manager.fetch_all_data(live=config_instance.get("data", "use_api", False))
+        if df_ohlcv.empty:
+            logger.error("Failed to load data. Exiting.")
+            return 1
+        logger.info(f"Data loaded. Shape: {df_ohlcv.shape}")
+
+        logger.info("Engineering features...")
+        feature_engineer = FeatureEngineer(config_instance)
+        df_features = feature_engineer.process_features(df_ohlcv)
+        del df_ohlcv
+        gc.collect()
+        if df_features.empty:
+            logger.error("Feature engineering failed. Exiting.")
+            return 1
+        logger.info(f"Features engineered. Shape: {df_features.shape}")
+
+        data_preparer = DataPreparer(config_instance)
+        model_trainer = TradingModel(config_instance)
+
+        if args.mode == "train":
+            logger.info("Preparing data for training...")
+            X_train, y_train, X_val, y_val_dummy, df_val_for_callback, fwd_returns_val = \
+                data_preparer.prepare_data(df_features)
+
+            if X_train.size == 0:
+                logger.error("Data preparation for training failed. Exiting.")
                 return 1
 
-            df_features = create_features(config, df_30m)
-            if df_features is None:
-                return 1
+            logger.info("Starting model training...")
+            trained_model = model_trainer.train_model(X_train, y_train, X_val, y_val_dummy, df_val_for_callback,
+                                                      fwd_returns_val)
+            del X_train, y_train, X_val, y_val_dummy, df_val_for_callback, fwd_returns_val
+            gc.collect()
 
-            model = train_model(config, df_features)
-            if model is None:
+            if trained_model is None:
+                logger.error("Model training failed. Exiting.")
                 return 1
-
-        elif args.mode == "optimize-exits":
-            df_30m = fetch_data(config, use_api=args.use_api)
-            if df_30m is None:
-                return 1
-
-            df_features = create_features(config, df_30m)
-            if df_features is None:
-                return 1
-
-            results = optimize_exit_strategies(config, df_features)
-            if results is None:
-                return 1
-
-        elif args.mode == "optimize-features":
-            df_30m = fetch_data(config, use_api=args.use_api)
-            if df_30m is None:
-                return 1
-
-            df_features = create_features(config, df_30m)
-            if df_features is None:
-                return 1
-
-            optimized_features = optimize_features(config, df_features)
-            if optimized_features is None:
-                return 1
+            logger.info("Model training completed.")
 
         elif args.mode == "backtest":
-            df_30m = fetch_data(config, use_api=args.use_api)
-            if df_30m is None:
+            if not model_trainer.load_model():
+                logger.error("Failed to load model for backtest. Train a model first or check path. Exiting.")
+                return 1
+            logger.info("Model loaded successfully for backtest.")
+
+            signal_generator = SignalGenerator(config_instance)
+            risk_manager = RiskManager(config_instance)
+
+            logger.info("Initializing backtest engine...")
+            backtest_engine = BacktestEngine(config_instance, data_preparer, model_trainer, signal_generator,
+                                             risk_manager)
+
+            logger.info("Running backtest...")
+            results_summary_df = backtest_engine.run_backtest(df_features)
+            del df_features
+            gc.collect()
+
+            if results_summary_df is None or results_summary_df.empty:
+                logger.error("Backtest execution failed or produced no results.")
                 return 1
 
-            df_features = create_features(config, df_30m)
-            if df_features is None:
-                return 1
-
-            results = run_enhanced_backtest(config, df_features)
-            if results is None:
-                return 1
+            results_file = config_instance.results_dir / "backtest" / f"backtest_summary_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+            results_summary_df.to_csv(results_file)
+            logger.info(f"Backtest completed. Summary saved to {results_file}")
+            logger.info("\n" + results_summary_df.to_string())
 
     except Exception as e:
-        logger.error(f"An error occurred: {e}")
+        logger.error(f"An unhandled error occurred in main execution: {e}")
         logger.error(traceback.format_exc())
         return 1
-
     finally:
         tf.keras.backend.clear_session()
+        gc.collect()
+        logging.info("Application finished.")
 
     return 0
 

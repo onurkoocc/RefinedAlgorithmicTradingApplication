@@ -6,1087 +6,144 @@ from collections import deque
 import math
 
 
+class TimeFrame:
+    MICRO = "micro"
+    SHORT = "short"
+    MEDIUM = "medium"
+    LONG = "long"
+    EXTENDED = "extended"
+
+
 class PerformanceTracker:
     def __init__(self):
         self.total_trades = 0
         self.winning_trades = 0
-        self.losing_trades = 0
         self.total_pnl = 0.0
-        self.performance_by_regime = {}
-        self.performance_by_signal = {}
-        self.performance_by_exit = {}
         self.peak_capital = 0.0
         self.max_drawdown = 0.0
         self.current_drawdown = 0.0
-        self.drawdown_duration = 0
-        self.max_drawdown_duration = 0
         self.current_streak = 0
         self.max_win_streak = 0
         self.max_loss_streak = 0
-        self.trade_durations = []
-        self.optimal_holding_times = {}
+        self.trade_durations = []  # in hours
 
-    def update_performance(self, trade_result):
-        pnl = float(trade_result.get('pnl', 0))
-        is_win = pnl > 0
-
+    def update_trade(self, pnl: float, duration_hours: float):
         self.total_trades += 1
-        if is_win:
-            self.winning_trades += 1
-        else:
-            self.losing_trades += 1
-
         self.total_pnl += pnl
+        if pnl > 0:
+            self.winning_trades += 1
+            if self.current_streak >= 0:
+                self.current_streak += 1
+            else:
+                self.current_streak = 1
+            self.max_win_streak = max(self.max_win_streak, self.current_streak)
+        else:
+            if self.current_streak <= 0:
+                self.current_streak -= 1
+            else:
+                self.current_streak = -1
+            self.max_loss_streak = max(self.max_loss_streak, abs(self.current_streak))
+        if duration_hours > 0:
+            self.trade_durations.append(duration_hours)
 
-        market_phase = trade_result.get('market_phase', 'neutral')
-        exit_reason = trade_result.get('exit_signal', 'unknown')
-        signal_type = trade_result.get('entry_signal', 'unknown')
+    def update_capital(self, current_capital: float, peak_capital: float):
+        self.peak_capital = peak_capital
+        if self.peak_capital > 0:
+            self.current_drawdown = (self.peak_capital - current_capital) / self.peak_capital
+            self.max_drawdown = max(self.max_drawdown, self.current_drawdown)
 
-        if market_phase not in self.performance_by_regime:
-            self.performance_by_regime[market_phase] = {'count': 0, 'win_count': 0, 'total_pnl': 0}
-
-        if exit_reason not in self.performance_by_exit:
-            self.performance_by_exit[exit_reason] = {'count': 0, 'win_count': 0, 'total_pnl': 0}
-
-        if signal_type not in self.performance_by_signal:
-            self.performance_by_signal[signal_type] = {'count': 0, 'win_count': 0, 'total_pnl': 0}
-
-        self.performance_by_regime[market_phase]['count'] += 1
-        self.performance_by_exit[exit_reason]['count'] += 1
-        self.performance_by_signal[signal_type]['count'] += 1
-
-        if is_win:
-            self.performance_by_regime[market_phase]['win_count'] += 1
-            self.performance_by_exit[exit_reason]['win_count'] += 1
-            self.performance_by_signal[signal_type]['win_count'] += 1
-
-        self.performance_by_regime[market_phase]['total_pnl'] += pnl
-        self.performance_by_exit[exit_reason]['total_pnl'] += pnl
-        self.performance_by_signal[signal_type]['total_pnl'] += pnl
-
-        duration = trade_result.get('duration_hours', 0)
-        if duration > 0:
-            self.trade_durations.append(duration)
-
-        self._update_optimal_holding_times()
-
-    def _update_optimal_holding_times(self):
-        if len(self.trade_durations) < 10:
-            return
-
-        winning_trades = [t for t in self.trade_durations if t > 0]
-        if winning_trades:
-            self.optimal_holding_times['overall'] = np.mean(winning_trades)
-
-    def get_metrics(self):
+    def get_metrics(self) -> Dict[str, Any]:
         win_rate = self.winning_trades / self.total_trades if self.total_trades > 0 else 0
-
+        avg_duration = np.mean(self.trade_durations) if self.trade_durations else 0
         return {
-            'total_trades': self.total_trades,
-            'win_rate': win_rate,
-            'profit_factor': self._calculate_profit_factor(),
-            'max_drawdown': self.max_drawdown,
+            'total_trades': self.total_trades, 'win_rate': win_rate,
+            'total_pnl': self.total_pnl, 'max_drawdown': self.max_drawdown,
             'current_drawdown': self.current_drawdown,
-            'max_win_streak': self.max_win_streak,
-            'max_loss_streak': self.max_loss_streak,
-            'optimal_holding_time': self.optimal_holding_times.get('overall', 12)
+            'max_win_streak': self.max_win_streak, 'max_loss_streak': self.max_loss_streak,
+            'avg_trade_duration_hours': avg_duration
         }
-
-    def _calculate_profit_factor(self):
-        wins = [t for t in self.performance_by_exit.values() if t.get('total_pnl', 0) > 0]
-        losses = [t for t in self.performance_by_exit.values() if t.get('total_pnl', 0) <= 0]
-
-        total_wins = sum(t.get('total_pnl', 0) for t in wins)
-        total_losses = abs(sum(t.get('total_pnl', 0) for t in losses))
-
-        return total_wins / max(total_losses, 1e-10)
-
-
-class MarketRegimeAdapter:
-    def __init__(self, config):
-        self.config = config
-        self.volatility_bands = {
-            "very_low": 0.0,
-            "low": 0.3,
-            "medium": 0.5,
-            "high": 0.7,
-            "very_high": 0.85
-        }
-        self.trend_threshold = config.get("risk", "trend_threshold", 25)
-        self.regime_performance = {}
-        self.regime_adjustment_frequency = config.get("risk", "regime_adjustment_frequency", 50)
-        self.trade_count = 0
-        self.risk_multipliers = {}
-        self.current_regime = "neutral"
-        self.current_volatility = "medium"
-
-    def update_regime_parameters(self, trade_result):
-        self.trade_count += 1
-        regime = trade_result.get('market_phase', 'neutral')
-        pnl = trade_result.get('pnl', 0)
-
-        if regime not in self.regime_performance:
-            self.regime_performance[regime] = {
-                'count': 0,
-                'win_count': 0,
-                'total_pnl': 0
-            }
-
-        self.regime_performance[regime]['count'] += 1
-        if pnl > 0:
-            self.regime_performance[regime]['win_count'] += 1
-        self.regime_performance[regime]['total_pnl'] += pnl
-
-        if self.trade_count % self.regime_adjustment_frequency == 0:
-            self._optimize_regime_multipliers()
-
-    def _optimize_regime_multipliers(self):
-        for regime, stats in self.regime_performance.items():
-            if stats['count'] < 5:
-                continue
-
-            win_rate = stats['win_count'] / stats['count']
-            avg_pnl = stats['total_pnl'] / stats['count']
-
-            if win_rate > 0.6 and avg_pnl > 0:
-                self.risk_multipliers[regime] = min(1.2, 1.0 + (win_rate - 0.5))
-            elif win_rate < 0.4 or avg_pnl < 0:
-                self.risk_multipliers[regime] = max(0.7, 1.0 - (0.5 - win_rate))
-
-
-class PartialExitTracker:
-    def __init__(self, config):
-        self.config = config
-        self.enable_partial_exits = config.get("exit", "enable_partial_exits", True)
-        self.max_partial_exits = config.get("exit", "max_partial_exits", 4)
-
-        self.partial_exit_thresholds = {
-            "level1": {"threshold": 0.0075, "portion": 0.25},
-            "level2": {"threshold": 0.015, "portion": 0.30},
-            "level3": {"threshold": 0.0225, "portion": 0.25},
-            "level4": {"threshold": 0.0375, "portion": 0.20}
-        }
-
-        self.regime_threshold_adjustments = {
-            "strong_uptrend": 1.2,
-            "uptrend": 1.1,
-            "neutral": 1.0,
-            "downtrend": 0.9,
-            "strong_downtrend": 0.8,
-            "ranging_at_support": 0.8,
-            "ranging_at_resistance": 0.7,
-            "volatile": 0.7
-        }
-        self.exit_performance = {}
-
-        self.volatility_adjustment_enabled = True
-        self.volatility_adjustment_factors = {
-            "low": 0.9,
-            "medium": 1.0,
-            "high": 1.1,
-            "extreme": 1.2
-        }
-
-    def get_partial_exit_levels(self, position, current_price, **market_conditions):
-        if not self.enable_partial_exits:
-            return None
-
-        direction = position.get('direction', '')
-        entry_price = float(position.get('entry_price', 0))
-
-        if direction not in ['long', 'short'] or entry_price <= 0:
-            return None
-
-        if direction == 'long':
-            pnl_pct = (current_price / entry_price) - 1
-        else:
-            pnl_pct = (entry_price / current_price) - 1
-
-        if pnl_pct <= 0:
-            return None
-
-        market_phase = market_conditions.get('market_phase', 'neutral')
-        phase_adjustment = self.regime_threshold_adjustments.get(market_phase, 1.0)
-
-        volatility = market_conditions.get('volatility', 0.5)
-        volatility_adjustment = 1.0
-
-        if self.volatility_adjustment_enabled:
-            if volatility < 0.3:
-                volatility_adjustment = self.volatility_adjustment_factors["low"]
-            elif volatility < 0.6:
-                volatility_adjustment = self.volatility_adjustment_factors["medium"]
-            elif volatility < 0.8:
-                volatility_adjustment = self.volatility_adjustment_factors["high"]
-            else:
-                volatility_adjustment = self.volatility_adjustment_factors["extreme"]
-
-        for level_name, level_data in self.partial_exit_thresholds.items():
-            threshold = level_data["threshold"] * phase_adjustment * volatility_adjustment
-
-            if pnl_pct >= threshold and not position.get(f"partial_exit_{level_name}", False):
-                return {
-                    "threshold": threshold,
-                    "portion": level_data["portion"],
-                    "id": f"partial_exit_{level_name}"
-                }
-
-        return None
-
-
-class DynamicExitStrategy:
-    def __init__(self, config):
-        self.config = config
-        self.base_atr_multiplier = config.get("exit", "base_atr_multiplier", 3.0)
-        self.atr_multiplier_map = {
-            "strong_uptrend": {"long": 3.5, "short": 2.8},
-            "uptrend": {"long": 3.2, "short": 2.5},
-            "neutral": {"long": 2.8, "short": 2.8},
-            "downtrend": {"long": 2.5, "short": 3.2},
-            "strong_downtrend": {"long": 2.8, "short": 3.5},
-            "ranging_at_support": {"long": 2.4, "short": 3.0},
-            "ranging_at_resistance": {"long": 3.0, "short": 2.4},
-            "volatile": {"long": 3.6, "short": 3.6}
-        }
-        self.profit_targets = {
-            "strong_uptrend": {"long": 0.04, "short": 0.025},
-            "uptrend": {"long": 0.035, "short": 0.02},
-            "neutral": {"long": 0.025, "short": 0.025},
-            "downtrend": {"long": 0.02, "short": 0.035},
-            "strong_downtrend": {"long": 0.025, "short": 0.04},
-            "ranging_at_support": {"long": 0.02, "short": 0.015},
-            "ranging_at_resistance": {"long": 0.015, "short": 0.02},
-            "volatile": {"long": 0.03, "short": 0.03}
-        }
-        self.enable_dynamic_trailing = config.get("exit", "enable_dynamic_trailing", True)
-        self.trailing_activation_threshold = config.get("exit", "trailing_activation_threshold", 0.01)
-        self.time_based_exits = config.get("exit", "time_based_exits", True)
-        self.max_trade_duration_hours = config.get("exit", "max_trade_duration_hours", 24.0)
-        self.phase_max_durations = {
-            "strong_uptrend": 18.0,
-            "uptrend": 12.0,
-            "neutral": 24.0,
-            "downtrend": 12.0,
-            "strong_downtrend": 18.0,
-            "ranging_at_support": 8.0,
-            "ranging_at_resistance": 6.0,
-            "volatile": 8.0
-        }
-        self.rsi_extreme_exit = config.get("exit", "rsi_extreme_exit", True)
-        self.rsi_overbought = config.get("exit", "rsi_overbought", 70)
-        self.rsi_oversold = config.get("exit", "rsi_oversold", 30)
-        self.macd_reversal_exit = config.get("exit", "macd_reversal_exit", True)
-        self.enable_early_loss_exit = config.get("exit", "enable_early_loss_exit", True)
-        self.early_loss_threshold = config.get("exit", "early_loss_threshold", -0.012)
-        self.early_loss_time = config.get("exit", "early_loss_time", 2.5)
-        self.enable_quick_profit_exit = config.get("exit", "enable_quick_profit_exit", True)
-        self.quick_profit_threshold = config.get("exit", "quick_profit_threshold",
-                                                 0.006)
-        self.min_holding_time = config.get("exit", "min_holding_time", 0.3)
-        self.enable_stagnant_exit = config.get("exit", "enable_stagnant_exit", True)
-        self.stagnant_threshold = config.get("exit", "stagnant_threshold", 0.003)
-        self.stagnant_time = config.get("exit", "stagnant_time", 3.0)
-        self.exit_performance = {}
-        self.exit_counter = {}
-        self.time_dependent_sl_adjustment = True
-        self.sl_time_threshold_hours = 2.0
-        self.sl_time_widening_factor = 1.25
-
-        self.enable_trailing_take_profit = True
-        self.trailing_tp_activation_ratio = 0.6
-        self.trailing_tp_atr_multiplier = 1.5
-        self.avg_profitable_duration = 6.0
-
-        self.enable_volatility_tp_scaling = True
-        self.volatility_tp_factors = {
-            "low": 0.9,
-            "medium": 1.0,
-            "high": 1.2,
-            "extreme": 1.4
-        }
-
-    def evaluate_exit(self, position, current_price, current_atr, **kwargs):
-        if not self._validate_position_data(position):
-            return {"exit": False, "reason": "InvalidPosition"}
-
-        current_price = float(current_price)
-        current_atr = float(current_atr)
-        entry_price = float(position.get('entry_price', 0))
-        initial_stop_loss = float(position.get('initial_stop_loss', 0))
-        current_stop_loss = float(position.get('current_stop_loss', initial_stop_loss))
-        direction = position.get('direction', '')
-
-        if direction not in ['long', 'short']:
-            return {"exit": False, "reason": "InvalidDirection"}
-
-        trade_duration = float(kwargs.get('trade_duration', 0))
-        market_phase = kwargs.get('market_phase', 'neutral')
-        volatility_regime = float(kwargs.get('volatility', 0.5))
-        ensemble_score = float(position.get('ensemble_score', 0.5))
-
-        if direction == 'long':
-            pnl_pct = (current_price - entry_price) / entry_price
-        else:
-            pnl_pct = (entry_price - current_price) / entry_price
-
-        rsi_14 = float(kwargs.get('rsi_14', 50))
-        macd = float(kwargs.get('macd', 0))
-        macd_signal = float(kwargs.get('macd_signal', 0))
-        macd_histogram = float(kwargs.get('macd_histogram', 0))
-
-        bb_width = float(kwargs.get('bb_width', 0))
-        momentum = float(kwargs.get('momentum', 0))
-        trend_strength = float(kwargs.get('trend_strength', 0.5))
-        volume_delta = float(kwargs.get('volume_delta', 0))
-
-        max_duration = self.phase_max_durations.get(market_phase, self.max_trade_duration_hours)
-
-        if pnl_pct > 0.015:
-            max_duration *= 1.5
-
-        if pnl_pct < 0 and volatility_regime > 0.7:
-            max_duration *= 0.7
-
-        if ensemble_score < 0.5:
-            max_duration *= 0.8
-
-        if trade_duration > max_duration:
-            return {
-                "exit": True,
-                "reason": "MaxDurationExit",
-                "exit_price": current_price
-            }
-
-        base_profit_target = self.profit_targets.get(market_phase, {}).get(direction, 0.025)
-
-        base_profit_target *= 1.2
-
-        if self.enable_volatility_tp_scaling:
-            volatility_factor = 1.0
-            if volatility_regime < 0.3:
-                volatility_factor = self.volatility_tp_factors["low"]
-            elif volatility_regime < 0.6:
-                volatility_factor = self.volatility_tp_factors["medium"]
-            elif volatility_regime < 0.8:
-                volatility_factor = self.volatility_tp_factors["high"]
-            else:
-                volatility_factor = self.volatility_tp_factors["extreme"]
-
-            profit_target = base_profit_target * volatility_factor
-        else:
-            profit_target = base_profit_target
-
-        if trend_strength > 0.7:
-            profit_target *= 1.2
-        elif trend_strength < 0.3:
-            profit_target *= 0.85
-
-        if ensemble_score < 0.5:
-            profit_target *= 0.8
-        elif ensemble_score > 0.75:
-            profit_target *= 1.15
-
-        if pnl_pct >= profit_target:
-            return {
-                "exit": True,
-                "reason": "ProfitTargetReached",
-                "exit_price": current_price
-            }
-
-        if self.enable_trailing_take_profit and trade_duration >= (
-                self.avg_profitable_duration * self.trailing_tp_activation_ratio):
-            if pnl_pct > (profit_target * 0.45):
-                if direction == 'long':
-                    trailing_tp_level = current_price - (self.trailing_tp_atr_multiplier * current_atr)
-                    if trailing_tp_level > current_stop_loss:
-                        return {
-                            "exit": False,
-                            "update_stop": True,
-                            "new_stop": float(trailing_tp_level),
-                            "reason": "TrailingTakeProfitUpdate"
-                        }
-                else:
-                    trailing_tp_level = current_price + (self.trailing_tp_atr_multiplier * current_atr)
-                    if trailing_tp_level < current_stop_loss:
-                        return {
-                            "exit": False,
-                            "update_stop": True,
-                            "new_stop": float(trailing_tp_level),
-                            "reason": "TrailingTakeProfitUpdate"
-                        }
-
-        momentum_reversal = False
-        if direction == 'long':
-            momentum_factors = []
-            if momentum < -0.2:
-                momentum_factors.append(True)
-            if macd_histogram < 0 and macd < macd_signal:
-                momentum_factors.append(True)
-            if volume_delta < -1.0:
-                momentum_factors.append(True)
-
-            momentum_reversal = sum(momentum_factors) >= 2
-        else:
-            momentum_factors = []
-            if momentum > 0.2:
-                momentum_factors.append(True)
-            if macd_histogram > 0 and macd > macd_signal:
-                momentum_factors.append(True)
-            if volume_delta > 1.0:
-                momentum_factors.append(True)
-
-            momentum_reversal = sum(momentum_factors) >= 2
-
-        if momentum_reversal and pnl_pct > 0.006:
-            return {
-                "exit": True,
-                "reason": "MomentumReversal",
-                "exit_price": current_price
-            }
-
-        if bb_width > 0.05 and trade_duration > 1.0:
-            volatility_expansion = False
-
-            if direction == 'long':
-                vol_expansion_factors = []
-                if macd < macd_signal:
-                    vol_expansion_factors.append(True)
-                if momentum < -0.15:
-                    vol_expansion_factors.append(True)
-                if rsi_14 > 70:
-                    vol_expansion_factors.append(True)
-
-                volatility_expansion = sum(vol_expansion_factors) >= 2
-            else:
-                vol_expansion_factors = []
-                if macd > macd_signal:
-                    vol_expansion_factors.append(True)
-                if momentum > 0.15:
-                    vol_expansion_factors.append(True)
-                if rsi_14 < 30:
-                    vol_expansion_factors.append(True)
-
-                volatility_expansion = sum(vol_expansion_factors) >= 2
-
-            if volatility_expansion and pnl_pct > 0.005:
-                return {
-                    "exit": True,
-                    "reason": "VolatilityExpansionExit",
-                    "exit_price": current_price
-                }
-
-        if abs(volume_delta) > 2.0 and trade_duration > 0.5:
-            volume_climax = False
-
-            if direction == 'long' and volume_delta < -1.5 and momentum < -0.1:
-                volume_climax = True
-            elif direction == 'short' and volume_delta > 1.5 and momentum > 0.1:
-                volume_climax = True
-
-            if volume_climax and pnl_pct > 0.004:
-                return {
-                    "exit": True,
-                    "reason": "VolumeClimaxExit",
-                    "exit_price": current_price
-                }
-
-        if self.rsi_extreme_exit:
-            rsi_extreme_condition = (direction == 'long' and rsi_14 > self.rsi_overbought) or \
-                                    (direction == 'short' and rsi_14 < self.rsi_oversold)
-
-            if rsi_extreme_condition:
-                technical_confirmation = False
-
-                if direction == 'long':
-                    tech_factors = []
-                    if macd < macd_signal:
-                        tech_factors.append(True)
-                    if momentum < 0:
-                        tech_factors.append(True)
-                    if bb_width > 0.03:
-                        tech_factors.append(True)
-
-                    technical_confirmation = sum(tech_factors) >= 2
-                else:
-                    tech_factors = []
-                    if macd > macd_signal:
-                        tech_factors.append(True)
-                    if momentum > 0:
-                        tech_factors.append(True)
-                    if bb_width > 0.03:
-                        tech_factors.append(True)
-
-                    technical_confirmation = sum(tech_factors) >= 2
-
-                if technical_confirmation and pnl_pct > 0.006:
-                    exit_reason = "OverboughtExit" if direction == 'long' else "OversoldExit"
-                    return {
-                        "exit": True,
-                        "reason": exit_reason,
-                        "exit_price": current_price
-                    }
-
-        if self.macd_reversal_exit:
-            macd_reversal = (direction == 'long' and macd < macd_signal and macd_histogram < 0) or \
-                            (direction == 'short' and macd > macd_signal and macd_histogram > 0)
-
-            if macd_reversal and pnl_pct > 0.007 and trade_duration > 0.5:
-                return {
-                    "exit": True,
-                    "reason": "MACDReversalExit",
-                    "exit_price": current_price
-                }
-
-        stop_hit = ((direction == 'long' and current_price <= current_stop_loss) or
-                    (direction == 'short' and current_price >= current_stop_loss))
-
-        if stop_hit:
-            emergency_buffer = 0.002
-
-            if direction == 'long':
-                emergency_price = current_stop_loss * (1 - emergency_buffer)
-                if current_price > emergency_price:
-                    new_stop = emergency_price
-                    return {
-                        "exit": False,
-                        "update_stop": True,
-                        "new_stop": float(new_stop),
-                        "reason": "EmergencyStopAdjustment"
-                    }
-            else:
-                emergency_price = current_stop_loss * (1 + emergency_buffer)
-                if current_price < emergency_price:
-                    new_stop = emergency_price
-                    return {
-                        "exit": False,
-                        "update_stop": True,
-                        "new_stop": float(new_stop),
-                        "reason": "EmergencyStopAdjustment"
-                    }
-
-            return {
-                "exit": True,
-                "reason": "StopLoss",
-                "exit_price": current_stop_loss
-            }
-
-        trailing_stop = self._calculate_trailing_stop(
-            direction, entry_price, current_price, pnl_pct,
-            current_stop_loss, current_atr, volatility_regime, market_phase,
-            ensemble_score, trade_duration
-        )
-
-        if trailing_stop is not None:
-            return trailing_stop
-
-        if self.enable_early_loss_exit:
-            base_early_loss = self.early_loss_threshold * 1.2
-
-            if "ranging" in market_phase:
-                base_early_loss *= 0.75
-            elif "strong" in market_phase:
-                base_early_loss *= 1.3
-
-            if volatility_regime > 0.7:
-                base_early_loss *= 0.9
-
-            trend_strength = float(kwargs.get('trend_strength', 0.5))
-            if trend_strength < 0.3:
-                base_early_loss *= 0.85
-
-            time_threshold = self.early_loss_time
-            if "ranging" in market_phase:
-                time_threshold *= 0.8
-            elif "strong" in market_phase:
-                time_threshold *= 1.3
-
-            if (direction == 'long' and momentum < -0.2) or (direction == 'short' and momentum > 0.2):
-                base_early_loss *= 0.85
-                time_threshold *= 0.85
-
-            if pnl_pct < base_early_loss and trade_duration > time_threshold:
-                recovery_detected = False
-
-                if direction == 'long' and momentum > 0.1:
-                    recovery_detected = True
-                elif direction == 'short' and momentum < -0.1:
-                    recovery_detected = True
-
-                if not recovery_detected:
-                    return {
-                        "exit": True,
-                        "reason": "EarlyLossExit",
-                        "exit_price": current_price
-                    }
-
-        if self.enable_quick_profit_exit:
-            quick_profit_threshold = self.quick_profit_threshold * 0.9
-
-            if market_phase == "ranging_at_resistance" or market_phase == "ranging_at_support":
-                quick_profit_threshold = 0.0045
-            elif market_phase == "uptrend" and direction == "long":
-                quick_profit_threshold = 0.007
-            elif market_phase == "downtrend" and direction == "short":
-                quick_profit_threshold = 0.007
-
-            if trade_duration < 1.0:
-                quick_profit_threshold *= 1.25
-            elif trade_duration > 4.0:
-                quick_profit_threshold *= 0.7
-
-            if ensemble_score < 0.5:
-                quick_profit_threshold *= 0.8
-            elif ensemble_score > 0.75:
-                quick_profit_threshold *= 1.2
-
-            if (direction == 'long' and momentum < -0.1) or (direction == 'short' and momentum > 0.1):
-                quick_profit_threshold *= 0.85
-
-            if pnl_pct > quick_profit_threshold and trade_duration > self.min_holding_time:
-                return {
-                    "exit": True,
-                    "reason": "QuickProfitTaken",
-                    "exit_price": current_price
-                }
-
-        if self.enable_stagnant_exit:
-            stagnant_threshold = self.stagnant_threshold
-
-            if "ranging" in market_phase:
-                stagnant_threshold *= 0.85
-            elif "strong" in market_phase:
-                stagnant_threshold *= 1.2
-
-            min_stagnant_time = self.stagnant_time
-
-            if "ranging" in market_phase:
-                if trade_duration > min_stagnant_time * 0.8 and abs(pnl_pct) < stagnant_threshold:
-                    return {
-                        "exit": True,
-                        "reason": "StagnantExit",
-                        "exit_price": current_price
-                    }
-                if trade_duration > min_stagnant_time * 1.2 and abs(pnl_pct) < stagnant_threshold * 1.5:
-                    return {
-                        "exit": True,
-                        "reason": "StagnantExit",
-                        "exit_price": current_price
-                    }
-            else:
-                if trade_duration < min_stagnant_time:
-                    pass
-                elif trade_duration > min_stagnant_time * 1.5 and abs(pnl_pct) < stagnant_threshold:
-                    return {
-                        "exit": True,
-                        "reason": "StagnantExit",
-                        "exit_price": current_price
-                    }
-                elif trade_duration > min_stagnant_time * 2.0 and abs(pnl_pct) < stagnant_threshold * 1.5:
-                    return {
-                        "exit": True,
-                        "reason": "StagnantExit",
-                        "exit_price": current_price
-                    }
-
-        return {"exit": False, "reason": "NoActionNeeded"}
-
-    def update_performance_metrics(self, metrics):
-        if 'avg_profitable_duration' in metrics and metrics['avg_profitable_duration'] > 0:
-            self.avg_profitable_duration = metrics['avg_profitable_duration']
-
-    def _calculate_trailing_stop(self, direction, entry_price, current_price, pnl_pct,
-                                 current_stop, atr_value, volatility_regime, market_phase,
-                                 ensemble_score=0.5, trade_duration=0.0):
-        if not self.enable_dynamic_trailing:
-            return None
-
-        min_profit_for_adjustment = 0.015
-
-        if pnl_pct < min_profit_for_adjustment:
-            return None
-
-        atr_multiplier = self.atr_multiplier_map.get(market_phase, {}).get(direction, 2.8)
-
-        if volatility_regime > 0.8:
-            atr_multiplier *= 1.5
-        elif volatility_regime > 0.7:
-            atr_multiplier *= 1.3
-        elif volatility_regime > 0.5:
-            atr_multiplier *= 1.1
-        elif volatility_regime < 0.3:
-            atr_multiplier *= 0.85
-
-        if self.time_dependent_sl_adjustment and trade_duration > self.sl_time_threshold_hours:
-            time_factor = min(1.6, 1.0 + ((trade_duration - self.sl_time_threshold_hours) / 8.0) * 0.6)
-            atr_multiplier *= time_factor
-
-        if pnl_pct > 0.045:
-            atr_multiplier *= 0.4
-        elif pnl_pct > 0.035:
-            atr_multiplier *= 0.5
-        elif pnl_pct > 0.025:
-            atr_multiplier *= 0.6
-        elif pnl_pct > 0.015:
-            atr_multiplier *= 0.7
-
-        if ensemble_score > 0.7:
-            atr_multiplier *= 0.85
-        elif ensemble_score < 0.4:
-            atr_multiplier *= 1.3
-
-        if market_phase in ["ranging_at_support", "ranging_at_resistance", "choppy"]:
-            atr_multiplier *= 1.35
-
-        if direction == 'long':
-            new_stop = current_price - (atr_multiplier * atr_value)
-
-            if pnl_pct > 0.035:
-                new_stop = max(new_stop, entry_price + (0.02 * entry_price))
-            elif pnl_pct > 0.025:
-                new_stop = max(new_stop, entry_price + (0.012 * entry_price))
-            elif pnl_pct > 0.018 and trade_duration > 2.0:
-                new_stop = max(new_stop, entry_price + (0.006 * entry_price))
-            elif pnl_pct > 0.012 and trade_duration > 3.0:
-                new_stop = max(new_stop, entry_price + (0.002 * entry_price))
-
-            if market_phase == "ranging_at_resistance" and pnl_pct > 0.012:
-                new_stop = max(new_stop, entry_price + (0.008 * entry_price))
-
-            if new_stop > current_stop:
-                return {
-                    "exit": False,
-                    "update_stop": True,
-                    "new_stop": float(new_stop),
-                    "reason": "TrailingStopUpdate"
-                }
-        else:
-            new_stop = current_price + (atr_multiplier * atr_value)
-
-            if pnl_pct > 0.035:
-                new_stop = min(new_stop, entry_price - (0.02 * entry_price))
-            elif pnl_pct > 0.025:
-                new_stop = min(new_stop, entry_price - (0.012 * entry_price))
-            elif pnl_pct > 0.018 and trade_duration > 2.0:
-                new_stop = min(new_stop, entry_price - (0.006 * entry_price))
-            elif pnl_pct > 0.012 and trade_duration > 3.0:
-                new_stop = min(new_stop, entry_price - (0.002 * entry_price))
-
-            if market_phase == "ranging_at_support" and pnl_pct > 0.012:
-                new_stop = min(new_stop, entry_price - (0.008 * entry_price))
-
-            if new_stop < current_stop:
-                return {
-                    "exit": False,
-                    "update_stop": True,
-                    "new_stop": float(new_stop),
-                    "reason": "TrailingStopUpdate"
-                }
-
-        return None
-
-    def _validate_position_data(self, position):
-        required_fields = ['entry_price', 'direction', 'initial_stop_loss', 'current_stop_loss']
-        for field in required_fields:
-            if field not in position:
-                return False
-
-        try:
-            float(position['entry_price'])
-            float(position['initial_stop_loss'])
-            float(position['current_stop_loss'])
-
-            if position['direction'] not in ['long', 'short']:
-                return False
-
-            return True
-        except (ValueError, TypeError):
-            return False
-
-    def update_exit_performance(self, exit_reason, pnl):
-        if exit_reason not in self.exit_performance:
-            self.exit_performance[exit_reason] = {
-                'count': 0,
-                'win_count': 0,
-                'total_pnl': 0,
-                'avg_pnl': 0
-            }
-
-        self.exit_counter[exit_reason] = self.exit_counter.get(exit_reason, 0) + 1
-
-        perf = self.exit_performance[exit_reason]
-        perf['count'] += 1
-        perf['total_pnl'] += pnl
-
-        if pnl > 0:
-            perf['win_count'] += 1
-
-        perf['avg_pnl'] = perf['total_pnl'] / perf['count']
-
-
-class ExposureManager:
-    def __init__(self, config):
-        self.config = config
-        self.max_portfolio_risk = config.get("risk", "max_portfolio_risk", 0.20)
-        self.max_correlation_risk = config.get("risk", "max_correlation_risk", 0.12)
-        self.max_single_exposure = config.get("risk", "max_single_exposure", 0.40)
-        self.drawdown_exposure_curve = {
-            "normal": 1.0,
-            "caution": 0.75,
-            "reduced": 0.5,
-            "minimal": 0.25
-        }
-        self.current_exposure = 0.0
-        self.exposures_by_regime = {}
-        self.exposure_timestamps = []
-        self.min_hours_between_trades = config.get("risk", "min_hours_between_trades", 1.0)
-        self.trade_time_decay = config.get("risk", "trade_time_decay", 3.0)
-        self.recent_trade_times = deque(maxlen=30)
-
-    def check_exposure_limits(self, signal, proposed_risk, current_capital, **market_conditions):
-        drawdown_state = market_conditions.get('drawdown_state', 'normal')
-        market_phase = signal.get('market_phase', 'neutral')
-
-        max_exposure_allowed = self.max_portfolio_risk * self.drawdown_exposure_curve.get(drawdown_state, 1.0)
-
-        if self.current_exposure >= max_exposure_allowed:
-            return (False, 0.0)
-
-        if self._check_trade_density():
-            return (False, 0.0)
-
-        risk_remaining = max_exposure_allowed - self.current_exposure
-        if market_phase in self.exposures_by_regime:
-            phase_exposure = self.exposures_by_regime[market_phase]
-            if phase_exposure >= self.max_correlation_risk:
-                return (False, 0.0)
-
-        available_risk = min(proposed_risk, risk_remaining)
-
-        return (True, available_risk)
-
-    def _check_trade_density(self):
-        if not self.recent_trade_times:
-            return False
-
-        now = datetime.now()
-        most_recent = self.recent_trade_times[-1]
-
-        hours_since_last = (now - most_recent).total_seconds() / 3600
-
-        return hours_since_last < self.min_hours_between_trades
-
-    def update_exposure(self, trade_result, is_entry=True):
-        if is_entry:
-            self.recent_trade_times.append(datetime.now())
-
-            risk_amount = trade_result.get('risk_amount', 0)
-            market_phase = trade_result.get('market_phase', 'neutral')
-
-            self.current_exposure += risk_amount
-            self.exposures_by_regime[market_phase] = self.exposures_by_regime.get(market_phase, 0) + risk_amount
-        else:
-            risk_amount = trade_result.get('risk_amount', 0)
-            market_phase = trade_result.get('market_phase', 'neutral')
-
-            self.current_exposure = max(0, self.current_exposure - risk_amount)
-            if market_phase in self.exposures_by_regime:
-                self.exposures_by_regime[market_phase] = max(0, self.exposures_by_regime[market_phase] - risk_amount)
 
 
 class AdaptivePositionSizer:
     def __init__(self, config):
         self.config = config
-        self.base_risk = config.get("risk", "base_risk_per_trade", 0.015)
-        self.max_risk = config.get("risk", "max_risk_per_trade", 0.025)
-        self.min_risk = config.get("risk", "min_risk_per_trade", 0.008)
-        self.kelly_fraction = config.get("risk", "kelly_fraction", 0.5)
+        self.base_risk = config.get("risk", "base_risk_per_trade", 0.01)
+        self.max_risk = config.get("risk", "max_risk_per_trade", 0.02)
+        self.min_risk = config.get("risk", "min_risk_per_trade", 0.005)
+        self.kelly_fraction = config.get("risk", "kelly_fraction", 0.3)
         self.use_adaptive_kelly = config.get("risk", "use_adaptive_kelly", True)
-        self.volatility_scaling = config.get("risk", "volatility_scaling", True)
-        self.momentum_scaling = config.get("risk", "momentum_scaling", True)
-        self.regime_factors = {
-            "strong_uptrend": 1.3,
-            "uptrend": 1.2,
-            "uptrend_transition": 0.9,
-            "neutral": 1.0,
-            "downtrend": 0.8,
-            "downtrend_transition": 0.9,
-            "strong_downtrend": 0.7,
-            "ranging": 0.6,
-            "ranging_at_support": 0.7,
-            "ranging_at_resistance": 0.5,
-            "volatile": 0.7
-        }
-        self.confidence_scaling = config.get("risk", "confidence_scaling", True)
-        self.streak_sensitivity = config.get("risk", "streak_sensitivity", 0.12)
-        self.recent_trades = deque(maxlen=20)
-        self.recent_win_rate = 0.5
-        self.recent_profit_factor = 1.0
-        self.equity_growth_factor = config.get("risk", "equity_growth_factor", 0.85)
-        self.drawdown_risk_factor = config.get("risk", "drawdown_risk_factor", 1.5)
-        self.regime_performance = {}
-        self.regime_adjustment_frequency = 20
+        self.streak_sensitivity = config.get("risk", "streak_sensitivity", 0.10)
+        self.recent_pnls = deque(maxlen=20)  # PnL percentages
 
-    def calculate_position_size(self, signal, entry_price, stop_loss, current_capital, **kwargs):
+    def calculate_position_size(self, signal: Dict[str, Any], entry_price: float, stop_loss_price: float,
+                                current_capital: float,
+                                market_regime_params: Dict[str, Any], performance_metrics: Dict[str, Any]) -> float:
+        if entry_price <= 0 or stop_loss_price <= 0: return 0.0
+
         direction = signal.get('direction', 'long')
-        market_phase = signal.get('market_phase', 'neutral')
-        volatility_regime = float(signal.get('volatility', 0.5))
-        ensemble_score = float(signal.get('ensemble_score', 0.5))
-        win_streak = kwargs.get('win_streak', 0)
-        loss_streak = kwargs.get('loss_streak', 0)
-        drawdown_state = kwargs.get('drawdown_state', 'normal')
-        recovery_mode = kwargs.get('recovery_mode', False)
+        stop_distance_abs = abs(entry_price - stop_loss_price)
+        if stop_distance_abs == 0: return 0.0
 
-        key_level_proximity = signal.get('key_level_proximity', {"impact": 0, "type": "none"})
+        risk_pct = self.base_risk
+        if self.use_adaptive_kelly and len(self.recent_pnls) >= 10:
+            wins = [p for p in self.recent_pnls if p > 0]
+            losses = [p for p in self.recent_pnls if p <= 0]
+            if wins and losses:  # Ensure both wins and losses exist to calculate ratio
+                win_rate = len(wins) / len(self.recent_pnls)
+                avg_win_pct = np.mean(wins)
+                avg_loss_pct = abs(np.mean(losses))
+                if avg_loss_pct > 1e-9:  # Avoid division by zero for win_loss_ratio
+                    win_loss_ratio = avg_win_pct / avg_loss_pct
+                    kelly_pct = win_rate - (1 - win_rate) / win_loss_ratio
+                    risk_pct = max(self.min_risk, min(self.max_risk, kelly_pct * self.kelly_fraction))
+                # If avg_loss_pct is zero (no losses or zero-pnl losses), kelly might be problematic, stick to base_risk or adjusted kelly.
+                # For simplicity, if avg_loss_pct is effectively zero, kelly might be 1 or undefined.
+                # A more robust Kelly might cap the win_loss_ratio or handle this edge case.
+                # Here, if avg_loss_pct is 0, we'd fall back to base_risk due to the `if wins and losses` and `if avg_loss_pct > 0` checks.
 
-        risk_multiplier = 1.0
+        risk_multiplier = market_regime_params.get("position_sizing_factors", 1.0)
 
-        if self.use_adaptive_kelly:
-            kelly_risk = self._calculate_kelly_risk()
-            starting_risk = kelly_risk
-        else:
-            starting_risk = self.base_risk
+        confidence = signal.get('ensemble_score', 0.5)
+        risk_multiplier *= (0.7 + 0.6 * confidence)
 
-        if market_phase in self.regime_performance and self.regime_performance[market_phase]['count'] >= 5:
-            perf = self.regime_performance[market_phase]
-            win_rate = perf['win_count'] / perf['count'] if perf['count'] > 0 else 0.5
-            avg_pnl = perf['total_pnl'] / perf['count'] if perf['count'] > 0 else 0
-
-            if win_rate > 0.6 and avg_pnl > 0:
-                perf_factor = min(1.3, 1.0 + (win_rate - 0.5) * 0.6)
-            elif win_rate < 0.4 or avg_pnl < 0:
-                perf_factor = max(0.5, 1.0 - (0.5 - win_rate) * 0.8)
-            else:
-                perf_factor = 1.0
-
-            risk_multiplier *= perf_factor
-        else:
-            regime_factor = self.regime_factors.get(market_phase, 1.0)
-            risk_multiplier *= regime_factor
-
-        if "ranging" in market_phase:
-            risk_multiplier *= 0.8
-
-            if key_level_proximity["impact"] > 0.5:
-                if key_level_proximity["type"] == "support" and direction == "long":
-                    risk_multiplier *= 0.9
-                elif key_level_proximity["type"] == "resistance" and direction == "short":
-                    risk_multiplier *= 0.9
-
-        if "transition" in market_phase:
+        volatility = signal.get('volatility', 0.5)
+        if volatility < 0.3:
+            risk_multiplier *= 1.1
+        elif volatility > 0.7:
             risk_multiplier *= 0.9
 
-        if self.volatility_scaling:
-            volatility_factor = self._get_volatility_factor(volatility_regime)
-            risk_multiplier *= volatility_factor
+        # Use current streak from performance_metrics, not max_win_streak/max_loss_streak
+        current_win_streak = 0
+        current_loss_streak = 0
+        if performance_metrics.get('current_streak', 0) > 0:
+            current_win_streak = performance_metrics.get('current_streak', 0)
+        elif performance_metrics.get('current_streak', 0) < 0:
+            current_loss_streak = abs(performance_metrics.get('current_streak', 0))
 
-        if self.confidence_scaling and 'confidence_score' in signal:
-            confidence = float(signal.get('confidence_score', 0.5))
-            confidence_factor = 0.7 + (confidence * 0.6)
-            risk_multiplier *= confidence_factor
+        if current_win_streak >= 2:
+            risk_multiplier *= (1.0 + min(current_win_streak, 4) * self.streak_sensitivity)
+        elif current_loss_streak >= 2:
+            risk_multiplier *= (1.0 - min(current_loss_streak, 4) * self.streak_sensitivity)
 
-        streak_factor = 1.0
-        if win_streak >= 2:
-            streak_factor = 1.0 + (min(win_streak, 5) * self.streak_sensitivity)
-        elif loss_streak >= 2:
-            streak_factor = 1.0 - (min(loss_streak, 5) * self.streak_sensitivity)
-        risk_multiplier *= streak_factor
+        current_drawdown = performance_metrics.get('current_drawdown', 0.0)
+        if current_drawdown > 0.15:
+            risk_multiplier *= 0.7
+        elif current_drawdown > 0.10:
+            risk_multiplier *= 0.85
 
-        drawdown_factors = {
-            "normal": 1.0,
-            "caution": 0.8,
-            "reduced": 0.6,
-            "minimal": 0.4
-        }
-        risk_multiplier *= drawdown_factors.get(drawdown_state, 1.0)
+        final_risk_pct = np.clip(risk_pct * risk_multiplier, self.min_risk, self.max_risk)
+        risk_amount_usd = current_capital * final_risk_pct
 
-        if recovery_mode:
-            risk_multiplier *= 0.6
+        position_size_asset = risk_amount_usd / stop_distance_abs
 
-        risk_pct = starting_risk * risk_multiplier
-        risk_pct = max(self.min_risk, min(self.max_risk, risk_pct))
-        risk_amount = current_capital * risk_pct
+        min_trade_usd = self.config.get("risk", "min_trade_size_usd", 25.0)
+        if position_size_asset * entry_price < min_trade_usd: return 0.0
 
-        if direction == 'long':
-            stop_distance = entry_price - stop_loss
-        else:
-            stop_distance = stop_loss - entry_price
+        # Ensure position_size_asset is a Python float before rounding
+        return round(float(position_size_asset), 6)
 
-        if stop_distance <= 0:
-            return 0.0
-
-        position_size = risk_amount / stop_distance
-        return position_size
-
-    def _calculate_kelly_risk(self):
-        if len(self.recent_trades) < 5:
-            return self.base_risk
-
-        win_count = sum(1 for trade in self.recent_trades if trade.get('pnl', 0) > 0)
-        win_rate = win_count / len(self.recent_trades)
-
-        wins = [trade for trade in self.recent_trades if trade.get('pnl', 0) > 0]
-        losses = [trade for trade in self.recent_trades if trade.get('pnl', 0) <= 0]
-
-        if not wins or not losses:
-            return self.base_risk
-
-        avg_win = sum(trade.get('pnl', 0) for trade in wins) / len(wins)
-        avg_loss = abs(sum(trade.get('pnl', 0) for trade in losses)) / len(losses)
-
-        if avg_loss <= 0:
-            return self.base_risk
-
-        win_loss_ratio = avg_win / avg_loss
-
-        kelly = win_rate - ((1 - win_rate) / win_loss_ratio)
-
-        adjusted_kelly = kelly * self.kelly_fraction
-
-        return max(self.min_risk, min(self.max_risk, adjusted_kelly))
-
-    def _get_volatility_factor(self, volatility):
-        if volatility < 0.3:
-            return 1.2
-        elif volatility < 0.5:
-            return 1.0
-        elif volatility < 0.7:
-            return 0.8
-        else:
-            return 0.6
-
-    def update_trade_result(self, trade_result):
-        self.recent_trades.append(trade_result)
-
-        win_count = sum(1 for trade in self.recent_trades if trade.get('pnl', 0) > 0)
-        self.recent_win_rate = win_count / len(self.recent_trades) if self.recent_trades else 0.5
-
-        wins = [trade for trade in self.recent_trades if trade.get('pnl', 0) > 0]
-        losses = [trade for trade in self.recent_trades if trade.get('pnl', 0) <= 0]
-
-        total_profit = sum(trade.get('pnl', 0) for trade in wins)
-        total_loss = abs(sum(trade.get('pnl', 0) for trade in losses))
-
-        self.recent_profit_factor = total_profit / total_loss if total_loss > 0 else 1.0
-
-    def update_regime_performance(self, trade_result):
-        self.recent_trades.append(trade_result)
-
-        regime = trade_result.get('market_phase', 'neutral')
-        pnl = trade_result.get('pnl', 0)
-
-        if regime not in self.regime_performance:
-            self.regime_performance[regime] = {
-                'count': 0,
-                'win_count': 0,
-                'total_pnl': 0
-            }
-
-        perf = self.regime_performance[regime]
-        perf['count'] += 1
-        perf['total_pnl'] += pnl
-
-        if pnl > 0:
-            perf['win_count'] += 1
+    def update_performance(self, pnl_pct: float):
+        self.recent_pnls.append(pnl_pct)
 
 
 class RiskManager:
@@ -1095,303 +152,383 @@ class RiskManager:
         self.initial_capital = config.get("risk", "initial_capital", 10000.0)
         self.current_capital = self.initial_capital
         self.peak_capital = self.initial_capital
-        self.base_risk_per_trade = config.get("risk", "base_risk_per_trade", 0.015)
-        self.max_risk_per_trade = config.get("risk", "max_risk_per_trade", 0.025)
-        self.min_risk_per_trade = config.get("risk", "min_risk_per_trade", 0.008)
-        self.max_portfolio_risk = config.get("risk", "max_portfolio_risk", 0.20)
-        self.position_sizer = AdaptivePositionSizer(config)
-        self.exposure_manager = ExposureManager(config)
-        self.exit_strategy = DynamicExitStrategy(config)
-        self.trade_history = deque(maxlen=100)
+
         self.performance_tracker = PerformanceTracker()
-        self.regime_adapter = MarketRegimeAdapter(config)
-        self.current_drawdown = 0.0
-        self.max_drawdown = config.get("risk", "max_drawdown_percent", 0.20)
-        self.drawdown_state = "normal"
-        self.max_trades_per_day = config.get("risk", "max_trades_per_day", 24)
+        self.position_sizer = AdaptivePositionSizer(config)
+
+        from market_regime_util import MarketRegimeUtil  # Local import
+        self.market_regime_util = MarketRegimeUtil(config)
+
+        # Exit strategy parameters from config
+        self.min_holding_time_hours = config.get("exit", "min_holding_time_hours", 0.5)
+        self.max_holding_time_hours_base = config.get("exit", "max_holding_time_hours", 36.0)
+        self.early_loss_threshold = config.get("exit", "early_loss_threshold", -0.015)
+        self.early_loss_time_hours = config.get("exit", "early_loss_time_hours", 2.0)
+        self.stagnant_threshold_pnl_abs = config.get("exit", "stagnant_threshold_pnl_abs", 0.0025)
+        self.stagnant_time_hours = config.get("exit", "stagnant_time_hours", 4.0)
+        self.base_profit_targets = config.get("exit", "profit_targets", {})
+        self.market_phase_adjustments = config.get("exit", "market_phase_adjustments",
+                                                   {})  # For profit target and duration factors
+        self.partial_exit_strategy_config = config.get("exit", "partial_exit_strategy", {})
+        self.time_decay_factors_config = config.get("exit", "time_decay_factors", {})
+        self.rsi_extreme_levels = config.get("exit", "rsi_extreme_levels", {"overbought": 75, "oversold": 25})
+        self.quick_profit_base_threshold = config.get("exit", "quick_profit_base_threshold", 0.008)
+        self.reward_risk_ratio_target = config.get("exit", "reward_risk_ratio_target", 2.0)
+
+        self.max_trades_per_day = config.get("risk", "max_trades_per_day", 5)
         self.daily_trade_count = {}
-        self.open_positions = []
-        self.partial_exit_tracker = PartialExitTracker(config)
-        self.current_win_streak = 0
-        self.current_loss_streak = 0
-        self.max_win_streak = 0
-        self.max_loss_streak = 0
-        self.recovery_mode = False
-        self.recovery_factor = config.get("risk", "recovery_factor", 0.6)
-        self.min_trade_size_usd = config.get("risk", "min_trade_size_usd", 25.0)
-        self.min_trade_size_btc = config.get("risk", "min_trade_size_btc", 0.0003)
+        self.min_hours_between_trades = config.get("backtest", "min_hours_between_trades", 1.0)  # From backtest section
+        self.last_trade_exit_time = None
+        # max_portfolio_risk is more about overall allocation if multiple assets/strategies were run.
+        # For a single asset strategy, it's implicitly managed by max_risk_per_trade and drawdown limits.
+        self.max_drawdown_limit = config.get("risk", "max_drawdown_percent", 0.25)
 
-        from indicator_util import IndicatorUtil
-        self.indicator_util = IndicatorUtil()
+    def _get_market_regime_params(self, market_phase_name: str) -> Dict[str, Any]:
+        default_params = {
+            "atr_multipliers": {"long": 2.0, "short": 2.0},  # Default ATR multiplier for SL
+            "profit_target_factors": 1.0,  # Factor to adjust base profit targets
+            "max_duration_factors": 1.0,  # Factor to adjust max holding duration
+            "position_sizing_factors": 1.0  # Factor to adjust base risk for position sizing
+            # Removed signal_threshold_factors as it's more relevant to SignalGenerator
+        }
+        # Get the broad category of parameters for all regimes
+        all_regime_params_config = self.config.get("market_regime", "regime_parameters", {})
 
-    def calculate_position_size(self, signal, entry_price, stop_loss):
-        if self._validate_trade_parameters(entry_price, stop_loss, signal) is False:
+        # Map the potentially detailed market_phase_name from signal to a simpler config key if needed
+        legacy_map = self.config.get("market_regime", "legacy_regime_mapping", {})
+        # First, try direct match for market_phase_name, then try mapped name, then default_regime from MRU
+        mapped_phase_name = legacy_map.get(market_phase_name, market_phase_name)
+
+        final_params = default_params.copy()
+
+        for param_category_key, default_category_values in default_params.items():
+            category_config = all_regime_params_config.get(param_category_key, {})
+
+            # Try to get specific value for the mapped_phase_name
+            specific_value = category_config.get(mapped_phase_name)
+
+            if specific_value is not None:
+                final_params[param_category_key] = specific_value
+            else:
+                # Fallback to a general 'default' or 'ranging' if specific not found for this category
+                fallback_value = category_config.get(self.market_regime_util.default_regime, default_category_values)
+                final_params[param_category_key] = fallback_value
+
+        # Ensure atr_multipliers has both long and short
+        if not isinstance(final_params.get("atr_multipliers"), dict) or \
+                "long" not in final_params["atr_multipliers"] or \
+                "short" not in final_params["atr_multipliers"]:
+            # Fallback to a very basic default if config is malformed for atr_multipliers
+            base_atr_default = {"long": 2.0, "short": 2.0}
+            current_atr = final_params.get("atr_multipliers", {})
+            final_params["atr_multipliers"] = {
+                "long": current_atr.get("long", base_atr_default["long"]) if isinstance(current_atr, dict) else
+                base_atr_default["long"],
+                "short": current_atr.get("short", base_atr_default["short"]) if isinstance(current_atr, dict) else
+                base_atr_default["short"]
+            }
+        return final_params
+
+    def calculate_position_size(self, signal: Dict[str, Any], entry_price: float, stop_loss_price: float) -> float:
+        market_phase_name = signal.get('market_phase', 'neutral')  # From SignalGenerator
+
+        # Get blended parameters if in transition, otherwise regular regime parameters
+        if signal.get("blended_parameters"):
+            market_regime_params = signal["blended_parameters"]
+            # Ensure all necessary keys are present in blended_parameters, or fetch from default if not
+            default_single_regime_params = self._get_market_regime_params(market_phase_name)
+            for key, default_val in default_single_regime_params.items():
+                if key not in market_regime_params:
+                    market_regime_params[key] = default_val
+                # For dicts like atr_multipliers, ensure sub-keys are present
+                elif isinstance(default_val, dict) and isinstance(market_regime_params[key], dict):
+                    for sub_key, sub_default_val in default_val.items():
+                        if sub_key not in market_regime_params[key]:
+                            market_regime_params[key][sub_key] = sub_default_val
+
+        else:
+            market_regime_params = self._get_market_regime_params(market_phase_name)
+
+        if self.performance_tracker.current_drawdown >= self.max_drawdown_limit:
+            # logging.getLogger("RiskManager").info(f"Max drawdown limit reached ({self.performance_tracker.current_drawdown*100:.2f}%). No new trades.")
             return 0.0
 
-        self._update_drawdown_state()
-
-        direction = signal.get('direction', 'long')
-        market_phase = signal.get('market_phase', 'neutral')
-
-        can_trade, available_risk = self.exposure_manager.check_exposure_limits(
-            signal,
-            self.base_risk_per_trade,
-            self.current_capital,
-            drawdown_state=self.drawdown_state
-        )
-
-        if not can_trade:
+        today_str = datetime.now().strftime("%Y-%m-%d")  # Use current time for daily limits
+        if self.daily_trade_count.get(today_str, 0) >= self.max_trades_per_day:
+            # logging.getLogger("RiskManager").info(f"Max trades per day ({self.max_trades_per_day}) reached.")
             return 0.0
 
-        position_size = self.position_sizer.calculate_position_size(
-            signal,
-            entry_price,
-            stop_loss,
-            self.current_capital,
-            drawdown_state=self.drawdown_state,
-            win_streak=self.current_win_streak,
-            loss_streak=self.current_loss_streak,
-            recovery_mode=self.recovery_mode
+        if self.last_trade_exit_time:
+            hours_since_last_trade = (datetime.now() - self.last_trade_exit_time).total_seconds() / 3600
+            if hours_since_last_trade < self.min_hours_between_trades:
+                # logging.getLogger("RiskManager").info(f"Min hours between trades not met ({hours_since_last_trade:.1f} < {self.min_hours_between_trades:.1f}).")
+                return 0.0
+
+        return self.position_sizer.calculate_position_size(
+            signal, entry_price, stop_loss_price, self.current_capital,
+            market_regime_params, self.performance_tracker.get_metrics()  # Pass current metrics
         )
 
-        if "ranging" in market_phase:
-            position_size *= 0.6
+    def update_after_trade(self, trade_result: Dict[str, Any]):
+        pnl_usd = float(trade_result.get('pnl', 0))
+        entry_price = float(trade_result.get('entry_price_actual', 1))  # Use actual entry for PnL %
+        quantity = float(trade_result.get('quantity', 1))
 
-        if market_phase == "ranging" and direction == "long" and signal.get("rsi_14", 50) > 60:
-            position_size *= 0.8
+        # Calculate PnL percentage based on initial investment for that trade (approximate)
+        # A more precise way would be to calculate risk_amount_usd for the trade.
+        # For now, using entry_price * quantity as the base value for PnL %.
+        trade_value_at_entry = entry_price * quantity
+        pnl_pct = pnl_usd / trade_value_at_entry if trade_value_at_entry > 0 else 0
 
-        if market_phase == "ranging" and direction == "short" and signal.get("rsi_14", 50) < 40:
-            position_size *= 0.8
-
-        position_value = position_size * entry_price
-        if position_value < self.min_trade_size_usd or position_size < self.min_trade_size_btc:
-            return 0.0
-
-        max_position_value = self.current_capital
-        if position_value > max_position_value:
-            position_size = max_position_value / entry_price
-
-        max_btc_position = 1.5
-        position_size = min(position_size, max_btc_position)
-
-        return round(float(position_size), 6)
-
-    def handle_exit_decision(self, position, current_price, current_atr, **kwargs):
-        if not self._validate_position_data(position):
-            return {"exit": False, "reason": "InvalidPosition"}
-
-        exit_decision = self.exit_strategy.evaluate_exit(
-            position,
-            current_price,
-            current_atr,
-            **kwargs
-        )
-
-        if not exit_decision.get('exit', False) and self.partial_exit_tracker.enable_partial_exits:
-            partial_exit = self.partial_exit_tracker.get_partial_exit_levels(
-                position,
-                current_price,
-                **kwargs
-            )
-
-            if partial_exit:
-                return {
-                    "exit": False,
-                    "partial_exit": True,
-                    "portion": partial_exit["portion"],
-                    "id": partial_exit["id"],
-                    "price": current_price,
-                    "reason": f"PartialExit_{int(partial_exit['portion'] * 100)}pct",
-                }
-
-        return exit_decision
-
-    def update_after_trade(self, trade_result):
-        pnl = float(trade_result.get('pnl', 0))
-        is_win = pnl > 0
-
-        self.current_capital = max(0, self.current_capital + pnl)
+        self.current_capital += pnl_usd
+        self.current_capital = max(0, self.current_capital)
         self.peak_capital = max(self.peak_capital, self.current_capital)
 
-        self.trade_history.append(trade_result)
+        duration_hours = (trade_result.get('exit_time') - trade_result.get('entry_time')).total_seconds() / 3600
+        self.performance_tracker.update_trade(pnl_usd, duration_hours)  # Pass USD PnL
+        self.performance_tracker.update_capital(self.current_capital, self.peak_capital)
+        self.position_sizer.update_performance(pnl_pct)  # Pass PnL percentage
 
-        if is_win:
-            self.current_win_streak += 1
-            self.current_loss_streak = 0
-            self.max_win_streak = max(self.max_win_streak, self.current_win_streak)
-        else:
-            self.current_loss_streak += 1
-            self.current_win_streak = 0
-            self.max_loss_streak = max(self.max_loss_streak, self.current_loss_streak)
+        trade_exit_time = trade_result.get('exit_time')
+        if isinstance(trade_exit_time, datetime):
+            today_str = trade_exit_time.strftime("%Y-%m-%d")
+            self.daily_trade_count[today_str] = self.daily_trade_count.get(today_str, 0) + 1
+            self.last_trade_exit_time = trade_exit_time
 
-        self._update_drawdown_state()
-        self._update_recovery_mode()
+        cutoff_date = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
+        self.daily_trade_count = {d: c for d, c in self.daily_trade_count.items() if d >= cutoff_date}
 
-        self.performance_tracker.update_performance(trade_result)
-        self.regime_adapter.update_regime_parameters(trade_result)
-        self.position_sizer.update_regime_performance(trade_result)
+    def _calculate_pnl_pct(self, direction: str, entry_price: float, current_price: float) -> float:
+        if entry_price == 0: return 0.0
+        if direction == 'long':
+            return (current_price / entry_price) - 1
+        elif direction == 'short':
+            return (entry_price / current_price) - 1
+        return 0.0
 
-        performance_metrics = self.performance_tracker.get_metrics()
-        self.exit_strategy.update_performance_metrics(performance_metrics)
+    def _get_timeframe_from_duration(self, duration_hours: float) -> str:
+        if duration_hours < 2.0: return TimeFrame.MICRO
+        if duration_hours < 6.0: return TimeFrame.SHORT
+        if duration_hours < 12.0: return TimeFrame.MEDIUM
+        if duration_hours < 24.0: return TimeFrame.LONG
+        return TimeFrame.EXTENDED
 
-        trade_date = trade_result.get('exit_time', datetime.now()).strftime("%Y-%m-%d")
-        self.daily_trade_count[trade_date] = self.daily_trade_count.get(trade_date, 0) + 1
+    def _get_dynamic_profit_target(self, market_phase: str, direction: str, duration_hours: float, volatility: float,
+                                   market_regime_params: Dict) -> float:
+        timeframe = self._get_timeframe_from_duration(duration_hours)
+        base_target_for_timeframe = self.base_profit_targets.get(timeframe, 0.02)
 
-        self._clean_daily_counts()
+        # Use profit_target_factors from market_regime_params
+        profit_factor = market_regime_params.get("profit_target_factors", 1.0)
+        # If profit_target_factors is a dict with long/short, use that, else use the general factor
+        if isinstance(profit_factor, dict):
+            profit_factor = profit_factor.get(direction, 1.0)
 
-        return self.current_capital
+        vol_factor = 1.0
+        if volatility > 0.7:
+            vol_factor = 1.15
+        elif volatility < 0.3:
+            vol_factor = 0.85
 
-    def check_correlation_risk(self, signal):
-        trade_date = datetime.now().strftime("%Y-%m-%d")
-        current_day_trades = self.daily_trade_count.get(trade_date, 0)
+        return base_target_for_timeframe * profit_factor * vol_factor
 
-        if current_day_trades >= self.max_trades_per_day:
-            return (False, 0.0)
+    def _get_dynamic_max_duration(self, market_phase: str, direction: str, volatility: float, ensemble_score: float,
+                                  market_regime_params: Dict) -> float:
+        base_duration = self.max_holding_time_hours_base
 
-        if self.drawdown_state == "minimal" and self.current_drawdown > self.max_drawdown * 0.9:
-            return (False, 0.0)
+        # Use max_duration_factors from market_regime_params
+        duration_factor = market_regime_params.get("max_duration_factors", 1.0)
+        if isinstance(duration_factor, dict):  # Should not be dict based on new config, but for safety
+            duration_factor = duration_factor.get(direction, 1.0)
 
-        return self.exposure_manager.check_exposure_limits(
-            signal,
-            self.base_risk_per_trade,
-            self.current_capital,
-            drawdown_state=self.drawdown_state
-        )
-
-    def _optimize_stop_loss_placement(self, direction, entry_price, atr, market_phase, volatility, ensemble_score=0.5):
-        base_multiplier = self.config.get("exit", "base_atr_multiplier", 3.0)
-        base_multiplier *= 1.2
-
-        if market_phase == "ranging" or "ranging_at" in market_phase:
-            base_multiplier *= 1.6
-        elif market_phase == "volatile":
-            base_multiplier *= 1.8
-        elif "downtrend" in market_phase and direction == "long":
-            base_multiplier *= 1.4
-        elif "uptrend" in market_phase and direction == "short":
-            base_multiplier *= 1.4
+        adjusted_duration = base_duration * duration_factor
 
         if volatility > 0.7:
-            base_multiplier *= 1.3
-        elif volatility > 0.5:
-            base_multiplier *= 1.1
+            adjusted_duration *= 0.8
         elif volatility < 0.3:
-            base_multiplier *= 0.9
+            adjusted_duration *= 1.2
 
-        if ensemble_score < 0.4:
-            base_multiplier *= 1.2
-        elif ensemble_score > 0.75:
-            base_multiplier *= 0.9
+        if ensemble_score > 0.7:
+            adjusted_duration *= 1.1
+        elif ensemble_score < 0.4:
+            adjusted_duration *= 0.9
 
-        stop_distance = atr * base_multiplier
+        return adjusted_duration
 
-        min_stop_percent = 0.015
+    def handle_exit_decision(self, position: Dict[str, Any], current_price: float, current_time: datetime,
+                             market_conditions: Dict[str, Any]) -> Dict[str, Any]:
+        entry_time = position['entry_time']
+        direction = position['direction']
+        entry_price = float(position['entry_price_slipped'])  # Use slipped entry for PnL calc against current_price
+        current_stop_loss = float(position['current_stop_loss'])
+        initial_stop_loss = float(position.get('initial_stop_loss', current_stop_loss))
+        atr = float(position.get('atr_at_entry', current_price * 0.015))  # Use ATR from entry
+
+        trade_duration_hours = (current_time - entry_time).total_seconds() / 3600
+        pnl_pct = self._calculate_pnl_pct(direction, entry_price, current_price)  # PnL based on slipped entry
+
+        market_phase = market_conditions.get('market_phase', 'neutral')
+        volatility = float(market_conditions.get('volatility', 0.5))
+        ensemble_score = float(position.get('ensemble_score', 0.5))
+        momentum = float(market_conditions.get('momentum', 0))
+        rsi = float(market_conditions.get('rsi_14', 50))
+        macd_hist = float(market_conditions.get('macd_histogram', 0))
+
+        # Get regime parameters, potentially blended
+        if market_conditions.get("blended_parameters"):
+            market_regime_params = market_conditions["blended_parameters"]
+            # Ensure all necessary keys are present in blended_parameters
+            default_single_regime_params = self._get_market_regime_params(market_phase)
+            for key, default_val in default_single_regime_params.items():
+                if key not in market_regime_params:
+                    market_regime_params[key] = default_val
+                elif isinstance(default_val, dict) and isinstance(market_regime_params[key], dict):
+                    for sub_key, sub_default_val in default_val.items():
+                        if sub_key not in market_regime_params[key]: market_regime_params[key][
+                            sub_key] = sub_default_val
+        else:
+            market_regime_params = self._get_market_regime_params(market_phase)
+
+        if trade_duration_hours < self.min_holding_time_hours:
+            if (direction == 'long' and current_price <= current_stop_loss) or \
+                    (direction == 'short' and current_price >= current_stop_loss):
+                return {"exit": True, "reason": "StopLoss", "exit_price": current_stop_loss}
+            return {"exit": False, "reason": "MinHoldingTime"}
+
+        if (direction == 'long' and current_price <= current_stop_loss) or \
+                (direction == 'short' and current_price >= current_stop_loss):
+            return {"exit": True, "reason": "StopLoss", "exit_price": current_stop_loss}
+
+        profit_target_pct = self._get_dynamic_profit_target(market_phase, direction, trade_duration_hours, volatility,
+                                                            market_regime_params)
+
+        stop_loss_pct_from_entry = abs(
+            entry_price - initial_stop_loss) / entry_price if initial_stop_loss > 0 and entry_price > 0 else float(
+            'inf')
+        min_sensible_profit = 0.005
+        if stop_loss_pct_from_entry != float('inf') and stop_loss_pct_from_entry > 0:
+            rr_based_target = stop_loss_pct_from_entry * self.reward_risk_ratio_target
+            profit_target_pct = max(min_sensible_profit, min(profit_target_pct, rr_based_target))
+        else:
+            profit_target_pct = max(min_sensible_profit, profit_target_pct)
+
+        if pnl_pct >= profit_target_pct:
+            return {"exit": True, "reason": "ProfitTarget", "exit_price": current_price}
+
+        max_duration_hours = self._get_dynamic_max_duration(market_phase, direction, volatility, ensemble_score,
+                                                            market_regime_params)
+        if trade_duration_hours > max_duration_hours:
+            return {"exit": True, "reason": f"MaxDuration_{market_phase}", "exit_price": current_price}
+
+        if pnl_pct < 0 and trade_duration_hours > self.early_loss_time_hours and pnl_pct < self.early_loss_threshold:
+            if not ((direction == 'long' and momentum > 0.15) or (direction == 'short' and momentum < -0.15)):
+                return {"exit": True, "reason": "EarlyLoss", "exit_price": current_price}
+
+        if trade_duration_hours > self.stagnant_time_hours and abs(pnl_pct) < self.stagnant_threshold_pnl_abs:
+            return {"exit": True, "reason": "StagnantTrade", "exit_price": current_price}
+
+        if pnl_pct > 0.005:
+            reversal_signal = False
+            if direction == 'long' and momentum < -0.2 and macd_hist < 0: reversal_signal = True
+            if direction == 'short' and momentum > 0.2 and macd_hist > 0: reversal_signal = True
+            if reversal_signal:
+                return {"exit": True, "reason": "MomentumReversal", "exit_price": current_price}
+
+        if pnl_pct > 0.004:
+            if direction == 'long' and rsi > self.rsi_extreme_levels["overbought"]: return {"exit": True,
+                                                                                            "reason": "RSIExtreme",
+                                                                                            "exit_price": current_price}
+            if direction == 'short' and rsi < self.rsi_extreme_levels["oversold"]: return {"exit": True,
+                                                                                           "reason": "RSIExtreme",
+                                                                                           "exit_price": current_price}
+
+        decay_threshold_pct = 0.0
+        sorted_decay_times = sorted(self.time_decay_factors_config.keys())
+        for hours_key in sorted_decay_times:
+            if trade_duration_hours <= hours_key:
+                decay_threshold_pct = self.time_decay_factors_config[hours_key]
+                break
+        if trade_duration_hours > (sorted_decay_times[-1] if sorted_decay_times else 36):
+            decay_threshold_pct = self.time_decay_factors_config.get(
+                sorted_decay_times[-1] if sorted_decay_times else 36, 0.02)
+
+        if 0 < pnl_pct < decay_threshold_pct and trade_duration_hours > (
+        sorted_decay_times[0] if sorted_decay_times else 4):
+            return {"exit": True, "reason": "TimeDecay", "exit_price": current_price}
+
+        if pnl_pct > self.quick_profit_base_threshold and trade_duration_hours < (
+                self.stagnant_time_hours / 2) and trade_duration_hours > self.min_holding_time_hours:
+            if (direction == 'long' and momentum < -0.05) or (direction == 'short' and momentum > 0.05):
+                return {"exit": True, "reason": "QuickProfit", "exit_price": current_price}
+
+        partial_exit_levels = self.partial_exit_strategy_config.get(market_phase,
+                                                                    self.partial_exit_strategy_config.get("neutral",
+                                                                                                          []))
+        for i, level_info in enumerate(partial_exit_levels):
+            level_id = f"level_{i + 1}"
+            partial_exit_flag = f"partial_exit_taken_{level_id}"
+            if pnl_pct >= level_info["threshold"] and not position.get(partial_exit_flag, False):
+                return {
+                    "exit": False, "partial_exit": True,
+                    "portion": level_info["portion"], "id": f"PartialExit_{level_id}",
+                    "price": current_price, "reason": f"PartialProfit_{int(level_info['portion'] * 100)}pct_L{i + 1}",
+                    "update_position_flag": partial_exit_flag
+                }
+
+        if pnl_pct > 0.01:  # Start trailing only if in some profit
+            atr_multiplier = market_regime_params["atr_multipliers"].get(direction, 2.0)
+            if pnl_pct > 0.05:
+                atr_multiplier *= 0.7
+            elif pnl_pct > 0.03:
+                atr_multiplier *= 0.85
+
+            new_potential_stop = 0
+            if direction == 'long':
+                new_potential_stop = current_price - (atr * atr_multiplier)
+                if new_potential_stop > current_stop_loss:
+                    if pnl_pct > 0.015: new_potential_stop = max(new_potential_stop,
+                                                                 entry_price + (entry_price * 0.001))
+                    return {"exit": False, "update_stop": True, "new_stop": new_potential_stop,
+                            "reason": "TrailingStopUpdate"}
+            elif direction == 'short':
+                new_potential_stop = current_price + (atr * atr_multiplier)
+                if new_potential_stop < current_stop_loss:
+                    if pnl_pct > 0.015: new_potential_stop = min(new_potential_stop,
+                                                                 entry_price - (entry_price * 0.001))
+                    return {"exit": False, "update_stop": True, "new_stop": new_potential_stop,
+                            "reason": "TrailingStopUpdate"}
+
+        return {"exit": False, "reason": "NoExitConditionMet"}
+
+    def get_initial_stop_loss(self, signal: Dict[str, Any], entry_price: float, atr_at_entry: float) -> float:
+        direction = signal.get('direction', 'long')
+        market_phase_name = signal.get('market_phase', 'neutral')
+
+        # Use blended ATR multipliers if present in the signal (from regime transition)
+        if signal.get("blended_parameters") and "atr_multipliers" in signal["blended_parameters"]:
+            atr_multipliers_for_regime = signal["blended_parameters"]["atr_multipliers"]
+        else:  # Otherwise, get from standard regime parameters
+            market_regime_params = self._get_market_regime_params(market_phase_name)
+            atr_multipliers_for_regime = market_regime_params.get("atr_multipliers", {"long": 2.0, "short": 2.0})
+
+        atr_multiplier = atr_multipliers_for_regime.get(direction, 2.0)
+
+        volatility = signal.get('volatility', 0.5)
+        if volatility > 0.75:
+            atr_multiplier *= 1.1
+        elif volatility < 0.25:
+            atr_multiplier *= 0.9
+
+        stop_distance = atr_at_entry * atr_multiplier
 
         if direction == 'long':
-            atr_based_stop = entry_price - stop_distance
-            percent_based_stop = entry_price * (1 - min_stop_percent)
-            stop_price = min(atr_based_stop, percent_based_stop)
+            return entry_price - stop_distance
         else:
-            atr_based_stop = entry_price + stop_distance
-            percent_based_stop = entry_price * (1 + min_stop_percent)
-            stop_price = max(atr_based_stop, percent_based_stop)
+            return entry_price + stop_distance
 
-        return stop_price
-
-    def _check_oscillation_exit(self, position, current_price, prev_prices):
-        if len(prev_prices) < 6:
-            return False
-
-        direction = position.get('direction', '')
-        entry_price = float(position.get('entry_price', 0))
-
-        price_range = max(prev_prices) - min(prev_prices)
-        price_movement = abs(current_price - prev_prices[0])
-        oscillation_ratio = price_range / max(price_movement, 0.0001)
-
-        if direction == 'long':
-            pnl_pct = (current_price / entry_price) - 1
-        else:
-            pnl_pct = (entry_price / current_price) - 1
-
-        if oscillation_ratio > 3.0 and abs(pnl_pct) < 0.005:
-            return {
-                "exit": True,
-                "reason": "OscillationExit",
-                "exit_price": current_price
-            }
-
-        return {"exit": False, "reason": "NoExit"}
-
-    def get_partial_exit_levels(self, direction, entry_price, current_price, **market_conditions):
-        position = {
-            'direction': direction,
-            'entry_price': entry_price,
-        }
-        return self.partial_exit_tracker.get_partial_exit_levels(position, current_price, **market_conditions)
-
-    def get_performance_metrics(self):
-        return self.performance_tracker.get_metrics()
-
-    def _validate_trade_parameters(self, entry_price, stop_loss, signal):
-        if entry_price <= 0 or stop_loss <= 0:
-            return False
-
-        direction = signal.get('direction', '')
-        if direction not in ['long', 'short']:
-            return False
-
-        if (direction == 'long' and stop_loss >= entry_price) or \
-                (direction == 'short' and stop_loss <= entry_price):
-            return False
-
-        return True
-
-    def _validate_position_data(self, position):
-        required_fields = ['entry_price', 'direction', 'initial_stop_loss', 'current_stop_loss']
-        for field in required_fields:
-            if field not in position:
-                return False
-
-        try:
-            float(position['entry_price'])
-            float(position['initial_stop_loss'])
-            float(position['current_stop_loss'])
-
-            if position['direction'] not in ['long', 'short']:
-                return False
-
-            return True
-        except (ValueError, TypeError):
-            return False
-
-    def _update_drawdown_state(self):
-        if self.peak_capital == 0:
-            self.current_drawdown = 0
-        else:
-            self.current_drawdown = 1 - (self.current_capital / self.peak_capital)
-
-        if self.current_drawdown < 0.05:
-            self.drawdown_state = "normal"
-        elif self.current_drawdown < 0.10:
-            self.drawdown_state = "caution"
-        elif self.current_drawdown < 0.15:
-            self.drawdown_state = "reduced"
-        else:
-            self.drawdown_state = "minimal"
-
-    def _update_recovery_mode(self):
-        if self.current_drawdown > 0.12 and not self.recovery_mode:
-            self.recovery_mode = True
-
-        elif self.current_drawdown < 0.08 and self.recovery_mode:
-            self.recovery_mode = False
-
-    def _clean_daily_counts(self):
-        today = datetime.now().date()
-        cutoff = today - timedelta(days=7)
-
-        self.daily_trade_count = {
-            d: c for d, c in self.daily_trade_count.items()
-            if datetime.strptime(d, "%Y-%m-%d").date() >= cutoff
-        }
+    def update_parameters(self, params: Dict[str, Any]):
+        for key, value in params.items():
+            if hasattr(self, key):
+                setattr(self, key, value)
+            elif hasattr(self.position_sizer, key):
+                setattr(self.position_sizer, key, value)

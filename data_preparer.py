@@ -4,14 +4,9 @@ import pandas as pd
 import os
 import json
 import pickle
-import joblib
 from typing import Tuple, Optional, Dict, List, Any, Union
 from sklearn.preprocessing import StandardScaler, RobustScaler, MinMaxScaler
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.feature_selection import mutual_info_regression
 from pathlib import Path
-
-from optuna_feature_selector import OptunaFeatureSelector
 
 
 class DataPreparer:
@@ -19,752 +14,336 @@ class DataPreparer:
         self.config = config
         self.logger = logging.getLogger("DataPreparer")
 
-        self.sequence_length = config.get("model", "sequence_length", 72)
-        self.horizon = config.get("model", "horizon", 16)
+        self.sequence_length = config.get("model", "sequence_length", 60)
+        self.horizon = config.get("model", "horizon", 12)
         self.normalize_method = config.get("model", "normalize_method", "feature_specific")
-        self.train_ratio = config.get("model", "train_ratio", 0.7)
+        self.train_ratio = config.get("model", "train_ratio", 0.75)
 
-        self.results_dir = config.results_dir
-        self.scaler_path = os.path.join(self.results_dir, "models", "feature_scaler.pkl")
-        self.feature_list_path = os.path.join(self.results_dir, "models", "feature_list.json")
-        self.importance_path = os.path.join(self.results_dir, "models", "feature_importance.json")
+        self.results_dir = Path(config.results_dir)
+        self.scaler_path = self.results_dir / "models" / "feature_scaler.pkl"
+        # self.feature_list_path = self.results_dir / "models" / "feature_list.json" # Redundant if features stored with scaler
 
-        self.price_column = "close"
+        self.price_column = "actual_close"  # Use actual_close for label generation
 
-        self.scaler = None
-        self.scaler_dict = {}
-        self.feature_names = None
-        self.feature_importance = {}
-        self.test_sequence_length = self.sequence_length
-        self.normalization_stats = {}
+        self.scalers = {}  # For feature_specific
+        self.fitted_feature_names = None  # Features scaler was fit on
+        self.return_scale_factor = 1.0  # For scaling regression target
 
-        self.train_features = None
-        self.max_features = config.get("model", "max_features", 70)
-        self.use_only_essential_features = config.get("feature_engineering", "use_only_essential_features", False)
-
-        self.essential_features = [
-            # Core price data
-            'open', 'high', 'low', 'close', 'volume',
-
-            # Volume dynamics
-            'taker_buy_base_asset_volume', 'cumulative_delta', 'volume_imbalance_ratio',
-            'volume_price_momentum',
-
-            # Trend indicators
-            'ema_9', 'ema_21', 'ema_50', 'sma_200',
-            'adx_14', 'plus_di_14', 'minus_di_14',
-            'trend_strength', 'ma_cross_velocity',
-
-            # Momentum oscillators
-            'rsi_14', 'rsi_roc_3', 'macd_histogram_12_26_9',
-
-            # Volatility metrics
-            'atr_14', 'bb_width_20', 'volatility_regime',
-
-            # Market context
-            'market_regime', 'mean_reversion_signal', 'price_impact_ratio',
-
-            # Support/resistance
-            'bb_percent_b', 'range_position', 'pullback_strength',
-
-            # Time-based patterns
-            'hour_sin', 'hour_cos', 'day_of_week_sin', 'day_of_week_cos',
-            'cycle_phase', 'cycle_position',
-
-            # Price action patterns
-            'relative_candle_size', 'candle_body_ratio', 'gap',
-
-            # Order flow
-            'spread_pct', 'close_vwap_diff',
-
-            # Adaptive volatility features
-            'vol_norm_close_change', 'vol_norm_momentum'
-        ]
-
-        # Create Optuna feature selector
-        self.use_optuna_features = config.get("feature_engineering", "use_optuna_features", True)
-        self.optuna_feature_selector = OptunaFeatureSelector(config, self)
-        self.optimized_features = None
-
-        self.use_adaptive_features = config.get("feature_engineering", "use_adaptive_features", False)
-        self.feature_selection_method = config.get("feature_engineering", "feature_selection_method", "importance")
-        self.dynamic_feature_count = config.get("feature_engineering", "dynamic_feature_count", 35)
-
-        self.fallback_indicators = {
-            "rsi_14": 50,
-            "cci_20": 0,
-            "willr_14": -50,
-            "macd_histogram_12_26_9": 0,
-            "bb_percent_b": 0.5,
-            "market_regime": 0,
-            "volatility_regime": 0.5,
-            "taker_buy_ratio": 0.5,
-            "mfi": 50
-        }
+        self.essential_features = config.get("feature_engineering", "essential_features", [])
+        self.max_features_model = config.get("model", "max_features", 60)
 
         self._load_scaler_and_features()
-        self._load_feature_importance()
-        self._load_optimized_features()
 
     def _load_scaler_and_features(self):
-        try:
-            if os.path.exists(self.scaler_path):
+        if os.path.exists(self.scaler_path):
+            try:
                 with open(self.scaler_path, 'rb') as f:
-                    self.scaler = pickle.load(f)
-                    if isinstance(self.scaler, dict):
-                        self.scaler_dict = self.scaler
-                self.logger.info(f"Loaded scaler from {self.scaler_path}")
-
-            if os.path.exists(self.feature_list_path):
-                with open(self.feature_list_path, 'r') as f:
-                    self.feature_names = json.load(f)
-                self.train_features = self.feature_names.copy()
-                self.logger.info(f"Loaded feature list with {len(self.feature_names)} features")
-        except Exception as e:
-            self.logger.warning(f"Error loading scaler or feature list: {e}")
-
-    def _load_feature_importance(self):
-        try:
-            if os.path.exists(self.importance_path):
-                with open(self.importance_path, 'r') as f:
-                    self.feature_importance = json.load(f)
-                self.logger.info(f"Loaded feature importance for {len(self.feature_importance)} features")
-        except Exception as e:
-            self.logger.warning(f"Error loading feature importance: {e}")
-
-    def _load_optimized_features(self):
-        if self.use_optuna_features:
-            self.optimized_features = self.optuna_feature_selector.load_best_features()
-            if self.optimized_features:
-                self.logger.info(f"Loaded {len(self.optimized_features)} optimized features")
+                    saved_state = pickle.load(f)
+                    self.scalers = saved_state.get("scalers", {})
+                    self.fitted_feature_names = saved_state.get("feature_names", None)
+                    self.return_scale_factor = saved_state.get("return_scale_factor", 1.0)
+                self.logger.info(f"Loaded scaler and feature state from {self.scaler_path}")
+            except Exception as e:
+                self.logger.warning(f"Error loading scaler/features: {e}. Will refit.")
+                self.scalers = {}
+                self.fitted_feature_names = None
 
     def _save_scaler_and_features(self):
         try:
-            os.makedirs(os.path.dirname(self.scaler_path), exist_ok=True)
-
-            if self.normalize_method == 'feature_specific' and self.scaler_dict:
-                with open(self.scaler_path, 'wb') as f:
-                    pickle.dump(self.scaler_dict, f)
-            elif self.scaler is not None:
-                with open(self.scaler_path, 'wb') as f:
-                    pickle.dump(self.scaler, f)
-            self.logger.info(f"Saved scaler to {self.scaler_path}")
-
-            if self.feature_names is not None:
-                with open(self.feature_list_path, 'w') as f:
-                    json.dump(self.feature_names, f)
-                self.logger.info(f"Saved feature list to {self.feature_list_path}")
+            os.makedirs(self.scaler_path.parent, exist_ok=True)
+            save_state = {
+                "scalers": self.scalers,
+                "feature_names": self.fitted_feature_names,
+                "return_scale_factor": self.return_scale_factor
+            }
+            with open(self.scaler_path, 'wb') as f:
+                pickle.dump(save_state, f)
+            self.logger.info(f"Saved scaler and feature state to {self.scaler_path}")
         except Exception as e:
-            self.logger.error(f"Error saving scaler or feature list: {e}")
+            self.logger.error(f"Error saving scaler/features: {e}")
 
-    def _save_feature_importance(self):
-        try:
-            if self.feature_importance:
-                with open(self.importance_path, 'w') as f:
-                    json.dump(self.feature_importance, f)
-                self.logger.info(f"Saved feature importance to {self.importance_path}")
-        except Exception as e:
-            self.logger.error(f"Error saving feature importance: {e}")
-
-    def prepare_data(self, df: pd.DataFrame) -> Tuple[
+    def prepare_data(self, df_full_features: pd.DataFrame) -> Tuple[
         np.ndarray, np.ndarray, np.ndarray, np.ndarray, pd.DataFrame, np.ndarray]:
-        df = df.copy()
-        df.columns = [col.lower() for col in df.columns]
 
-        actual_cols = [col for col in df.columns if col.startswith('actual_')]
+        df = df_full_features.copy()
 
-        # Check if we should run Optuna feature optimization
-        if self.use_optuna_features and (self.optimized_features is None):
-            self.logger.info("Running Optuna feature optimization...")
-            self.optimized_features = self.optuna_feature_selector.optimize_features(df)
+        all_available_features = [col for col in df.columns if not col.startswith(
+            'actual_') and col != self.price_column and col != 'market_regime_type']
 
-        # Use Optuna-optimized features if available
-        if self.use_optuna_features and self.optimized_features:
-            self.train_features = self._filter_available_features(df, self.optimized_features)
-            self.logger.info(f"Using {len(self.train_features)} Optuna-optimized features")
-        else:
-            self.train_features = self._get_available_features(df)
-            self.logger.info(f"Using {len(self.train_features)} standard features")
+        current_features = [f for f in self.essential_features if f in all_available_features]
 
-        missing_essential = [f for f in self.essential_features if f not in self.train_features]
-        if missing_essential:
-            self.logger.warning(f"Missing {len(missing_essential)} essential features: {missing_essential}")
+        remaining_slots = self.max_features_model - len(current_features)
+        if remaining_slots > 0:
+            other_available = [f for f in all_available_features if f not in current_features]
+            # A more sophisticated selection (e.g. based on variance or pre-computed importance) could go here
+            current_features.extend(other_available[:remaining_slots])
 
-        df_features = df[self.train_features].copy()
-        df_features = self._clean_dataframe(df_features)
+        df_model_features = df[current_features].copy()
+        df_model_features = self._handle_outliers_and_nans(df_model_features)
 
-        try:
-            min_required_rows = self.sequence_length + self.horizon + 10
-            if len(df_features) < min_required_rows:
-                self.logger.warning(
-                    f"Not enough data for sequence creation: {len(df_features)} rows, need {min_required_rows}")
-                return (np.array([]),) * 6
-
-            df_labeled, target_returns, fwd_returns = self._create_regression_labels(df_features)
-            df_labeled = self._handle_outliers(df_labeled)
-
-            if self.use_adaptive_features:
-                self._calculate_feature_importance(df_labeled, target_returns)
-
-            self.feature_names = df_labeled.columns.tolist()
-
-            # Build sequences first without normalization
-            X_features = df_labeled.values.astype(np.float32)
-            X_full, y_full, fwd_returns_full = self._build_sequences(X_features, target_returns, fwd_returns)
-
-            if len(X_full) == 0:
-                self.logger.warning("No sequences created during processing")
-                return (np.array([]),) * 6
-
-            # Split into train and validation sets
-            train_size = int(self.train_ratio * len(X_full))
-            X_train, X_val = X_full[:train_size], X_full[train_size:]
-            y_train, y_val = y_full[:train_size], y_full[train_size:]
-            fwd_returns_val = fwd_returns_full[train_size:]
-
-            # Now normalize train and validation separately
-            if self.normalize_method != "none":
-                # Reshape for normalization
-                X_train_reshaped = X_train.reshape(-1, X_train.shape[2])
-
-                # Fit scaler on training data only
-                if self.normalize_method == "robust":
-                    self.scaler = RobustScaler(quantile_range=(10, 90))
-                elif self.normalize_method == "standard":
-                    self.scaler = StandardScaler()
-                else:
-                    # For feature-specific normalization
-                    self.scaler_dict = {}
-                    for i, feature in enumerate(self.feature_names):
-                        col_data = X_train_reshaped[:, i].reshape(-1, 1)
-
-                        if 'rsi' in feature.lower() or 'percent_b' in feature.lower():
-                            scaler = MinMaxScaler(feature_range=(0, 1))
-                        elif 'regime' in feature.lower():
-                            scaler = MinMaxScaler(feature_range=(-1, 1))
-                        elif 'momentum' in feature.lower() or 'macd' in feature.lower():
-                            scaler = RobustScaler()
-                        else:
-                            scaler = StandardScaler()
-
-                        scaler.fit(col_data)
-                        self.scaler_dict[feature] = scaler
-
-                    X_train = self._apply_feature_specific_normalization(X_train_reshaped, self.feature_names).reshape(
-                        X_train.shape)
-
-                    if len(X_val) > 0:
-                        X_val_reshaped = X_val.reshape(-1, X_val.shape[2])
-                        X_val = self._apply_feature_specific_normalization(X_val_reshaped, self.feature_names).reshape(
-                            X_val.shape)
-
-                if not self.normalize_method == "feature_specific":
-                    # Transform training data
-                    X_train_normalized = self.scaler.fit_transform(X_train_reshaped)
-                    X_train = X_train_normalized.reshape(X_train.shape)
-
-                    # Transform validation data using the scaler fit on training data
-                    if len(X_val) > 0:
-                        X_val_reshaped = X_val.reshape(-1, X_val.shape[2])
-                        X_val_normalized = self.scaler.transform(X_val_reshaped)
-                        X_val = X_val_normalized.reshape(X_val.shape)
-
-                self._save_scaler_and_features()
-                self._save_feature_importance()
-
-            entry_indices = list(range(self.sequence_length - 1, len(df_labeled)))
-            val_entry_indices = entry_indices[train_size:]
-
-            if val_entry_indices:
-                df_val = df_labeled.iloc[val_entry_indices].copy()
-
-                for col in actual_cols:
-                    if col in df.columns:
-                        df_val[col] = df[col].iloc[val_entry_indices].values
-            else:
-                df_val = pd.DataFrame()
-
-            return X_train, y_train, X_val, y_val, df_val, fwd_returns_val
-
-        except Exception as e:
-            self.logger.error(f"Error in prepare_data: {e}")
-            import traceback
-            self.logger.error(traceback.format_exc())
+        if len(df_model_features) < self.sequence_length + self.horizon + 10:
+            self.logger.warning("Not enough data for sequence creation.")
             return (np.array([]),) * 6
 
-    def _filter_available_features(self, df: pd.DataFrame, feature_list: List[str]) -> List[str]:
-        """Filter the optimized feature list to include only available features"""
-        available_features = []
-        df_columns = set(df.columns)
+        # df_labeled is aligned with df_full_features but potentially shorter due to horizon shift
+        df_labeled, target_returns_scaled, fwd_returns_raw = self._create_regression_labels(df)
 
-        # First add all essential features that are available
-        for feature in self.essential_features:
-            if feature in df_columns:
-                available_features.append(feature)
-            elif f'm30_{feature}' in df_columns:
-                available_features.append(f'm30_{feature}')
+        # Align df_model_features with df_labeled (which is already aligned with where labels are valid)
+        df_model_features = df_model_features.loc[df_labeled.index]
 
-        # Then add optimized features that are available
-        for feature in feature_list:
-            if feature in df_columns and feature not in available_features:
-                available_features.append(feature)
-            elif f'm30_{feature}' in df_columns and f'm30_{feature}' not in available_features:
-                available_features.append(f'm30_{feature}')
+        if self.normalize_method != "none":
+            if not self.scalers or self.fitted_feature_names is None or \
+                    set(self.fitted_feature_names) != set(df_model_features.columns):
+                self.logger.info("Fitting new scalers as features changed or no scaler found.")
+                self.fitted_feature_names = df_model_features.columns.tolist()
+                self.scalers = self._fit_scalers(
+                    df_model_features)  # Fit on the (potentially shorter) aligned df_model_features
+                self._save_scaler_and_features()
 
-        return available_features[:self.max_features]
-
-    def _calculate_feature_importance(self, df: pd.DataFrame, target_returns: np.ndarray) -> None:
-        try:
-            if len(df) < 200 or len(target_returns) < 200:
-                return
-
-            X = df.iloc[:len(target_returns)].values
-            y = target_returns
-
-            X = np.nan_to_num(X, nan=0.0)
-            y = np.nan_to_num(y, nan=0.0)
-
-            if self.feature_selection_method == 'importance':
-                model = RandomForestRegressor(n_estimators=50, max_depth=10, random_state=42)
-                model.fit(X, y)
-                importance = model.feature_importances_
-            else:
-                importance = mutual_info_regression(X, y, random_state=42)
-
-            if np.sum(importance) > 0:
-                importance = importance / np.sum(importance)
-
-            feature_importance = {}
-            for i, feature in enumerate(df.columns):
-                feature_importance[feature] = float(importance[i])
-
-            self.feature_importance = feature_importance
-
-        except Exception as e:
-            self.logger.warning(f"Error calculating feature importance: {e}")
-
-    def _get_available_features(self, df: pd.DataFrame) -> List[str]:
-        available_features = []
-
-        if self.use_only_essential_features:
-            available_essential_features = []
-            df_columns = set(df.columns)
-
-            for feature in self.essential_features:
-                if feature in df_columns:
-                    available_essential_features.append(feature)
-                elif f'm30_{feature}' in df_columns:
-                    available_essential_features.append(f'm30_{feature}')
-
-            self.logger.info(f"Using only {len(available_essential_features)} essential features")
-            return available_essential_features
-
-        for feature in self.essential_features:
-            if feature in df.columns:
-                available_features.append(feature)
-            elif f'm30_{feature}' in df.columns:
-                available_features.append(f'm30_{feature}')
-
-        for col in df.columns:
-            if col not in available_features and not col.startswith('actual_'):
-                available_features.append(col)
-
-        if not self.use_adaptive_features or not self.feature_importance:
-            return available_features[:self.max_features]
-
-        scored_features = []
-        for feature in available_features:
-            importance = self.feature_importance.get(feature, 0.0)
-            scored_features.append((feature, importance))
-
-        scored_features.sort(key=lambda x: x[1], reverse=True)
-
-        essential_cols = ['open', 'high', 'low', 'close', 'volume']
-        selected_features = [feat for feat in essential_cols if feat in available_features]
-
-        for feature, _ in scored_features:
-            if feature not in selected_features and len(selected_features) < self.dynamic_feature_count:
-                selected_features.append(feature)
-
-        self.logger.info(f"Selected {len(selected_features)} features using {self.feature_selection_method} method")
-        return selected_features
-
-    def prepare_test_data(self, df: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray, pd.DataFrame, np.ndarray]:
-        df = df.copy()
-        df.columns = [col.lower() for col in df.columns]
-
-        actual_cols = [col for col in df.columns if col.startswith('actual_')]
-
-        if self.feature_names:
-            required_features = self.feature_names
+            df_normalized_features = self._apply_scalers(df_model_features)
         else:
-            self.logger.warning("No training features found - using essential features only")
-            required_features = self.essential_features
+            df_normalized_features = df_model_features
 
-        available_features_in_test = set(df.columns)
-        missing_features = [f for f in required_features if f not in available_features_in_test]
-        if missing_features:
-            self.logger.warning(f"Test data missing {len(missing_features)} required features: {missing_features}")
+        X_full, y_full, fwd_returns_seq = self._build_sequences(
+            df_normalized_features.values.astype(np.float32),
+            target_returns_scaled,  # Already aligned with df_normalized_features
+            fwd_returns_raw  # Already aligned
+        )
 
-        df_features = pd.DataFrame(index=df.index)
-        for feature in required_features:
-            if feature in df.columns:
-                df_features[feature] = df[feature]
-            elif f'm30_{feature}' in df.columns:
-                df_features[feature] = df[f'm30_{feature}']
+        if len(X_full) == 0: return (np.array([]),) * 6
+
+        train_size = int(self.train_ratio * len(X_full))
+        X_train, X_val = X_full[:train_size], X_full[train_size:]
+        y_train, y_val = y_full[:train_size], y_full[train_size:]
+        fwd_returns_val_seq = fwd_returns_seq[train_size:]
+
+        # df_val should correspond to the *last observation* of each sequence in X_val.
+        # The indices for these last observations are relative to df_normalized_features (and thus df_labeled).
+        # val_original_indices_in_df_labeled are the integer positions in df_labeled
+        val_original_indices_in_df_labeled = [train_size + i + self.sequence_length - 1 for i in range(len(X_val))]
+
+        # Filter out any indices that might be out of bounds for df_labeled (should not happen if logic is correct)
+        val_original_indices_in_df_labeled = [idx for idx in val_original_indices_in_df_labeled if
+                                              idx < len(df_labeled)]
+
+        if val_original_indices_in_df_labeled:
+            # Get the actual DatetimeIndex labels from df_labeled using these integer positions
+            datetime_indices_for_df_val = df_labeled.index[val_original_indices_in_df_labeled]
+            # Use .loc with these DatetimeIndex labels on the original df_full_features
+            df_val = df_full_features.loc[datetime_indices_for_df_val].copy()
+        else:
+            df_val = pd.DataFrame()
+
+        return X_train, y_train, X_val, y_val, df_val, fwd_returns_val_seq
+
+    def prepare_test_data(self, df_full_features: pd.DataFrame) -> Tuple[
+        np.ndarray, np.ndarray, pd.DataFrame, np.ndarray]:
+        df = df_full_features.copy()
+
+        if self.fitted_feature_names is None:
+            self.logger.error("Scaler/features not fitted. Cannot prepare test data. Train first.")
+            return (np.array([]),) * 4
+
+        df_model_features = pd.DataFrame(columns=self.fitted_feature_names, index=df.index)
+        for col in self.fitted_feature_names:
+            if col in df.columns:
+                df_model_features[col] = df[col]
             else:
-                df_features[feature] = self._impute_missing_feature(df, feature)
+                self.logger.warning(f"Missing feature {col} in test data, imputing with 0.")
+                df_model_features[col] = 0
 
-        df_features = self._clean_dataframe(df_features)
+        df_model_features = self._handle_outliers_and_nans(df_model_features)
 
-        try:
-            if len(df_features) < (self.sequence_length + self.horizon):
-                self.logger.warning(
-                    f"Not enough data for test sequence creation: {len(df_features)} rows, need {self.sequence_length + self.horizon}")
-                return np.array([]), np.array([]), df_features, np.array([])
+        if len(df_model_features) < self.sequence_length:
+            self.logger.warning("Not enough test data for sequence creation.")
+            return (np.array([]),) * 4
 
-            df_labeled, target_returns, fwd_returns = self._create_regression_labels(df_features)
+        df_labeled, target_returns_scaled, fwd_returns_raw = self._create_regression_labels(df)
+        # Align df_model_features with df_labeled before normalization and sequence building
+        df_model_features = df_model_features.loc[df_labeled.index]
 
-            df_actual = df_labeled.copy()
-            for col in actual_cols:
-                if col in df.columns:
-                    df_actual[col] = df[col].values[:len(df_labeled)]
+        if self.normalize_method != "none":
+            df_normalized_features = self._apply_scalers(df_model_features)
+        else:
+            df_normalized_features = df_model_features
 
-            df_labeled = self._handle_outliers(df_labeled)
+        X_test, y_test_dummy, fwd_returns_seq = self._build_sequences(
+            df_normalized_features.values.astype(np.float32),
+            target_returns_scaled,  # Dummy target for test, already aligned
+            fwd_returns_raw  # Already aligned
+        )
 
-            X_features = df_labeled.values.astype(np.float32)
+        # df_test_actuals should correspond to the last element of each sequence in X_test
+        # test_original_indices_in_df_labeled are integer positions in df_labeled
+        test_original_indices_in_df_labeled = [i + self.sequence_length - 1 for i in range(len(X_test))]
+        test_original_indices_in_df_labeled = [idx for idx in test_original_indices_in_df_labeled if
+                                               idx < len(df_labeled)]
 
-            if self.normalize_method != "none":
-                if self.normalize_method == 'feature_specific' and self.scaler_dict:
-                    X_features = self._apply_feature_specific_normalization(X_features, df_labeled.columns)
-                elif self.scaler:
-                    if X_features.shape[1] != self.scaler.n_features_in_:
-                        self.logger.warning(
-                            f"Feature dimension mismatch: test has {X_features.shape[1]}, scaler expects {self.scaler.n_features_in_}")
-                        X_features = self._ensure_feature_dimensions(X_features, df_labeled.columns.tolist())
+        if test_original_indices_in_df_labeled:
+            datetime_indices_for_df_test = df_labeled.index[test_original_indices_in_df_labeled]
+            df_test_actuals = df_full_features.loc[datetime_indices_for_df_test].copy()
+        else:
+            df_test_actuals = pd.DataFrame()
 
-                    try:
-                        X_features = self.scaler.transform(X_features)
-                    except Exception as e:
-                        self.logger.error(f"Error transforming test data: {e}")
-                        X_features = (X_features - np.mean(X_features, axis=0)) / np.maximum(np.std(X_features, axis=0),
-                                                                                             1e-5)
+        return X_test, y_test_dummy, df_test_actuals, fwd_returns_seq
 
-            X_test, y_test, fwd_returns_test = self._build_sequences(X_features, target_returns, fwd_returns)
-
-            return X_test, y_test, df_actual, fwd_returns_test
-
-        except Exception as e:
-            self.logger.error(f"Error in prepare_test_data: {e}")
-            import traceback
-            self.logger.error(traceback.format_exc())
-            return np.array([]), np.array([]), df_features, np.array([])
-
-    def _impute_missing_feature(self, df: pd.DataFrame, feature: str) -> pd.Series:
-        if feature in self.fallback_indicators:
-            return pd.Series(self.fallback_indicators[feature], index=df.index)
-
-        if feature in ['open', 'high', 'low'] and 'close' in df.columns:
-            return df['close'].copy()
-
-        if 'macd' in feature.lower() and 'close' in df.columns:
-            return df['close'].pct_change(5).fillna(0) * 100
-
-        if 'volume' in feature.lower() and 'volume' in df.columns:
-            return df['volume'].copy()
-
-        if 'regime' in feature.lower():
-            if 'close' in df.columns and len(df) > 20:
-                sma20 = df['close'].rolling(20).mean()
-                return ((df['close'] - sma20) / sma20).clip(-1, 1).fillna(0)
-
-        return pd.Series(0.0, index=df.index)
-
-    def _apply_feature_specific_normalization(self, data: np.ndarray, feature_names: pd.Index) -> np.ndarray:
-        try:
-            result = np.zeros_like(data)
-
-            for i, feature in enumerate(feature_names):
-                if feature in self.scaler_dict:
-                    scaler = self.scaler_dict[feature]
-                    result[:, i] = scaler.transform(data[:, i].reshape(-1, 1)).flatten()
+    def _fit_scalers(self, df_features: pd.DataFrame) -> Dict[str, Any]:
+        scalers = {}
+        for feature in df_features.columns:
+            col_data = df_features[feature].values.reshape(-1, 1)
+            if self.normalize_method == "robust":
+                scaler = RobustScaler(quantile_range=(5.0, 95.0))
+            elif self.normalize_method == "minmax":
+                scaler = MinMaxScaler(feature_range=(-1, 1))
+            elif self.normalize_method == "feature_specific":
+                if 'rsi' in feature.lower() or 'percent_b' in feature.lower() or 'range_position' in feature.lower():
+                    scaler = MinMaxScaler(feature_range=(0, 1))
+                elif 'regime' in feature.lower() or 'sin' in feature.lower() or 'cos' in feature.lower() or 'cycle' in feature.lower():
+                    scaler = MinMaxScaler(feature_range=(-1, 1))
+                elif 'volume' in feature.lower() or 'atr' in feature.lower() or 'bb_width' in feature.lower():
+                    scaler = RobustScaler(quantile_range=(5.0, 95.0))
                 else:
-                    mean = np.mean(data[:, i])
-                    std = np.std(data[:, i])
-                    if std > 1e-8:
-                        result[:, i] = (data[:, i] - mean) / std
-                    else:
-                        result[:, i] = data[:, i] - mean
-
-            return result
-
-        except Exception as e:
-            self.logger.error(f"Error in feature-specific normalization: {e}")
-            return (data - np.mean(data, axis=0)) / np.maximum(np.std(data, axis=0), 1e-5)
-
-    def _create_regression_labels(self, df: pd.DataFrame) -> Tuple[pd.DataFrame, np.ndarray, np.ndarray]:
-        price = df[self.price_column].copy()
-        future_prices = price.shift(-self.horizon)
-        fwd_return = (future_prices / price - 1)
-        fwd_return = fwd_return.fillna(0)
-
-        abs_returns = fwd_return.abs()
-        scale_factor = max(abs_returns.quantile(0.9), 0.003) * 12
-        scaled_returns = np.clip(fwd_return / scale_factor, -1.1, 1.1)
-        self.return_scale_factor = scale_factor
-
-        valid_length = len(scaled_returns)
-        df_valid = df.iloc[:valid_length].copy()
-
-        return df_valid, scaled_returns.values, fwd_return.values
-
-    def _handle_outliers(self, df: pd.DataFrame) -> pd.DataFrame:
-        df_clean = df.copy()
-
-        for col in df_clean.select_dtypes(include=np.number).columns:
-            if col.startswith('actual_'):
-                continue
-
-            if col in ['open', 'high', 'low', 'close', 'volume']:
-                q1 = df_clean[col].quantile(0.001)
-                q3 = df_clean[col].quantile(0.999)
-                df_clean[col] = df_clean[col].clip(q1, q3)
-            elif 'rsi' in col.lower():
-                df_clean[col] = df_clean[col].clip(0, 100)
-            elif 'willr' in col.lower():
-                df_clean[col] = df_clean[col].clip(-100, 0)
-            elif 'bb_percent_b' in col.lower():
-                df_clean[col] = df_clean[col].clip(0, 1)
-            elif 'regime' in col.lower():
-                df_clean[col] = df_clean[col].clip(-1, 1)
-            else:
-                q1 = df_clean[col].quantile(0.01)
-                q3 = df_clean[col].quantile(0.99)
-                iqr = q3 - q1
-                lower_bound = q1 - (3 * iqr)
-                upper_bound = q3 + (3 * iqr)
-                df_clean[col] = df_clean[col].clip(lower_bound, upper_bound)
-
-        return df_clean
-
-    def _normalize_features(self, data: np.ndarray, feature_names: pd.Index) -> Tuple[np.ndarray, object]:
-        if self.normalize_method == "none":
-            return data, None
-
-        try:
-            if self.normalize_method == "feature_specific":
-                normalized_data = np.zeros_like(data)
-                scaler_dict = {}
-
-                for i, feature in enumerate(feature_names):
-                    if 'rsi' in feature.lower() or 'percent_b' in feature.lower():
-                        scaler = MinMaxScaler(feature_range=(0, 1))
-                    elif 'regime' in feature.lower():
-                        scaler = MinMaxScaler(feature_range=(-1, 1))
-                    elif 'momentum' in feature.lower() or 'macd' in feature.lower():
-                        scaler = RobustScaler()
-                    else:
-                        scaler = StandardScaler()
-
-                    col_data = data[:, i].reshape(-1, 1)
-
-                    try:
-                        normalized_data[:, i] = scaler.fit_transform(col_data).flatten()
-                        scaler_dict[feature] = scaler
-                    except Exception as e:
-                        self.logger.warning(f"Error normalizing {feature}: {e}")
-                        mean = np.mean(col_data)
-                        std = max(np.std(col_data), 1e-8)
-                        normalized_data[:, i] = ((col_data - mean) / std).flatten()
-
-                self.scaler_dict = scaler_dict
-                return normalized_data, scaler_dict
-
-            elif self.normalize_method == "robust":
-                scaler = RobustScaler(quantile_range=(10, 90))
+                    scaler = StandardScaler()
             else:
                 scaler = StandardScaler()
+            try:
+                scaler.fit(col_data)
+                scalers[feature] = scaler
+            except ValueError as e:
+                self.logger.warning(
+                    f"Could not fit scaler for feature '{feature}' (all NaNs or constant?): {e}. Using passthrough.")
 
-            normalized_data = scaler.fit_transform(data)
+                # Create a dummy scaler that does nothing (identity transform)
+                class PassthroughScaler:
+                    def fit(self, X, y=None): return self
 
-            if hasattr(scaler, 'center_'):
-                self.normalization_stats['center'] = scaler.center_
-            if hasattr(scaler, 'scale_'):
-                self.normalization_stats['scale'] = scaler.scale_
+                    def transform(self, X): return X
 
-            normalized_data = np.nan_to_num(normalized_data, nan=0.0, posinf=0.0, neginf=0.0)
+                    def fit_transform(self, X, y=None): return X
 
-            return normalized_data, scaler
+                scalers[feature] = PassthroughScaler()
+        return scalers
 
-        except Exception as e:
-            self.logger.error(f"Normalization error: {e}")
-            means = np.nanmean(data, axis=0)
-            stds = np.nanstd(data, axis=0)
-            stds[stds < 1e-8] = 1.0
-
-            normalized_data = (data - means) / stds
-            normalized_data = np.nan_to_num(normalized_data, nan=0.0, posinf=0.0, neginf=0.0)
-
-            simple_scaler = StandardScaler()
-            simple_scaler.mean_ = means
-            simple_scaler.scale_ = stds
-            simple_scaler.var_ = stds ** 2
-            simple_scaler.n_features_in_ = data.shape[1]
-
-            return normalized_data, simple_scaler
-
-    def _build_sequences(self, data_array: np.ndarray, target_array: np.ndarray, fwd_returns_array: np.ndarray) -> \
-            Tuple[np.ndarray, np.ndarray, np.ndarray]:
-        num_samples = len(data_array) - self.sequence_length
-
-        if num_samples <= 0:
-            self.logger.warning(
-                f"Not enough data to create sequences. Have {len(data_array)} rows, need {self.sequence_length}.")
-            return np.array([]), np.array([]), np.array([])
-
-        feature_dim = data_array.shape[1]
-        X = np.zeros((num_samples, self.sequence_length, feature_dim), dtype=np.float32)
-        y = np.zeros(num_samples, dtype=np.float32)
-        fwd_r = np.zeros(num_samples, dtype=np.float32)
-
-        for i in range(num_samples):
-            X[i] = data_array[i:i + self.sequence_length]
-
-            label_idx = i + self.sequence_length
-            if label_idx < len(target_array):
-                y[i] = target_array[label_idx]
-                fwd_r[i] = fwd_returns_array[label_idx]
+    def _apply_scalers(self, df_features: pd.DataFrame) -> pd.DataFrame:
+        df_scaled = df_features.copy()
+        for feature in df_features.columns:
+            if feature in self.scalers:
+                scaler = self.scalers[feature]
+                try:
+                    df_scaled[feature] = scaler.transform(df_features[feature].values.reshape(-1, 1)).flatten()
+                except ValueError as e:
+                    self.logger.warning(
+                        f"Could not transform feature '{feature}' (all NaNs or constant after fit?): {e}. Leaving as is.")
+                    df_scaled[feature] = df_features[feature]  # Leave as is if transform fails
             else:
-                y[i] = 0.0
-                fwd_r[i] = 0.0
+                self.logger.warning(f"No scaler found for feature {feature} during transform. Leaving as is.")
+                df_scaled[feature] = df_features[feature]  # Leave as is
+        return df_scaled
 
-        X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
-        y = np.nan_to_num(y, nan=0.0)
-        fwd_r = np.nan_to_num(fwd_r, nan=0.0)
+    def _create_regression_labels(self, df_with_actuals: pd.DataFrame) -> Tuple[pd.DataFrame, np.ndarray, np.ndarray]:
+        if self.price_column not in df_with_actuals.columns:
+            raise ValueError(f"Price column '{self.price_column}' not found in DataFrame for label creation.")
 
-        return X, y, fwd_r
+        price = df_with_actuals[self.price_column].copy()
+        future_prices = price.shift(-self.horizon)
 
-    def _ensure_feature_dimensions(self, X_test: np.ndarray, test_feature_names: List[str]) -> np.ndarray:
-        if self.scaler is None or self.feature_names is None:
-            self.logger.warning("No scaler or feature names available for dimension alignment")
-            return X_test
+        fwd_return_raw = (future_prices / price - 1).fillna(0)
 
-        try:
-            n_train_features = self.scaler.n_features_in_
-            test_to_train_idx = np.full(n_train_features, -1)
-
-            for i, train_feature in enumerate(self.feature_names):
-                if train_feature in test_feature_names:
-                    test_idx = test_feature_names.index(train_feature)
-                    test_to_train_idx[i] = test_idx
-
-            aligned_data = np.zeros((X_test.shape[0], n_train_features), dtype=np.float32)
-
-            for i in range(n_train_features):
-                if test_to_train_idx[i] >= 0:
-                    aligned_data[:, i] = X_test[:, test_to_train_idx[i]]
-                else:
-                    feature_name = self.feature_names[i] if i < len(self.feature_names) else "unknown"
-
-                    if 'rsi' in feature_name.lower():
-                        aligned_data[:, i] = 50
-                    elif 'macd' in feature_name.lower():
-                        aligned_data[:, i] = 0
-                    elif 'bb_percent' in feature_name.lower():
-                        aligned_data[:, i] = 0.5
-                    elif feature_name in self.fallback_indicators:
-                        aligned_data[:, i] = self.fallback_indicators[feature_name]
-                    else:
-                        aligned_data[:, i] = 0
-
-            return aligned_data
-
-        except Exception as e:
-            self.logger.error(f"Error aligning feature dimensions: {e}")
-            if X_test.shape[1] > n_train_features:
-                return X_test[:, :n_train_features]
-            elif X_test.shape[1] < n_train_features:
-                padded = np.zeros((X_test.shape[0], n_train_features), dtype=np.float32)
-                padded[:, :X_test.shape[1]] = X_test
-                return padded
+        # Only recalculate scale_factor if it's the first time or seems uninitialized
+        if not hasattr(self,
+                       'return_scale_factor') or self.return_scale_factor == 1.0 or self.return_scale_factor == 0.03:
+            abs_returns_for_scaling = fwd_return_raw.abs()
+            # Ensure there are non-zero returns to calculate quantile, otherwise default
+            if not abs_returns_for_scaling.empty and abs_returns_for_scaling.max() > 0:
+                q95 = abs_returns_for_scaling.quantile(0.95)
+                self.return_scale_factor = max(q95, 0.005) * 3  # Target typical large returns to be around +/- 0.33
             else:
-                return X_test
+                self.return_scale_factor = 0.03  # Default if no variance in returns
 
-    def _clean_dataframe(self, df: pd.DataFrame) -> pd.DataFrame:
-        if df.empty:
-            return df
+            if self.return_scale_factor == 0: self.return_scale_factor = 0.03  # Final fallback
 
+        scaled_returns = np.clip(fwd_return_raw / (self.return_scale_factor + 1e-9), -1.0, 1.0)
+
+        # df_labeled should be the part of the original df that has valid labels
+        # The last 'horizon' rows will have NaN labels, so we drop them from the features df alignment.
+        valid_label_length = len(price) - self.horizon
+        df_labeled_aligned = df_with_actuals.iloc[:valid_label_length].copy()
+
+        return df_labeled_aligned, scaled_returns.iloc[:valid_label_length].values, fwd_return_raw.iloc[
+                                                                                    :valid_label_length].values
+
+    def _handle_outliers_and_nans(self, df: pd.DataFrame) -> pd.DataFrame:
         df_clean = df.copy()
         df_clean = df_clean.replace([np.inf, -np.inf], np.nan)
-        numeric_cols = df_clean.select_dtypes(include=np.number).columns
 
-        for col in numeric_cols:
-            if col.startswith('actual_'):
-                continue
+        for col in df_clean.columns:
+            if df_clean[col].dtype == 'object': continue
 
-            if col in ['open', 'high', 'low', 'close']:
-                df_clean[col] = df_clean[col].fillna(method='ffill').fillna(method='bfill')
-            elif col == 'volume' or 'volume' in col.lower():
-                df_clean[col] = df_clean[col].fillna(0)
-            elif 'rsi' in col.lower():
-                df_clean[col] = df_clean[col].fillna(50)
-            elif 'willr' in col.lower():
-                df_clean[col] = df_clean[col].fillna(-50)
-            elif 'macd' in col.lower() or 'regime' in col.lower():
-                df_clean[col] = df_clean[col].fillna(0)
-            elif 'mfi' in col.lower():
-                df_clean[col] = df_clean[col].fillna(50)
-            elif 'ratio' in col.lower():
-                df_clean[col] = df_clean[col].fillna(0.5)
-            else:
-                df_clean[col] = df_clean[col].fillna(method='ffill', limit=5)
-                median_val = df_clean[col].median()
-                if not pd.isna(median_val):
-                    df_clean[col] = df_clean[col].fillna(median_val)
+            df_clean[col] = df_clean[col].ffill().bfill()
+            if df_clean[col].isna().any():
+                if 'rsi' in col.lower():
+                    df_clean[col] = df_clean[col].fillna(50)
+                elif 'volume' in col.lower():
+                    df_clean[col] = df_clean[col].fillna(0)
                 else:
                     df_clean[col] = df_clean[col].fillna(0)
 
-        try:
-            cols_with_nans = [col for col in numeric_cols if
-                              df_clean[col].isna().any() and not col.startswith('actual_')]
-
-            if cols_with_nans and len(df_clean) > 200:
-                correlation_matrix = df_clean[numeric_cols].corr().abs()
-
-                for col in cols_with_nans:
-                    correlated_features = correlation_matrix[col][
-                        (correlation_matrix[col] > 0.7) &
-                        (correlation_matrix[col] < 1.0)
-                        ].index.tolist()
-
-                    if correlated_features:
-                        mask = df_clean[col].notna()
-                        if mask.sum() > 100:
-                            X = df_clean.loc[mask, correlated_features]
-                            y = df_clean.loc[mask, col]
-
-                            nan_mask = df_clean[col].isna()
-                            X_pred = df_clean.loc[nan_mask, correlated_features]
-
-                            from sklearn.linear_model import LinearRegression
-                            model = LinearRegression()
-                            model.fit(X, y)
-
-                            predictions = model.predict(X_pred)
-                            df_clean.loc[nan_mask, col] = predictions
-        except Exception as e:
-            self.logger.warning(f"Advanced imputation error: {e}")
-
-        for col in numeric_cols:
-            if df_clean[col].isna().any():
-                df_clean[col] = df_clean[col].fillna(
-                    df_clean[col].median() if not pd.isna(df_clean[col].median()) else 0)
-
+            if col not in ['open', 'high', 'low', 'close'] and not col.startswith('actual_'):
+                # Check if column has variance before trying to compute quantiles
+                if df_clean[col].nunique() > 1:
+                    q01 = df_clean[col].quantile(0.01)
+                    q99 = df_clean[col].quantile(0.99)
+                    if q01 < q99:  # Ensure quantiles are valid
+                        df_clean[col] = df_clean[col].clip(lower=q01, upper=q99)
+                    elif q01 == q99 and q01 != 0:  # If constant non-zero, small range around it
+                        df_clean[col] = df_clean[col].clip(lower=q01 * 0.99, upper=q01 * 1.01)
+                # If no variance (nunique=1), clipping is not meaningful or might cause issues.
         return df_clean
 
-    def optimize_features(self, df_features):
-        """Run Optuna feature optimization directly"""
-        if self.use_optuna_features:
-            self.optimized_features = self.optuna_feature_selector.optimize_features(df_features)
-            return self.optimized_features
-        return None
+    def _build_sequences(self, data_array: np.ndarray, target_array: np.ndarray, fwd_returns_array: np.ndarray) -> \
+            Tuple[np.ndarray, np.ndarray, np.ndarray]:
+
+        num_total_samples = len(data_array)
+        # Number of sequences we can create.
+        # If data_array has N rows, and sequence_length is L,
+        # the last sequence starts at index N-L. So there are (N-L)+1 sequences.
+        num_sequences = num_total_samples - self.sequence_length + 1
+
+        if num_sequences <= 0:
+            self.logger.warning(
+                f"Not enough data (rows: {num_total_samples}, seq_len: {self.sequence_length}) to create any sequences.")
+            return np.array([]), np.array([]), np.array([])
+
+        feature_dim = data_array.shape[1]
+        X = np.zeros((num_sequences, self.sequence_length, feature_dim), dtype=np.float32)
+        y = np.zeros(num_sequences, dtype=np.float32)
+        fwd_r = np.zeros(num_sequences, dtype=np.float32)
+
+        for i in range(num_sequences):
+            X[i] = data_array[i: i + self.sequence_length]
+
+            # The label for the sequence X[i] (which ends at data_array[i + sequence_length - 1])
+            # is target_array[i + sequence_length - 1].
+            label_idx = i + self.sequence_length - 1
+
+            # target_array and fwd_returns_array are already aligned with data_array (features)
+            # up to the point where labels can be computed (i.e., they are shorter by `horizon` elements
+            # than the original feature dataframe before label calculation).
+            # So, label_idx must be within the bounds of target_array.
+            if label_idx < len(target_array):
+                y[i] = target_array[label_idx]
+            else:
+                # This case should ideally not be hit if inputs are correctly aligned and lengths checked.
+                # It might indicate an off-by-one or misalignment earlier.
+                self.logger.warning(
+                    f"Label index {label_idx} out of bounds for target_array (len {len(target_array)}) at sequence {i}.")
+                y[i] = 0.0
+
+            if label_idx < len(fwd_returns_array):
+                fwd_r[i] = fwd_returns_array[label_idx]
+            else:
+                self.logger.warning(
+                    f"Label index {label_idx} out of bounds for fwd_returns_array (len {len(fwd_returns_array)}) at sequence {i}.")
+                fwd_r[i] = 0.0
+
+        return X, y, fwd_r
