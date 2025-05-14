@@ -43,29 +43,20 @@ class WalkForwardManager:
             logging.getLogger("WalkForwardManager").error("Not enough data for any window.")
             return []
 
-        testable_period_len = df_len - train_size
-        if num_target_windows <= 1:
-            step_size = max(1, test_size // 2)
-        else:
-            step_size = max(1, int((testable_period_len - test_size) / (num_target_windows - 1)))
-            if step_size == 0 and testable_period_len > test_size:
-                step_size = test_size // 2
-            elif step_size == 0:
-                step_size = 1
-
         windows = []
-        current_train_start_idx = 0
+        current_test_start_idx = train_size  # Start first test window after initial training window
         window_count = 0
 
-        while current_train_start_idx + train_size + test_size <= df_len:
-            train_end_idx = current_train_start_idx + train_size
-            test_end_idx = train_end_idx + test_size
+        while current_test_start_idx + test_size <= df_len and (
+                num_target_windows <= 0 or window_count < num_target_windows):
+            train_start_idx = current_test_start_idx - train_size
+            test_end_idx = current_test_start_idx + test_size
 
-            train_df = df_full.iloc[current_train_start_idx:train_end_idx].copy()
-            test_df = df_full.iloc[train_end_idx:test_end_idx].copy()
+            train_df = df_full.iloc[train_start_idx:current_test_start_idx].copy()
+            test_df = df_full.iloc[current_test_start_idx:test_end_idx].copy()
 
-            if test_df.empty or train_df.index[-1] >= test_df.index[0]:
-                current_train_start_idx += step_size
+            if test_df.empty or train_df.empty or train_df.index[-1] >= test_df.index[0]:
+                current_test_start_idx += 1  # Small adjustment if there's an overlap issue
                 continue
 
             window_info = {
@@ -75,10 +66,9 @@ class WalkForwardManager:
             }
             windows.append((train_df, test_df, window_info))
 
-            current_train_start_idx += step_size
+            # Next test window starts immediately after current test window ends
+            current_test_start_idx = test_end_idx
             window_count += 1
-            if window_count >= num_target_windows and num_target_windows > 0:
-                break
 
         return windows
 

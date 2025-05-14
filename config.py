@@ -34,7 +34,7 @@ class Config:
             "data": {
                 "symbol": "BTCUSDT",
                 "interval_30m": "30m",
-                "min_candles": 9000,  # Adjusted for robust feature engineering
+                "min_candles": 15000,  # Adjusted for robust feature engineering
                 "use_api": True,
                 "fetch_extended_data": True,
                 "csv_30m": str(self.data_dir / "btc_30m.csv")
