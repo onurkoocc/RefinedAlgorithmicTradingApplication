@@ -54,7 +54,7 @@ def configure_gpu_tf():
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Bitcoin Algorithmic Trading System")
-    parser.add_argument("--mode", "-m", type=str, choices=["backtest", "train", "fetch-data"], default="backtest",
+    parser.add_argument("--mode", "-m", type=str, choices=["backtest", "fetch-data"], default="backtest",
                         help="Operation mode")
     parser.add_argument("--config", "-c", type=str, default=None, help="Path to custom JSON config file")
     parser.add_argument("--data-dir", type=str, default=None, help="Override data directory from config")
@@ -122,53 +122,26 @@ def main():
 
         data_preparer = DataPreparer(config_instance)
         model_trainer = TradingModel(config_instance)
+        signal_generator = SignalGenerator(config_instance)
+        risk_manager = RiskManager(config_instance)
 
-        if args.mode == "train":
-            logger.info("Preparing data for training...")
-            X_train, y_train, X_val, y_val_dummy, df_val_for_callback, fwd_returns_val = \
-                data_preparer.prepare_data(df_features)
+        logger.info("Initializing backtest engine...")
+        backtest_engine = BacktestEngine(config_instance, data_preparer, model_trainer, signal_generator,
+                                         risk_manager)
 
-            if X_train.size == 0:
-                logger.error("Data preparation for training failed. Exiting.")
-                return 1
+        logger.info("Running backtest with integrated training...")
+        results_summary_df = backtest_engine.run_backtest(df_features)
+        del df_features
+        gc.collect()
 
-            logger.info("Starting model training...")
-            trained_model = model_trainer.train_model(X_train, y_train, X_val, y_val_dummy, df_val_for_callback,
-                                                      fwd_returns_val)
-            del X_train, y_train, X_val, y_val_dummy, df_val_for_callback, fwd_returns_val
-            gc.collect()
+        if results_summary_df is None or results_summary_df.empty:
+            logger.error("Backtest execution failed or produced no results.")
+            return 1
 
-            if trained_model is None:
-                logger.error("Model training failed. Exiting.")
-                return 1
-            logger.info("Model training completed.")
-
-        elif args.mode == "backtest":
-            if not model_trainer.load_model():
-                logger.error("Failed to load model for backtest. Train a model first or check path. Exiting.")
-                return 1
-            logger.info("Model loaded successfully for backtest.")
-
-            signal_generator = SignalGenerator(config_instance)
-            risk_manager = RiskManager(config_instance)
-
-            logger.info("Initializing backtest engine...")
-            backtest_engine = BacktestEngine(config_instance, data_preparer, model_trainer, signal_generator,
-                                             risk_manager)
-
-            logger.info("Running backtest...")
-            results_summary_df = backtest_engine.run_backtest(df_features)
-            del df_features
-            gc.collect()
-
-            if results_summary_df is None or results_summary_df.empty:
-                logger.error("Backtest execution failed or produced no results.")
-                return 1
-
-            results_file = config_instance.results_dir / "backtest" / f"backtest_summary_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
-            results_summary_df.to_csv(results_file)
-            logger.info(f"Backtest completed. Summary saved to {results_file}")
-            logger.info("\n" + results_summary_df.to_string())
+        results_file = config_instance.results_dir / "backtest" / f"backtest_summary_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        results_summary_df.to_csv(results_file)
+        logger.info(f"Backtest completed. Summary saved to {results_file}")
+        logger.info("\n" + results_summary_df.to_string())
 
     except Exception as e:
         logger.error(f"An unhandled error occurred in main execution: {e}")

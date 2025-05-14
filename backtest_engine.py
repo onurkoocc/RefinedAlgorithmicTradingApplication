@@ -299,6 +299,14 @@ class BacktestEngine:
 
         self.all_trades_across_windows = []
 
+        self.use_optuna_features_config = config.get("feature_engineering", "use_optuna_features", False)
+        if self.use_optuna_features_config:
+            from optuna_feature_selector import OptunaFeatureSelector
+            self.optuna_feature_selector = OptunaFeatureSelector(config, self.data_preparer)
+        else:
+            self.optuna_feature_selector = None
+        self.current_feature_set = None
+
     def run_backtest(self, df_full_features: pd.DataFrame) -> pd.DataFrame:
         self.logger.info("Starting walk-forward backtest...")
         if len(df_full_features) < (self.train_window_size + self.test_window_size):
@@ -317,9 +325,36 @@ class BacktestEngine:
         self.all_trades_across_windows = []
         window_results_summary = []
 
+        if self.optuna_feature_selector and self.use_optuna_features_config:
+            self.logger.info("Performing initial Optuna feature selection...")
+            initial_optuna_df = walk_forward_windows[0][0] if walk_forward_windows else df_full_features
+            self.current_feature_set = self.optuna_feature_selector.optimize_features(initial_optuna_df)
+            if self.current_feature_set:
+                self.data_preparer.selected_features = self.current_feature_set
+            else:
+                self.logger.warning("Optuna did not return features, DataPreparer will use its default logic.")
+        elif self.optuna_feature_selector:
+            self.current_feature_set = self.optuna_feature_selector.load_best_features()
+            if self.current_feature_set:
+                self.data_preparer.selected_features = self.current_feature_set
+
         for i, (train_df, test_df, window_info) in enumerate(walk_forward_windows):
             self.logger.info(
                 f"Processing WF Window {i + 1}/{len(walk_forward_windows)}: Train {window_info['train_start_time']} to {window_info['train_end_time']}, Test {window_info['test_start_time']} to {window_info['test_end_time']}")
+
+            optimize_this_iteration = (i + 1) % self.config.get("backtest", "optimize_every_n_iterations", 3) == 0
+
+            if self.config.get("backtest", "adaptive_training", True) and optimize_this_iteration:
+                if self.optuna_feature_selector and self.use_optuna_features_config:
+                    self.logger.info(f"Re-optimizing features with Optuna for window {i + 1}...")
+                    optimized_features = self.optuna_feature_selector.optimize_features(train_df)
+                    if optimized_features:
+                        self.current_feature_set = optimized_features
+                        self.data_preparer.selected_features = self.current_feature_set
+                        self.logger.info(
+                            f"Using new feature set with {len(self.current_feature_set)} features for window {i + 1}.")
+                    else:
+                        self.logger.warning("Optuna re-optimization did not return features, using previous set.")
 
             X_train, y_train, X_val, y_val, df_val_for_callback, fwd_returns_val = \
                 self.data_preparer.prepare_data(train_df)
@@ -329,13 +364,13 @@ class BacktestEngine:
                     f"Skipping window {i + 1} due to insufficient training/validation data after preparation.")
                 continue
 
-            retrain_model = True
-            if self.model_trainer.main_model is not None and self.config.get("backtest", "adaptive_training", True):
-                pass # Placeholder for adaptive training logic
+            self.model_trainer.main_model = None
+            self.model_trainer.ensemble_models = []
+            tf.keras.backend.clear_session()
+            gc.collect()
 
-            if retrain_model:
-                self.logger.info(f"Training model for window {i + 1}...")
-                self.model_trainer.train_model(X_train, y_train, X_val, y_val, df_val_for_callback, fwd_returns_val)
+            self.logger.info(f"Training model for window {i + 1}...")
+            self.model_trainer.train_model(X_train, y_train, X_val, y_val, df_val_for_callback, fwd_returns_val)
 
             if not self.model_trainer.main_model and not (
                     self.model_trainer.use_ensemble and self.model_trainer.ensemble_models):
@@ -362,15 +397,15 @@ class BacktestEngine:
                 f"Window {i + 1} completed. Trades: {len(window_trades)}, PnL: {window_pnl:.2f}, Current Capital: {self.portfolio_manager.current_capital:.2f}")
             window_results_summary.append({
                 "window": i + 1,
-                "train_start": window_info['train_start_time'], "test_end": window_info['test_end_time'],
-                "num_trades": len(window_trades), "pnl": window_pnl,
+                "train_start": window_info['train_start_time'],
+                "test_end": window_info['test_end_time'],
+                "num_trades": len(window_trades),
+                "pnl": window_pnl,
                 "end_capital": self.risk_manager.current_capital
             })
 
-            if (i + 1) % self.config.get("backtest", "optimize_every_n_iterations", 2) == 0:
-                # Placeholder for potential parameter optimization logic
-                pass
-
+            del X_train, y_train, X_val, y_val, df_val_for_callback, fwd_returns_val
+            del X_test, df_test_actuals, fwd_returns_test_raw, model_predictions_scaled
             tf.keras.backend.clear_session()
             gc.collect()
 
@@ -386,26 +421,15 @@ class BacktestEngine:
 
         self.exporter.export_trade_details(self.all_trades_across_windows, self.risk_manager.current_capital,
                                            self.metric_calculator, self.risk_manager.initial_capital)
-        self.exporter.export_time_analysis(self.all_trades_across_windows) # Added time analysis export
-
+        self.exporter.export_time_analysis(self.all_trades_across_windows)
 
         summary_df = pd.DataFrame(window_results_summary)
-        # Convert final_metrics dict to a DataFrame row to append
-        # Ensure final_metrics keys match or are a subset of summary_df columns for clean concat
-        # For simplicity, creating a new DataFrame for the overall metrics row
         overall_metrics_df = pd.DataFrame([final_metrics])
-        # A common way to label this row is to set its index
         overall_metrics_df.index = ["Overall"]
 
-
-        # If summary_df is empty (e.g., no windows ran), just return overall_metrics_df
         if summary_df.empty:
             summary_df = overall_metrics_df
         else:
-            # For a cleaner display, ensure columns align or handle misalignment
-            # This simple concat might lead to NaN if columns don't match perfectly.
-            # A more robust approach would align columns or create a multi-level header.
             summary_df = pd.concat([summary_df, overall_metrics_df], ignore_index=False)
-
 
         return summary_df

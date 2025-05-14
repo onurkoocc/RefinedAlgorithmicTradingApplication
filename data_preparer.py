@@ -21,16 +21,17 @@ class DataPreparer:
 
         self.results_dir = Path(config.results_dir)
         self.scaler_path = self.results_dir / "models" / "feature_scaler.pkl"
-        # self.feature_list_path = self.results_dir / "models" / "feature_list.json" # Redundant if features stored with scaler
 
-        self.price_column = "actual_close"  # Use actual_close for label generation
+        self.price_column = "actual_close"
 
-        self.scalers = {}  # For feature_specific
-        self.fitted_feature_names = None  # Features scaler was fit on
-        self.return_scale_factor = 1.0  # For scaling regression target
+        self.scalers = {}
+        self.fitted_feature_names = None
+        self.return_scale_factor = 1.0
 
         self.essential_features = config.get("feature_engineering", "essential_features", [])
         self.max_features_model = config.get("model", "max_features", 60)
+
+        self.selected_features = None
 
         self._load_scaler_and_features()
 
@@ -42,11 +43,13 @@ class DataPreparer:
                     self.scalers = saved_state.get("scalers", {})
                     self.fitted_feature_names = saved_state.get("feature_names", None)
                     self.return_scale_factor = saved_state.get("return_scale_factor", 1.0)
+                    self.selected_features = saved_state.get("selected_features", None)
                 self.logger.info(f"Loaded scaler and feature state from {self.scaler_path}")
             except Exception as e:
                 self.logger.warning(f"Error loading scaler/features: {e}. Will refit.")
                 self.scalers = {}
                 self.fitted_feature_names = None
+                self.selected_features = None
 
     def _save_scaler_and_features(self):
         try:
@@ -54,7 +57,8 @@ class DataPreparer:
             save_state = {
                 "scalers": self.scalers,
                 "feature_names": self.fitted_feature_names,
-                "return_scale_factor": self.return_scale_factor
+                "return_scale_factor": self.return_scale_factor,
+                "selected_features": self.selected_features
             }
             with open(self.scaler_path, 'wb') as f:
                 pickle.dump(save_state, f)
@@ -62,21 +66,25 @@ class DataPreparer:
         except Exception as e:
             self.logger.error(f"Error saving scaler/features: {e}")
 
-    def prepare_data(self, df_full_features: pd.DataFrame) -> Tuple[
-        np.ndarray, np.ndarray, np.ndarray, np.ndarray, pd.DataFrame, np.ndarray]:
-
+    def prepare_data(self, df_full_features: pd.DataFrame):
         df = df_full_features.copy()
 
-        all_available_features = [col for col in df.columns if not col.startswith(
-            'actual_') and col != self.price_column and col != 'market_regime_type']
+        if self.selected_features:
+            current_features = [f for f in self.selected_features if f in df.columns]
+            if len(current_features) != len(self.selected_features):
+                self.logger.warning("Some Optuna-selected features are missing from the input DataFrame.")
+        else:
+            all_available_features = [col for col in df.columns if not col.startswith(
+                'actual_') and col != self.price_column and col != 'market_regime_type']
+            current_features = [f for f in self.essential_features if f in all_available_features]
+            remaining_slots = self.max_features_model - len(current_features)
+            if remaining_slots > 0:
+                other_available = [f for f in all_available_features if f not in current_features]
+                current_features.extend(other_available[:remaining_slots])
 
-        current_features = [f for f in self.essential_features if f in all_available_features]
-
-        remaining_slots = self.max_features_model - len(current_features)
-        if remaining_slots > 0:
-            other_available = [f for f in all_available_features if f not in current_features]
-            # A more sophisticated selection (e.g. based on variance or pre-computed importance) could go here
-            current_features.extend(other_available[:remaining_slots])
+        if not current_features:
+            self.logger.error("No features selected or available for model training.")
+            return (np.array([]),) * 6
 
         df_model_features = df[current_features].copy()
         df_model_features = self._handle_outliers_and_nans(df_model_features)
@@ -85,10 +93,7 @@ class DataPreparer:
             self.logger.warning("Not enough data for sequence creation.")
             return (np.array([]),) * 6
 
-        # df_labeled is aligned with df_full_features but potentially shorter due to horizon shift
         df_labeled, target_returns_scaled, fwd_returns_raw = self._create_regression_labels(df)
-
-        # Align df_model_features with df_labeled (which is already aligned with where labels are valid)
         df_model_features = df_model_features.loc[df_labeled.index]
 
         if self.normalize_method != "none":
@@ -96,8 +101,7 @@ class DataPreparer:
                     set(self.fitted_feature_names) != set(df_model_features.columns):
                 self.logger.info("Fitting new scalers as features changed or no scaler found.")
                 self.fitted_feature_names = df_model_features.columns.tolist()
-                self.scalers = self._fit_scalers(
-                    df_model_features)  # Fit on the (potentially shorter) aligned df_model_features
+                self.scalers = self._fit_scalers(df_model_features)
                 self._save_scaler_and_features()
 
             df_normalized_features = self._apply_scalers(df_model_features)
@@ -106,8 +110,8 @@ class DataPreparer:
 
         X_full, y_full, fwd_returns_seq = self._build_sequences(
             df_normalized_features.values.astype(np.float32),
-            target_returns_scaled,  # Already aligned with df_normalized_features
-            fwd_returns_raw  # Already aligned
+            target_returns_scaled,
+            fwd_returns_raw
         )
 
         if len(X_full) == 0: return (np.array([]),) * 6
@@ -117,35 +121,29 @@ class DataPreparer:
         y_train, y_val = y_full[:train_size], y_full[train_size:]
         fwd_returns_val_seq = fwd_returns_seq[train_size:]
 
-        # df_val should correspond to the *last observation* of each sequence in X_val.
-        # The indices for these last observations are relative to df_normalized_features (and thus df_labeled).
-        # val_original_indices_in_df_labeled are the integer positions in df_labeled
         val_original_indices_in_df_labeled = [train_size + i + self.sequence_length - 1 for i in range(len(X_val))]
-
-        # Filter out any indices that might be out of bounds for df_labeled (should not happen if logic is correct)
         val_original_indices_in_df_labeled = [idx for idx in val_original_indices_in_df_labeled if
                                               idx < len(df_labeled)]
 
         if val_original_indices_in_df_labeled:
-            # Get the actual DatetimeIndex labels from df_labeled using these integer positions
             datetime_indices_for_df_val = df_labeled.index[val_original_indices_in_df_labeled]
-            # Use .loc with these DatetimeIndex labels on the original df_full_features
             df_val = df_full_features.loc[datetime_indices_for_df_val].copy()
         else:
             df_val = pd.DataFrame()
 
         return X_train, y_train, X_val, y_val, df_val, fwd_returns_val_seq
 
-    def prepare_test_data(self, df_full_features: pd.DataFrame) -> Tuple[
-        np.ndarray, np.ndarray, pd.DataFrame, np.ndarray]:
+    def prepare_test_data(self, df_full_features: pd.DataFrame):
         df = df_full_features.copy()
 
-        if self.fitted_feature_names is None:
-            self.logger.error("Scaler/features not fitted. Cannot prepare test data. Train first.")
+        features_to_use = self.selected_features if self.selected_features else self.fitted_feature_names
+
+        if features_to_use is None:
+            self.logger.error("Scaler/features not fitted or selected. Cannot prepare test data. Train first.")
             return (np.array([]),) * 4
 
-        df_model_features = pd.DataFrame(columns=self.fitted_feature_names, index=df.index)
-        for col in self.fitted_feature_names:
+        df_model_features = pd.DataFrame(columns=features_to_use, index=df.index)
+        for col in features_to_use:
             if col in df.columns:
                 df_model_features[col] = df[col]
             else:
@@ -159,7 +157,6 @@ class DataPreparer:
             return (np.array([]),) * 4
 
         df_labeled, target_returns_scaled, fwd_returns_raw = self._create_regression_labels(df)
-        # Align df_model_features with df_labeled before normalization and sequence building
         df_model_features = df_model_features.loc[df_labeled.index]
 
         if self.normalize_method != "none":
@@ -169,12 +166,10 @@ class DataPreparer:
 
         X_test, y_test_dummy, fwd_returns_seq = self._build_sequences(
             df_normalized_features.values.astype(np.float32),
-            target_returns_scaled,  # Dummy target for test, already aligned
-            fwd_returns_raw  # Already aligned
+            target_returns_scaled,
+            fwd_returns_raw
         )
 
-        # df_test_actuals should correspond to the last element of each sequence in X_test
-        # test_original_indices_in_df_labeled are integer positions in df_labeled
         test_original_indices_in_df_labeled = [i + self.sequence_length - 1 for i in range(len(X_test))]
         test_original_indices_in_df_labeled = [idx for idx in test_original_indices_in_df_labeled if
                                                idx < len(df_labeled)]
