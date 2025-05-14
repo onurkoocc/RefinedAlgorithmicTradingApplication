@@ -34,7 +34,7 @@ class Config:
             "data": {
                 "symbol": "BTCUSDT",
                 "interval_30m": "30m",
-                "min_candles": 7500,  # Adjusted for robust feature engineering
+                "min_candles": 9000,  # Adjusted for robust feature engineering
                 "use_api": True,
                 "fetch_extended_data": True,
                 "csv_30m": str(self.data_dir / "btc_30m.csv")
@@ -187,7 +187,7 @@ class Config:
             "backtest": {
                 "train_window_size": 3000,  # Adjusted
                 "test_window_size": 600,  # Adjusted
-                "walk_forward_steps": 10,  # Sufficient for robust validation
+                "walk_forward_steps": 20,  # Sufficient for robust validation
                 "slippage": 0.0005,
                 "fixed_cost": 0.0010,
                 "variable_cost": 0.0005,
