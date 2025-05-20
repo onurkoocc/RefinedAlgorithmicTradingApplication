@@ -42,31 +42,38 @@ class Config:
             "feature_engineering": {
                 "use_chunking": True,
                 "chunk_size": 2000,
-                "correlation_threshold": 0.95,  # Stricter threshold
-                "use_optuna_features": True,  # Set to True to enable Optuna
-                "optuna_n_trials": 30,  # Increased trials for better search if Optuna is used
-                "optuna_timeout": 3600,  # Increased timeout (1 hour)
-                "optuna_metric": "growth_score",
-                "feature_selection_method": "importance",
-                "use_adaptive_features": False,
-                "use_only_essential_features": False,  # Allow more features initially
+                "correlation_threshold": 0.95,
+                "use_optuna_features": True,
+                "optuna_n_trials": 150,
+                "optuna_timeout": 3600,
+                "optuna_study_name": "feature_selection_study_v5_sharpe",
+                "optuna_objective_model": "RandomForest",
+
                 "essential_features": [
                     'open', 'high', 'low', 'close', 'volume',
-                    'taker_buy_base_asset_volume', 'cumulative_delta',
-                    'ema_9', 'ema_21', 'ema_50', 'sma_200',
-                    'adx_14', 'plus_di_14', 'minus_di_14',
-                    'trend_strength',
-                    'rsi_14', 'macd_histogram_12_26_9',
-                    'atr_14', 'bb_width_20', 'volatility_regime',
-                    'market_regime',
-                    'bb_percent_b', 'range_position',
-                    'hour_sin', 'hour_cos', 'day_of_week_sin', 'day_of_week_cos',
-                    'cycle_phase',
-                    'relative_candle_size', 'candle_body_ratio',
-                    'close_vwap_diff',
-                    'vol_norm_close_change', 'vol_norm_momentum'
+                    'sma_200', 'obv', 'ema_50', 'atr_14', 'rsi_14',
+                    'adx_14', 'range_position'  # Added based on log review
                 ],
-                "indicators_to_compute": [  # Streamlined list
+                "optuna_n_additional_features_min": 8,
+                "optuna_n_additional_features_max": 25,
+
+                "optuna_sim_trade_threshold_percentile": 70,
+                "optuna_min_trades_for_score": 15,
+                "optuna_feature_count_penalty_factor": 0.003,
+
+                "optuna_lgbm_n_estimators": 600,  # Increased
+                "optuna_lgbm_learning_rate": 0.02,
+                "optuna_lgbm_min_child_samples": 20,  # Slightly increased
+                "optuna_lgbm_early_stopping_rounds": 60,  # Increased
+                "optuna_reuse_existing_study_results": True,
+                "optuna_rf_n_estimators": 75,  # Added for RF in objective
+                "optuna_rf_max_depth": 9,  # Added for RF in objective
+
+                "feature_selection_method": "importance",
+                "use_adaptive_features": False,
+                "use_only_essential_features": False,
+
+                "indicators_to_compute": [
                     "ema_9", "ema_21", "ema_50", "sma_200",
                     "macd_12_26", "macd_signal_12_26_9", "macd_histogram_12_26_9",
                     "adx_14", "plus_di_14", "minus_di_14",
@@ -195,7 +202,7 @@ class Config:
                 "use_dynamic_slippage": True,
                 "adaptive_training": True,
                 "train_confidence_threshold": 0.60,
-                "optimize_every_n_iterations": 3  # More frequent optimization
+                "optimize_every_n_iterations": 1  # More frequent optimization
             },
             "market_regime": {  # Simplified regime detection
                 "lookback_period": 72,  # Slightly longer lookback for more stable regime detection

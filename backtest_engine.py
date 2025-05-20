@@ -298,128 +298,144 @@ class BacktestEngine:
         self.current_feature_set = None
 
     def run_backtest(self, df_full_features: pd.DataFrame) -> pd.DataFrame:
-        self.logger.info("Starting walk-forward backtest...")
-        if len(df_full_features) < (self.train_window_size + self.test_window_size):
-            self.logger.error("Insufficient data for backtest.")
-            return pd.DataFrame()
+            self.logger.info("Starting walk-forward backtest...")
+            if len(df_full_features) < (self.train_window_size + self.test_window_size):
+                self.logger.error("Insufficient data for backtest.")
+                return pd.DataFrame()
 
-        walk_forward_windows = self.walk_forward_manager.create_windows(
-            df_full_features, self.train_window_size, self.test_window_size, self.walk_forward_target_windows
-        )
-
-        if not walk_forward_windows:
-            self.logger.error("No walk-forward windows created.")
-            return pd.DataFrame()
-
-        self.portfolio_manager.reset()
-        self.all_trades_across_windows = []
-        window_results_summary = []
-
-        if self.optuna_feature_selector and self.use_optuna_features_config:
-            self.logger.info("Performing initial Optuna feature selection...")
-            initial_optuna_df = walk_forward_windows[0][0] if walk_forward_windows else df_full_features
-            self.current_feature_set = self.optuna_feature_selector.optimize_features(initial_optuna_df)
-            if self.current_feature_set:
-                self.data_preparer.selected_features = self.current_feature_set
-            else:
-                self.logger.warning("Optuna did not return features, DataPreparer will use its default logic.")
-        elif self.optuna_feature_selector:
-            self.current_feature_set = self.optuna_feature_selector.load_best_features()
-            if self.current_feature_set:
-                self.data_preparer.selected_features = self.current_feature_set
-
-        for i, (train_df, test_df, window_info) in enumerate(walk_forward_windows):
-            self.logger.info(
-                f"Processing WF Window {i + 1}/{len(walk_forward_windows)}: Train {window_info['train_start_time']} to {window_info['train_end_time']}, Test {window_info['test_start_time']} to {window_info['test_end_time']}")
-
-            optimize_this_iteration = (i + 1) % self.config.get("backtest", "optimize_every_n_iterations", 3) == 0
-
-            if self.config.get("backtest", "adaptive_training", True) and optimize_this_iteration:
-                if self.optuna_feature_selector and self.use_optuna_features_config:
-                    self.logger.info(f"Re-optimizing features with Optuna for window {i + 1}...")
-                    optimized_features = self.optuna_feature_selector.optimize_features(train_df)
-                    if optimized_features:
-                        self.current_feature_set = optimized_features
-                        self.data_preparer.selected_features = self.current_feature_set
-                        self.logger.info(
-                            f"Using new feature set with {len(self.current_feature_set)} features for window {i + 1}.")
-                    else:
-                        self.logger.warning("Optuna re-optimization did not return features, using previous set.")
-
-            X_train, y_train, X_val, y_val, df_val_for_callback, fwd_returns_val = \
-                self.data_preparer.prepare_data(train_df)
-
-            if X_train.size == 0 or X_val.size == 0:
-                self.logger.warning(
-                    f"Skipping window {i + 1} due to insufficient training/validation data after preparation.")
-                continue
-
-            self.model_trainer.main_model = None
-            self.model_trainer.ensemble_models = []
-            tf.keras.backend.clear_session()
-            gc.collect()
-
-            self.logger.info(f"Training model for window {i + 1}...")
-            self.model_trainer.train_model(X_train, y_train, X_val, y_val, df_val_for_callback, fwd_returns_val)
-
-            if not self.model_trainer.main_model and not (
-                    self.model_trainer.use_ensemble and self.model_trainer.ensemble_models):
-                self.logger.error(f"Model training failed for window {i + 1}. Skipping test.")
-                continue
-
-            X_test, _, df_test_actuals, fwd_returns_test_raw = \
-                self.data_preparer.prepare_test_data(test_df)
-
-            if X_test.size == 0:
-                self.logger.warning(
-                    f"Skipping test for window {i + 1} due to insufficient test data after preparation.")
-                continue
-
-            model_predictions_scaled = self.model_trainer.predict(X_test)
-
-            window_trades = self.market_simulator.simulate_trading(
-                df_test_actuals, model_predictions_scaled, self.signal_generator, self.risk_manager
+            walk_forward_windows = self.walk_forward_manager.create_windows(
+                df_full_features, self.train_window_size, self.test_window_size, self.walk_forward_target_windows
             )
-            self.all_trades_across_windows.extend(window_trades)
 
-            window_pnl = sum(t['pnl'] for t in window_trades)
-            self.logger.info(
-                f"Window {i + 1} completed. Trades: {len(window_trades)}, PnL: {window_pnl:.2f}, Current Capital: {self.portfolio_manager.current_capital:.2f}")
-            window_results_summary.append({
-                "window": i + 1,
-                "train_start": window_info['train_start_time'],
-                "test_end": window_info['test_end_time'],
-                "num_trades": len(window_trades),
-                "pnl": window_pnl,
-                "end_capital": self.risk_manager.current_capital
-            })
+            if not walk_forward_windows:
+                self.logger.error("No walk-forward windows created.")
+                return pd.DataFrame()
 
-            del X_train, y_train, X_val, y_val, df_val_for_callback, fwd_returns_val
-            del X_test, df_test_actuals, fwd_returns_test_raw, model_predictions_scaled
-            tf.keras.backend.clear_session()
-            gc.collect()
+            self.portfolio_manager.reset()
+            self.all_trades_across_windows = []
+            window_results_summary = []
 
-        if not self.all_trades_across_windows:
-            self.logger.warning("No trades were executed across all windows.")
-            return pd.DataFrame(window_results_summary)
+            # Initial feature selection before the first window if Optuna is enabled
+            if self.optuna_feature_selector and self.use_optuna_features_config:
+                self.logger.info(
+                    "Performing initial Optuna feature selection for the entire dataset (or first training part)...")
+                # For a truly global initial set, you might use a larger portion of data,
+                # but for consistency with windowed approach, using the first training window.
+                initial_optuna_df = walk_forward_windows[0][0] if walk_forward_windows else df_full_features
+                self.current_feature_set = self.optuna_feature_selector.optimize_features(initial_optuna_df,
+                                                                                          window_id="initial")
+                if self.current_feature_set:
+                    self.data_preparer.selected_features = self.current_feature_set
+                    self.logger.info(f"Initial Optuna feature set: {self.current_feature_set}")
+                else:
+                    self.logger.warning(
+                        "Initial Optuna did not return features, DataPreparer will use its default logic.")
+            elif self.optuna_feature_selector:  # Load if not optimizing initially but selector exists
+                self.current_feature_set = self.optuna_feature_selector.load_best_features(
+                    filename="optimized_feature_set_window_initial.joblib")
+                if self.current_feature_set:
+                    self.data_preparer.selected_features = self.current_feature_set
+                    self.logger.info(f"Loaded initial feature set: {self.current_feature_set}")
 
-        final_metrics = self.metric_calculator.calculate_consolidated_metrics(
-            self.all_trades_across_windows, self.risk_manager.current_capital, self.risk_manager.initial_capital
-        )
-        self.logger.info(f"Backtest finished. Final Capital: {self.risk_manager.current_capital:.2f}")
-        self.logger.info(f"Overall Metrics: {final_metrics}")
+            for i, (train_df, test_df, window_info) in enumerate(walk_forward_windows):
+                window_identifier = str(i + 1)
+                self.logger.info(
+                    f"Processing WF Window {window_identifier}/{len(walk_forward_windows)}: Train {window_info['train_start_time']} to {window_info['train_end_time']}, Test {window_info['test_start_time']} to {window_info['test_end_time']}")
 
-        self.exporter.export_trade_details(self.all_trades_across_windows, self.risk_manager.current_capital,
-                                           self.metric_calculator, self.risk_manager.initial_capital)
-        self.exporter.export_time_analysis(self.all_trades_across_windows)
+                optimize_this_iteration = (i + 1) % self.config.get("backtest", "optimize_every_n_iterations",
+                                                                    1) == 0  # Default to optimize every iteration
 
-        summary_df = pd.DataFrame(window_results_summary)
-        overall_metrics_df = pd.DataFrame([final_metrics])
-        overall_metrics_df.index = ["Overall"]
+                if self.config.get("backtest", "adaptive_training", True) and optimize_this_iteration:
+                    if self.optuna_feature_selector and self.use_optuna_features_config:
+                        self.logger.info(f"Re-optimizing features with Optuna for window {window_identifier}...")
+                        optimized_features = self.optuna_feature_selector.optimize_features(train_df,
+                                                                                            window_id=window_identifier)
+                        if optimized_features:
+                            self.current_feature_set = optimized_features
+                            self.data_preparer.selected_features = self.current_feature_set  # Crucial: update data_preparer
+                            self.logger.info(
+                                f"Using new feature set with {len(self.current_feature_set)} features for window {window_identifier}.")
+                        else:
+                            self.logger.warning(
+                                f"Optuna re-optimization for window {window_identifier} did not return features, using previous set: {self.current_feature_set if self.current_feature_set else 'default DataPreparer logic'}")
+                            # If current_feature_set is None here, DataPreparer will use its default logic.
+                            # If it has a value from previous iteration/initial, it will be used.
+                            self.data_preparer.selected_features = self.current_feature_set  # Ensure it's set even if None
 
-        if summary_df.empty:
-            summary_df = overall_metrics_df
-        else:
-            summary_df = pd.concat([summary_df, overall_metrics_df], ignore_index=False)
+                X_train, y_train, X_val, y_val, df_val_for_callback, fwd_returns_val = \
+                    self.data_preparer.prepare_data(train_df)
 
-        return summary_df
+                if X_train.size == 0 or X_val.size == 0:
+                    self.logger.warning(
+                        f"Skipping window {window_identifier} due to insufficient training/validation data after preparation.")
+                    continue
+
+                self.model_trainer.main_model = None
+                self.model_trainer.ensemble_models = []
+                tf.keras.backend.clear_session()
+                gc.collect()
+
+                self.logger.info(f"Training model for window {window_identifier}...")
+                self.model_trainer.train_model(X_train, y_train, X_val, y_val, df_val_for_callback, fwd_returns_val)
+
+                if not self.model_trainer.main_model and not (
+                        self.model_trainer.use_ensemble and self.model_trainer.ensemble_models):
+                    self.logger.error(f"Model training failed for window {window_identifier}. Skipping test.")
+                    continue
+
+                X_test, _, df_test_actuals, fwd_returns_test_raw = \
+                    self.data_preparer.prepare_test_data(test_df)
+
+                if X_test.size == 0:
+                    self.logger.warning(
+                        f"Skipping test for window {window_identifier} due to insufficient test data after preparation.")
+                    continue
+
+                model_predictions_scaled = self.model_trainer.predict(X_test)
+
+                window_trades = self.market_simulator.simulate_trading(
+                    df_test_actuals, model_predictions_scaled, self.signal_generator, self.risk_manager
+                )
+                self.all_trades_across_windows.extend(window_trades)
+
+                window_pnl = sum(t['pnl'] for t in window_trades)
+                self.logger.info(
+                    f"Window {window_identifier} completed. Trades: {len(window_trades)}, PnL: {window_pnl:.2f}, Current Capital: {self.portfolio_manager.current_capital:.2f}")
+                window_results_summary.append({
+                    "window": window_identifier,
+                    "train_start": window_info['train_start_time'],
+                    "test_end": window_info['test_end_time'],
+                    "num_trades": len(window_trades),
+                    "pnl": window_pnl,
+                    "end_capital": self.risk_manager.current_capital
+                })
+
+                del X_train, y_train, X_val, y_val, df_val_for_callback, fwd_returns_val
+                del X_test, df_test_actuals, fwd_returns_test_raw, model_predictions_scaled
+                tf.keras.backend.clear_session()
+                gc.collect()
+
+            if not self.all_trades_across_windows:
+                self.logger.warning("No trades were executed across all windows.")
+                return pd.DataFrame(window_results_summary)
+
+            final_metrics = self.metric_calculator.calculate_consolidated_metrics(
+                self.all_trades_across_windows, self.risk_manager.current_capital, self.risk_manager.initial_capital
+            )
+            self.logger.info(f"Backtest finished. Final Capital: {self.risk_manager.current_capital:.2f}")
+            self.logger.info(f"Overall Metrics: {final_metrics}")
+
+            self.exporter.export_trade_details(self.all_trades_across_windows, self.risk_manager.current_capital,
+                                               self.metric_calculator, self.risk_manager.initial_capital)
+            self.exporter.export_time_analysis(self.all_trades_across_windows)
+
+            summary_df = pd.DataFrame(window_results_summary)
+            overall_metrics_df = pd.DataFrame([final_metrics])
+            overall_metrics_df.index = ["Overall"]
+
+            if summary_df.empty:
+                summary_df = overall_metrics_df
+            else:
+                summary_df = pd.concat([summary_df, overall_metrics_df], ignore_index=False)
+
+            return summary_df
