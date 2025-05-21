@@ -39,33 +39,34 @@ class Config:
                 "fetch_extended_data": True,
                 "csv_30m": str(self.data_dir / "btc_30m.csv")
             },
-            "feature_engineering": {
+                        "feature_engineering": {
                 "use_chunking": True,
                 "chunk_size": 2000,
                 "correlation_threshold": 0.95,
                 "use_optuna_features": True,
                 "optuna_n_trials": 150,
                 "optuna_timeout": 3600,
-                "optuna_study_name": "feature_selection_study_v6_sharpe", # Incremented version
+                "optuna_study_name": "feature_selection_study_v6_sharpe",
                 "optuna_objective_model": "RandomForest",
 
                 "essential_features": [
                     'open', 'high', 'low', 'close', 'volume',
                     'atr_14', 'rsi_14', 'sma_200', 'ema_50', 'obv',
-                    'adx_14', 'range_position', 'cmf_20' # Added CMF as potentially essential
+                    'adx_14', 'range_position', 'cmf_20'
                 ],
-                "optuna_n_additional_features_min": 7, # Adjusted due to more features
-                "optuna_n_additional_features_max": 27, # Adjusted, ensure model.max_features is also adequate
+                "optuna_n_additional_features_min": 7,
+                "optuna_n_additional_features_max": 27,
 
                 "optuna_sim_trade_threshold_percentile": 70,
-                "optuna_min_trades_for_score": 15,
+                "optuna_min_trades_for_score": 25, # UPDATED
                 "optuna_feature_count_penalty_factor": 0.003,
+                "optuna_stability_penalty_factor": 0.1, # NEW
 
-                "optuna_lgbm_n_estimators": 700,  # Increased further
-                "optuna_lgbm_learning_rate": 0.015, # Decreased slightly
-                "optuna_lgbm_min_child_samples": 25, # Increased
-                "optuna_lgbm_early_stopping_rounds": 70, # Increased
-                "optuna_lgbm_min_split_gain": 0.0001, # Added to encourage splits
+                "optuna_lgbm_n_estimators": 700,
+                "optuna_lgbm_learning_rate": 0.015,
+                "optuna_lgbm_min_child_samples": 25,
+                "optuna_lgbm_early_stopping_rounds": 70,
+                "optuna_lgbm_min_split_gain": 0.0001,
                 "optuna_reuse_existing_study_results": True,
                 "optuna_rf_n_estimators": 75,
                 "optuna_rf_max_depth": 9,
@@ -76,23 +77,23 @@ class Config:
 
                 "indicators_to_compute": [
                     "ema_9", "ema_21", "ema_50", "sma_200",
-                    "macd_12_26_9", # Combined MACD params
-                    "adx_14", # ADX will also compute +DI/-DI
+                    "macd_12_26_9",
+                    "adx_14",
                     "rsi_14",
-                    "bb_20_2", # Combined BB params
+                    "bb_20_2",
                     "atr_14", "obv",
-                    "stoch_14_3", # Stochastic Oscillator %K=14, %D=3
-                    "roc_12",     # Rate of Change 12 periods
-                    "cmf_20",     # Chaikin Money Flow 20 periods
-                    "histvol_20"  # Historical Volatility 20 periods
+                    "stoch_14_3",
+                    "roc_12",
+                    "cmf_20",
+                    "histvol_20"
                 ],
-                "lag_periods": [1, 2, 3, 5, 8, 13], # Added more lag periods
+                "lag_periods": [1, 2, 3, 5, 8, 13],
 
                 "ema_short_period": 9, "ema_medium_period": 21, "ema_long_period": 50, "ema_vlong_period": 200,
                 "macd_fast": 12, "macd_slow": 26, "macd_signal": 9,
                 "adx_period": 14, "rsi_period": 14, "bb_period": 20, "bb_stddev": 2, "atr_period": 14,
-                "stoch_k_period": 14, "stoch_d_period": 3, "stoch_slowing_k": 3, # Added stoch params
-                "roc_period": 12, "cmf_period": 20, "histvol_period": 20 # Added other new params
+                "stoch_k_period": 14, "stoch_d_period": 3, "stoch_slowing_k": 3,
+                "roc_period": 12, "cmf_period": 20, "histvol_period": 20
             },
             "risk": {
                 "initial_capital": 10000.0,

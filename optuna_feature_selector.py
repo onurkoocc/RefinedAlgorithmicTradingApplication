@@ -53,8 +53,10 @@ class OptunaFeatureSelector:
                                                                                              "variable_cost", 0.0005)
 
         self.optuna_sim_trade_threshold_percentile = fe_config.get("optuna_sim_trade_threshold_percentile", 70)
-        self.optuna_min_trades_for_score = fe_config.get("optuna_min_trades_for_score", 15)
+        self.optuna_min_trades_for_score = fe_config.get("optuna_min_trades_for_score", 25)  # Updated from 15
         self.optuna_feature_count_penalty_factor = fe_config.get("optuna_feature_count_penalty_factor", 0.003)
+        self.optuna_stability_penalty_factor = fe_config.get("optuna_stability_penalty_factor",
+                                                             0.1)  # New configurable factor
 
         self.lgbm_n_estimators = fe_config.get("optuna_lgbm_n_estimators", 600)
         self.lgbm_learning_rate = fe_config.get("optuna_lgbm_learning_rate", 0.02)
@@ -62,7 +64,6 @@ class OptunaFeatureSelector:
         self.lgbm_early_stopping_rounds = fe_config.get("optuna_lgbm_early_stopping_rounds", 60)
         self.optuna_rf_n_estimators = fe_config.get("optuna_rf_n_estimators", 75)
         self.optuna_rf_max_depth = fe_config.get("optuna_rf_max_depth", 9)
-
 
     def _calculate_window_feature_importances(self, df_window_features: pd.DataFrame):
         self.logger.info(
@@ -109,10 +110,9 @@ class OptunaFeatureSelector:
                 n_estimators=self.lgbm_n_estimators, max_depth=7, learning_rate=self.lgbm_learning_rate,
                 n_jobs=-1, random_state=42, min_child_samples=self.lgbm_min_child_samples,
                 colsample_bytree=0.8, subsample=0.8, importance_type='gain',
-                # Consider adding a small positive value for min_split_gain if "No further splits" persists
-                # min_split_gain=0.001
+                min_split_gain=self.config.get("feature_engineering", "optuna_lgbm_min_split_gain", 0.0)
             )
-            lgbm_model.fit(X_train_lgbm_fi, y_train_lgbm_fi, eval_set=eval_set_lgbm, eval_metric='l1', # Changed to l1
+            lgbm_model.fit(X_train_lgbm_fi, y_train_lgbm_fi, eval_set=eval_set_lgbm, eval_metric='l1',
                            callbacks=callbacks_lgbm)
 
             X_perm_data = X_val_lgbm_fi if eval_set_lgbm and not X_val_lgbm_fi.empty else X_train_lgbm_fi
@@ -258,7 +258,7 @@ class OptunaFeatureSelector:
 
         for feature_name_iter in candidate_for_variance_check:
             if df_window_features[feature_name_iter].nunique() > 1:
-                mask_has_variance.loc[feature_name_iter] = True # Use .loc for assignment
+                mask_has_variance.loc[feature_name_iter] = True
 
         final_selection_mask_for_importances = mask_is_non_essential & mask_is_in_df & mask_has_variance
         non_essential_importances_filtered = self.current_window_importances[final_selection_mask_for_importances]
@@ -336,7 +336,11 @@ class OptunaFeatureSelector:
                     if len(fold_trade_pnls) >= self.optuna_min_trades_for_score:
                         mean_pnl = np.mean(fold_trade_pnls)
                         std_pnl = np.std(fold_trade_pnls)
-                        fold_score = mean_pnl / (std_pnl + 1e-7)
+                        sharpe_like_score = mean_pnl / (std_pnl + 1e-7)
+
+                        stability_penalty = (std_pnl / (abs(mean_pnl) + 1e-7)) * self.optuna_stability_penalty_factor
+
+                        fold_score = sharpe_like_score - stability_penalty
                     else:
                         fold_score = -1.0
                 else:
