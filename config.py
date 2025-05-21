@@ -34,7 +34,7 @@ class Config:
             "data": {
                 "symbol": "BTCUSDT",
                 "interval_30m": "30m",
-                "min_candles": 15000,  # Adjusted for robust feature engineering
+                "min_candles": 30000,
                 "use_api": True,
                 "fetch_extended_data": True,
                 "csv_30m": str(self.data_dir / "btc_30m.csv")
@@ -46,28 +46,29 @@ class Config:
                 "use_optuna_features": True,
                 "optuna_n_trials": 150,
                 "optuna_timeout": 3600,
-                "optuna_study_name": "feature_selection_study_v5_sharpe",
+                "optuna_study_name": "feature_selection_study_v6_sharpe", # Incremented version
                 "optuna_objective_model": "RandomForest",
 
                 "essential_features": [
                     'open', 'high', 'low', 'close', 'volume',
-                    'sma_200', 'obv', 'ema_50', 'atr_14', 'rsi_14',
-                    'adx_14', 'range_position'  # Added based on log review
+                    'atr_14', 'rsi_14', 'sma_200', 'ema_50', 'obv',
+                    'adx_14', 'range_position', 'cmf_20' # Added CMF as potentially essential
                 ],
-                "optuna_n_additional_features_min": 8,
-                "optuna_n_additional_features_max": 25,
+                "optuna_n_additional_features_min": 7, # Adjusted due to more features
+                "optuna_n_additional_features_max": 27, # Adjusted, ensure model.max_features is also adequate
 
                 "optuna_sim_trade_threshold_percentile": 70,
                 "optuna_min_trades_for_score": 15,
                 "optuna_feature_count_penalty_factor": 0.003,
 
-                "optuna_lgbm_n_estimators": 600,  # Increased
-                "optuna_lgbm_learning_rate": 0.02,
-                "optuna_lgbm_min_child_samples": 20,  # Slightly increased
-                "optuna_lgbm_early_stopping_rounds": 60,  # Increased
+                "optuna_lgbm_n_estimators": 700,  # Increased further
+                "optuna_lgbm_learning_rate": 0.015, # Decreased slightly
+                "optuna_lgbm_min_child_samples": 25, # Increased
+                "optuna_lgbm_early_stopping_rounds": 70, # Increased
+                "optuna_lgbm_min_split_gain": 0.0001, # Added to encourage splits
                 "optuna_reuse_existing_study_results": True,
-                "optuna_rf_n_estimators": 75,  # Added for RF in objective
-                "optuna_rf_max_depth": 9,  # Added for RF in objective
+                "optuna_rf_n_estimators": 75,
+                "optuna_rf_max_depth": 9,
 
                 "feature_selection_method": "importance",
                 "use_adaptive_features": False,
@@ -75,23 +76,32 @@ class Config:
 
                 "indicators_to_compute": [
                     "ema_9", "ema_21", "ema_50", "sma_200",
-                    "macd_12_26", "macd_signal_12_26_9", "macd_histogram_12_26_9",
-                    "adx_14", "plus_di_14", "minus_di_14",
-                    "rsi_14", "bb_middle_20", "bb_upper_20", "bb_lower_20", "bb_width_20",
-                    "atr_14", "obv"
+                    "macd_12_26_9", # Combined MACD params
+                    "adx_14", # ADX will also compute +DI/-DI
+                    "rsi_14",
+                    "bb_20_2", # Combined BB params
+                    "atr_14", "obv",
+                    "stoch_14_3", # Stochastic Oscillator %K=14, %D=3
+                    "roc_12",     # Rate of Change 12 periods
+                    "cmf_20",     # Chaikin Money Flow 20 periods
+                    "histvol_20"  # Historical Volatility 20 periods
                 ],
+                "lag_periods": [1, 2, 3, 5, 8, 13], # Added more lag periods
+
                 "ema_short_period": 9, "ema_medium_period": 21, "ema_long_period": 50, "ema_vlong_period": 200,
                 "macd_fast": 12, "macd_slow": 26, "macd_signal": 9,
                 "adx_period": 14, "rsi_period": 14, "bb_period": 20, "bb_stddev": 2, "atr_period": 14,
+                "stoch_k_period": 14, "stoch_d_period": 3, "stoch_slowing_k": 3, # Added stoch params
+                "roc_period": 12, "cmf_period": 20, "histvol_period": 20 # Added other new params
             },
             "risk": {
                 "initial_capital": 10000.0,
-                "base_risk_per_trade": 0.01,  # Reduced for consistency
-                "max_risk_per_trade": 0.02,  # Reduced
-                "min_risk_per_trade": 0.005,  # Reduced
-                "max_portfolio_risk": 0.15,  # Reduced
-                "max_drawdown_percent": 0.25,  # User specified
-                "kelly_fraction": 0.3,  # More conservative Kelly
+                "base_risk_per_trade": 0.01,
+                "max_risk_per_trade": 0.02,
+                "min_risk_per_trade": 0.005,
+                "max_portfolio_risk": 0.15,
+                "max_drawdown_percent": 0.25,
+                "kelly_fraction": 0.3,
                 "use_adaptive_kelly": True,
                 "volatility_scaling": True,
                 "momentum_scaling": True,
@@ -100,23 +110,23 @@ class Config:
                 "equity_growth_factor": 0.9,
                 "drawdown_risk_factor": 1.2,
                 "recovery_factor": 0.7,
-                "max_trades_per_day": 5,  # To meet 10-30 trades/month
+                "max_trades_per_day": 5,
                 "min_trade_size_usd": 25.0,
                 "min_trade_size_btc": 0.0003,
                 "emergency_stop_buffer": 0.0015
             },
-            "exit": {  # Parameters for the unified exit strategy in RiskManager
+            "exit": {
                 "min_holding_time_hours": 0.5,
-                "max_holding_time_hours": 36.0,  # Default max
+                "max_holding_time_hours": 36.0,
                 "early_loss_threshold": -0.012,
                 "early_loss_time_hours": 2.5,
                 "stagnant_threshold_pnl_abs": 0.0020,
                 "stagnant_time_hours": 3.5,
-                "profit_targets": {  # Base targets, will be adjusted by regime
+                "profit_targets": {
                     "micro": 0.006, "short": 0.012, "medium": 0.020,
                     "long": 0.035, "extended": 0.050
                 },
-                "market_phase_adjustments": {  # Multipliers for profit targets and holding times
+                "market_phase_adjustments": {
                     "uptrend": {"long_profit_factor": 1.2, "short_profit_factor": 0.7, "duration_factor": 1.1},
                     "downtrend": {"long_profit_factor": 0.7, "short_profit_factor": 1.2, "duration_factor": 1.1},
                     "neutral": {"long_profit_factor": 1.0, "short_profit_factor": 1.0, "duration_factor": 1.0},
@@ -126,23 +136,23 @@ class Config:
                                               "duration_factor": 0.9},
                     "volatile": {"long_profit_factor": 0.9, "short_profit_factor": 0.9, "duration_factor": 0.8}
                 },
-                "partial_exit_strategy": {  # Simplified
+                "partial_exit_strategy": {
                     "uptrend": [{"threshold": 0.015, "portion": 0.3}, {"threshold": 0.025, "portion": 0.4}],
                     "downtrend": [{"threshold": 0.015, "portion": 0.3}, {"threshold": 0.025, "portion": 0.4}],
                     "neutral": [{"threshold": 0.012, "portion": 0.3}, {"threshold": 0.020, "portion": 0.4}]
                 },
-                "time_decay_factors": {  # PnL must exceed this for given hours
+                "time_decay_factors": {
                     4: 0.001, 8: 0.002, 16: 0.004, 24: 0.006, 36: 0.008
                 },
                 "rsi_extreme_levels": {"overbought": 75, "oversold": 25},
                 "quick_profit_base_threshold": 0.007,
-                "reward_risk_ratio_target": 1.8  # Slightly more achievable R/R target
+                "reward_risk_ratio_target": 1.8
             },
             "signal": {
-                "confidence_threshold": 0.0010,  # Adjusted
+                "confidence_threshold": 0.0010,
                 "ranging_confidence_threshold": 0.0015,
                 "strong_signal_threshold": 0.05,
-                "atr_multiplier_sl": 2.0,  # Tighter SL ATR
+                "atr_multiplier_sl": 2.0,
                 "use_regime_filter": True,
                 "use_volatility_filter": True,
                 "rsi_overbought": 70, "rsi_oversold": 30,
@@ -152,101 +162,100 @@ class Config:
                 "strong_buy_threshold": 0.0018
             },
             "model": {
-                "sequence_length": 60,  # Adjusted
-                "horizon": 12,  # Adjusted
+                "sequence_length": 60,
+                "horizon": 12,
                 "normalize_method": "feature_specific",
                 "train_ratio": 0.75,
-                "epochs": 30,  # Slightly more epochs if data per window is large enough
-                "batch_size": 128,  # Adjusted for 4070 Laptop GPU
+                "epochs": 30,
+                "batch_size": 128,
                 "use_mixed_precision": True,
-                "early_stopping_patience": 7,  # Slightly more patience if growth_score plateaus slowly
-                "dropout_rate": 0.25,  # Slightly higher dropout
-                "l2_reg": 7e-5,  # Slightly stronger L2 regularization
+                "early_stopping_patience": 7,
+                "dropout_rate": 0.25,
+                "l2_reg": 7e-5,
                 "attention_enabled": True,
                 "use_ensemble": True,
                 "ensemble_size": 3,
-                "initial_learning_rate": 3e-4,  # Adjusted
+                "initial_learning_rate": 3e-4,
                 "lr_decay_factor": 0.6,
                 "direction_loss_weight": 0.6,
-                "max_features": 60,  # Adjusted
+                "max_features": 70,  # Increased to accommodate more potential features
                 "model_path": str(self.results_dir / "models" / "best_model.keras"),
                 "data_augmentation": {"enabled": True, "noise_level": 0.015, "roll_probability": 0.3,
                                       "mask_probability": 0.25, "scale_probability": 0.15},
                 "growth_metric": {
-                    "monthly_target": 0.08,  # Adjusted target, perhaps more conservative
+                    "monthly_target": 0.08,
                     "min_target": 0.05,
                     "max_target": 0.12,
-                    "drawdown_weight": 2.0,  # Higher penalty for drawdown
-                    "consistency_weight": 1.0,  # Slightly lower weight if it conflicts with raw growth
-                    "avg_return_weight": 1.0,  # Balance with consistency
-                    "threshold_pct": 0.35  # Consider adjusting trade selection threshold in callback
+                    "drawdown_weight": 2.0,
+                    "consistency_weight": 1.0,
+                    "avg_return_weight": 1.0,
+                    "threshold_pct": 0.35
                 },
                 "architecture": {
-                    "projection_size": 80,  # Potentially reduce complexity if overfitting
-                    "transformer_layers": 2,  # Keep
-                    "transformer_heads": 4,  # Potentially reduce
-                    "transformer_dropout": 0.25,  # Higher dropout
-                    "recurrent_units": 40,  # Potentially reduce
-                    "dense_units1": 48,  # Potentially reduce
-                    "dense_units2": 20  # Potentially reduce
+                    "projection_size": 80,
+                    "transformer_layers": 2,
+                    "transformer_heads": 4,
+                    "transformer_dropout": 0.25,
+                    "recurrent_units": 40,
+                    "dense_units1": 48,
+                    "dense_units2": 20
                 }
             },
             "backtest": {
-                "train_window_size": 3000,  # Adjusted
-                "test_window_size": 600,  # Adjusted
-                "walk_forward_steps": 20,  # Sufficient for robust validation
+                "train_window_size": 3000,
+                "test_window_size": 600,
+                "walk_forward_steps": 41,
                 "slippage": 0.0005,
                 "fixed_cost": 0.0010,
                 "variable_cost": 0.0005,
-                "min_hours_between_trades": 1.0,  # Adjusted for trade frequency
+                "min_hours_between_trades": 1.0,
                 "use_dynamic_slippage": True,
                 "adaptive_training": True,
                 "train_confidence_threshold": 0.60,
-                "optimize_every_n_iterations": 1  # More frequent optimization
+                "optimize_every_n_iterations": 1
             },
-            "market_regime": {  # Simplified regime detection
-                "lookback_period": 72,  # Slightly longer lookback for more stable regime detection
+            "market_regime": {
+                "lookback_period": 72,
                 "enable_parameter_blending": True,
-                "transition_blend_factor": 0.3,  # Adjust blending speed
-                "regime_types": ["uptrend", "downtrend", "ranging", "volatile"],  # Simplified
-                "legacy_regime_mapping": {  # Maps more complex internal names to simpler ones if needed
+                "transition_blend_factor": 0.3,
+                "regime_types": ["uptrend", "downtrend", "ranging", "volatile"],
+                "legacy_regime_mapping": {
                     "uptrend": "uptrend", "strong_uptrend": "uptrend",
                     "downtrend": "downtrend", "strong_downtrend": "downtrend",
                     "ranging": "ranging", "ranging_at_support": "ranging", "ranging_at_resistance": "ranging",
                     "neutral": "ranging", "choppy": "volatile", "volatile": "volatile",
-                    # New mappings from MarketRegimeUtil's 7 types
                     "moderate_uptrend": "uptrend",
                     "moderate_downtrend": "downtrend",
                     "tight_consolidation": "ranging",
                     "volatile_consolidation": "volatile",
                     "choppy_mixed": "volatile"
                 },
-                "metrics_thresholds": {  # Simplified thresholds
+                "metrics_thresholds": {
                     "uptrend": {"adx": 22, "price_above_ema_pct": 65, "di_diff_gt": 5},
                     "downtrend": {"adx": 22, "price_above_ema_pct_lt": 35, "di_diff_lt": -5},
-                    "ranging": {"adx_lt": 20, "bb_width_lt": 0.04},  # bb_width in decimal
-                    "volatile": {"atr_pct_gt": 0.015, "bb_width_gt": 0.05}  # atr_pct = (atr/close)
+                    "ranging": {"adx_lt": 20, "bb_width_lt": 0.04},
+                    "volatile": {"atr_pct_gt": 0.015, "bb_width_gt": 0.05}
                 },
-                "regime_parameters": {  # Centralized parameters for RiskManager and SignalGenerator
+                "regime_parameters": {
                     "atr_multipliers": {
-                        "uptrend": {"long": 1.8, "short": 2.8},  # Example: Tighter SL for longs in uptrend
+                        "uptrend": {"long": 1.8, "short": 2.8},
                         "downtrend": {"long": 2.8, "short": 1.8},
-                        "ranging": {"long": 1.5, "short": 1.5},  # Tighter SL in ranging
-                        "volatile": {"long": 3.0, "short": 3.0}  # Wider SL in volatile
+                        "ranging": {"long": 1.5, "short": 1.5},
+                        "volatile": {"long": 3.0, "short": 3.0}
                     },
                     "profit_target_factors": {
                         "uptrend": 1.15, "downtrend": 1.15,
-                        "ranging": 0.85, "volatile": 0.95  # More conservative targets in ranging/volatile
+                        "ranging": 0.85, "volatile": 0.95
                     },
                     "max_duration_factors": {
                         "uptrend": 1.1, "downtrend": 1.1,
-                        "ranging": 0.75, "volatile": 0.85  # Shorter durations in ranging/volatile
+                        "ranging": 0.75, "volatile": 0.85
                     },
-                    "position_sizing_factors": {  # More conservative sizing in less certain regimes
+                    "position_sizing_factors": {
                         "uptrend": 1.0, "downtrend": 1.0,
                         "ranging": 0.7, "volatile": 0.8
                     },
-                    "signal_threshold_factors": {  # Multiplies base signal thresholds
+                    "signal_threshold_factors": {
                         "uptrend": 0.9, "downtrend": 0.9, "ranging": 1.2, "volatile": 1.1
                     }
                 }

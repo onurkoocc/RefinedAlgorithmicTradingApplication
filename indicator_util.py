@@ -11,13 +11,17 @@ class IndicatorUtil:
         if df.empty: return df
         df_out = df.copy()
 
-        for col in ['open', 'high', 'low', 'close', 'volume']:
+        required_base_cols = ['open', 'high', 'low', 'close', 'volume']
+        for col in required_base_cols:
             if col not in df_out.columns:
-                self.logger.warning(f"Missing base column {col} for indicator calculation.")
+                # self.logger.warning(f"Missing base column {col} for indicator calculation.") # Assuming logger is not available here
                 if col == 'volume':
                     df_out[col] = 0
-                else:
-                    df_out[col] = df_out['close'] if 'close' in df_out else 0
+                elif 'close' in df_out.columns:
+                    df_out[col] = df_out['close']
+                else: # If close is also missing, this is problematic
+                    df_out[col] = 0
+
 
         for indicator_config in indicator_configs:
             parts = indicator_config.split('_')
@@ -35,18 +39,29 @@ class IndicatorUtil:
                     period = params[0]
                     std_dev = params[1] if len(params) > 1 else 2
                     df_out = self.calculate_bollinger_bands(df_out, period, std_dev)
-                    df_out = self.calculate_bb_width(df_out, period)
+                    df_out = self.calculate_bb_width(df_out, period) # Ensure bb_width is also calculated
             elif name == "atr":
                 if params: df_out = self.calculate_atr(df_out, params[0])
             elif name == "obv":
                 df_out = self.calculate_obv(df_out)
-            elif name == "adx":
+            elif name == "adx": # ADX also calculates +DI, -DI
                 if params: df_out = self.calculate_adx(df_out, params[0])
             elif name == "macd":
                 fast = params[0] if len(params) > 0 else 12
                 slow = params[1] if len(params) > 1 else 26
                 signal = params[2] if len(params) > 2 else 9
                 df_out = self.calculate_macd(df_out, fast, slow, signal)
+            elif name == "stoch": # Stochastic Oscillator
+                k_period = params[0] if len(params) > 0 else 14
+                d_period = params[1] if len(params) > 1 else 3
+                df_out = self.calculate_stochastic_oscillator(df_out, k_period, d_period)
+            elif name == "roc": # Rate of Change
+                if params: df_out = self.calculate_roc(df_out, params[0])
+            elif name == "cmf": # Chaikin Money Flow
+                if params: df_out = self.calculate_cmf(df_out, params[0])
+            elif name == "histvol": # Historical Volatility
+                if params: df_out = self.calculate_historical_volatility(df_out, params[0])
+
         return df_out
 
     def calculate_ema(self, df: pd.DataFrame, period: int) -> pd.DataFrame:
@@ -67,8 +82,8 @@ class IndicatorUtil:
             delta = df['close'].diff()
             gain = delta.where(delta > 0, 0).fillna(0)
             loss = -delta.where(delta < 0, 0).fillna(0)
-            avg_gain = gain.rolling(window=period, min_periods=1).mean()
-            avg_loss = loss.rolling(window=period, min_periods=1).mean()
+            avg_gain = gain.ewm(com=period - 1, adjust=False, min_periods=max(1, period // 2)).mean()
+            avg_loss = loss.ewm(com=period - 1, adjust=False, min_periods=max(1, period // 2)).mean()
             rs = avg_gain / (avg_loss + 1e-9)
             df[col_name] = 100 - (100 / (1 + rs))
             df[col_name] = df[col_name].fillna(50)
@@ -121,8 +136,8 @@ class IndicatorUtil:
             high_low = df['high'] - df['low']
             high_close_prev = abs(df['high'] - df['close'].shift(1))
             low_close_prev = abs(df['low'] - df['close'].shift(1))
-            tr = pd.concat([high_low, high_close_prev, low_close_prev], axis=1).max(axis=1, skipna=False)
-            atr = tr.ewm(alpha=1 / period, adjust=False, min_periods=max(1, period // 2)).mean()
+            tr_series = pd.concat([high_low, high_close_prev, low_close_prev], axis=1).max(axis=1, skipna=False)
+            atr = tr_series.ewm(alpha=1 / period, adjust=False, min_periods=max(1, period // 2)).mean()
 
             move_up = df['high'].diff()
             move_down = -df['low'].diff()
@@ -153,6 +168,43 @@ class IndicatorUtil:
                                               min_periods=max(1, signal_period // 2)).mean()
             df[hist_col] = df[macd_col] - df[signal_col]
         return df
+
+    def calculate_stochastic_oscillator(self, df: pd.DataFrame, k_period: int = 14, d_period: int = 3) -> pd.DataFrame:
+        stoch_k_col = f'stoch_k_{k_period}'
+        stoch_d_col = f'stoch_d_{k_period}_{d_period}'
+        if stoch_k_col not in df.columns:
+            low_min = df['low'].rolling(window=k_period, min_periods=max(1, k_period // 2)).min()
+            high_max = df['high'].rolling(window=k_period, min_periods=max(1, k_period // 2)).max()
+            df[stoch_k_col] = 100 * ((df['close'] - low_min) / (high_max - low_min + 1e-9))
+            df[stoch_k_col] = df[stoch_k_col].fillna(50)
+        if stoch_d_col not in df.columns and stoch_k_col in df.columns:
+            df[stoch_d_col] = df[stoch_k_col].rolling(window=d_period, min_periods=max(1, d_period // 2)).mean()
+            df[stoch_d_col] = df[stoch_d_col].fillna(df[stoch_k_col])
+        return df
+
+    def calculate_roc(self, df: pd.DataFrame, period: int = 12) -> pd.DataFrame:
+        col_name = f'roc_{period}'
+        if col_name not in df.columns:
+            df[col_name] = (df['close'].diff(period) / df['close'].shift(period)) * 100
+        return df
+
+    def calculate_cmf(self, df: pd.DataFrame, period: int = 20) -> pd.DataFrame:
+        col_name = f'cmf_{period}'
+        if col_name not in df.columns:
+            mfv = ((df['close'] - df['low']) - (df['high'] - df['close'])) / (df['high'] - df['low'] + 1e-9) * df['volume']
+            mfv = mfv.fillna(0) # Handle potential NaNs from division by zero if high == low
+            df[col_name] = mfv.rolling(window=period, min_periods=max(1, period // 2)).sum() / \
+                           df['volume'].rolling(window=period, min_periods=max(1, period // 2)).sum()
+            df[col_name] = df[col_name].fillna(0)
+        return df
+
+    def calculate_historical_volatility(self, df: pd.DataFrame, period: int = 20) -> pd.DataFrame:
+        col_name = f'hist_vol_{period}'
+        if col_name not in df.columns:
+            log_returns = np.log(df['close'] / df['close'].shift(1))
+            df[col_name] = log_returns.rolling(window=period, min_periods=max(1, period // 2)).std() * np.sqrt(period) # Annualize by sqrt(period) if period is days, adjust if other interval
+        return df
+
 
     def detect_market_phase(self, df_window: pd.DataFrame) -> str:
         if self.market_regime_util:
