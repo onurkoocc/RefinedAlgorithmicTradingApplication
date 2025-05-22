@@ -37,6 +37,7 @@ class OptunaFeatureSelector:
         self.essential_features = fe_config.get("essential_features",
                                                 ['open', 'high', 'low', 'close', 'volume', 'sma_200', 'obv', 'ema_50',
                                                  'atr_14', 'rsi_14', 'adx_14', 'range_position'])
+        self.ignore_features = fe_config.get("optuna_ignore_features", [])  # NEW
 
         self.optuna_n_additional_features_min = fe_config.get("optuna_n_additional_features_min", 8)
         max_model_features = model_config.get("max_features", 60)
@@ -53,10 +54,9 @@ class OptunaFeatureSelector:
                                                                                              "variable_cost", 0.0005)
 
         self.optuna_sim_trade_threshold_percentile = fe_config.get("optuna_sim_trade_threshold_percentile", 70)
-        self.optuna_min_trades_for_score = fe_config.get("optuna_min_trades_for_score", 25)  # Updated from 15
+        self.optuna_min_trades_for_score = fe_config.get("optuna_min_trades_for_score", 25)
         self.optuna_feature_count_penalty_factor = fe_config.get("optuna_feature_count_penalty_factor", 0.003)
-        self.optuna_stability_penalty_factor = fe_config.get("optuna_stability_penalty_factor",
-                                                             0.1)  # New configurable factor
+        self.optuna_stability_penalty_factor = fe_config.get("optuna_stability_penalty_factor", 0.1)
 
         self.lgbm_n_estimators = fe_config.get("optuna_lgbm_n_estimators", 600)
         self.lgbm_learning_rate = fe_config.get("optuna_lgbm_learning_rate", 0.02)
@@ -139,6 +139,22 @@ class OptunaFeatureSelector:
             self.logger.error(f"Error during window feature importance calculation: {e}\n{traceback.format_exc()}")
             self.current_window_importances = pd.Series(dtype=float)
 
+    def _get_candidate_additional_features(self, df_window_features: pd.DataFrame) -> pd.Series:
+        idx = self.current_window_importances.index
+        mask_is_non_essential = ~idx.isin(self.essential_features)
+        mask_is_not_ignored = ~idx.isin(self.ignore_features)  # NEW MASK
+        mask_is_in_df = idx.isin(df_window_features.columns)
+
+        mask_has_variance = pd.Series(False, index=idx)
+        candidate_for_variance_check = idx[mask_is_non_essential & mask_is_not_ignored & mask_is_in_df]
+
+        for feature_name_iter in candidate_for_variance_check:
+            if df_window_features[feature_name_iter].nunique() > 1:
+                mask_has_variance.loc[feature_name_iter] = True
+
+        final_selection_mask = mask_is_non_essential & mask_is_not_ignored & mask_is_in_df & mask_has_variance
+        return self.current_window_importances[final_selection_mask]
+
     def optimize_features(self, df_window_features: pd.DataFrame, window_id: Union[int, str]) -> List[str]:
         if df_window_features.empty:
             self.logger.warning(f"Window {window_id}: Empty data for Optuna optimization. Returning essentials.")
@@ -151,11 +167,8 @@ class OptunaFeatureSelector:
                 f"Window {window_id}: Feature importances could not be computed. Returning essential features.")
             return self.essential_features[:]
 
-        potential_add_features_count = len([
-            f for f in self.current_window_importances.index
-            if
-            f not in self.essential_features and f in df_window_features.columns and df_window_features[f].nunique() > 1
-        ])
+        candidate_additional_features = self._get_candidate_additional_features(df_window_features)
+        potential_add_features_count = len(candidate_additional_features)
 
         current_max_additional = min(self.optuna_n_additional_features_max, potential_add_features_count)
         current_min_additional = min(self.optuna_n_additional_features_min, current_max_additional)
@@ -165,7 +178,7 @@ class OptunaFeatureSelector:
 
         if current_max_additional == 0:
             self.logger.info(
-                f"Window {window_id}: No additional non-essential features with variance to select. Returning essentials.")
+                f"Window {window_id}: No additional non-essential, non-ignored features with variance to select. Returning essentials.")
             return self.essential_features[:]
 
         window_specific_study_name = f"{self.base_study_name}_win_{window_id}"
@@ -179,7 +192,8 @@ class OptunaFeatureSelector:
             else:
                 self.logger.info(f"Optimizing study '{window_specific_study_name}'.")
                 study.optimize(
-                    lambda trial: self._objective(trial, df_window_features, current_min_additional,
+                    lambda trial: self._objective(trial, df_window_features, candidate_additional_features,
+                                                  current_min_additional,
                                                   current_max_additional, window_id),
                     n_trials=self.n_trials, timeout=self.timeout_seconds, show_progress_bar=True
                 )
@@ -190,7 +204,8 @@ class OptunaFeatureSelector:
                 storage=f"sqlite:///{self.optuna_db_path}", load_if_exists=True
             )
             study.optimize(
-                lambda trial: self._objective(trial, df_window_features, current_min_additional, current_max_additional,
+                lambda trial: self._objective(trial, df_window_features, candidate_additional_features,
+                                              current_min_additional, current_max_additional,
                                               window_id),
                 n_trials=self.n_trials, timeout=self.timeout_seconds, show_progress_bar=True
             )
@@ -208,24 +223,8 @@ class OptunaFeatureSelector:
         self.logger.info(f"Window {window_id}: Optuna Best Trial {best_trial.number}: Value={best_trial.value:.4f}")
 
         n_best_additional_features = best_trial.params.get("n_additional_features", current_min_additional)
-
         best_features_set = self.essential_features[:]
-
-        idx = self.current_window_importances.index
-        mask_is_non_essential = ~idx.isin(self.essential_features)
-        mask_is_in_df = idx.isin(df_window_features.columns)
-
-        mask_has_variance = pd.Series(False, index=idx)
-        candidate_for_variance_check = idx[mask_is_non_essential & mask_is_in_df]
-
-        for feature_name_iter in candidate_for_variance_check:
-            if df_window_features[feature_name_iter].nunique() > 1:
-                mask_has_variance[feature_name_iter] = True
-
-        final_selection_mask_for_importances = mask_is_non_essential & mask_is_in_df & mask_has_variance
-        non_essential_importances_filtered = self.current_window_importances[final_selection_mask_for_importances]
-
-        top_n_additional = non_essential_importances_filtered.head(n_best_additional_features).index.tolist()
+        top_n_additional = candidate_additional_features.head(n_best_additional_features).index.tolist()
 
         for f_name in top_n_additional:
             if f_name not in best_features_set:
@@ -238,7 +237,9 @@ class OptunaFeatureSelector:
         self._save_best_features(final_best_features, filename=f"optimized_feature_set_window_{window_id}.joblib")
         return final_best_features
 
-    def _objective(self, trial: optuna.Trial, df_window_features: pd.DataFrame, min_add: int, max_add: int,
+    def _objective(self, trial: optuna.Trial, df_window_features: pd.DataFrame,
+                   candidate_additional_features: pd.Series,
+                   min_add: int, max_add: int,
                    window_id: Union[int, str]) -> float:
         current_selected_features = self.essential_features[:]
 
@@ -249,21 +250,7 @@ class OptunaFeatureSelector:
         else:
             n_additional = trial.suggest_int("n_additional_features", min_add, max_add)
 
-        idx = self.current_window_importances.index
-        mask_is_non_essential = ~idx.isin(self.essential_features)
-        mask_is_in_df = idx.isin(df_window_features.columns)
-
-        mask_has_variance = pd.Series(False, index=idx)
-        candidate_for_variance_check = idx[mask_is_non_essential & mask_is_in_df]
-
-        for feature_name_iter in candidate_for_variance_check:
-            if df_window_features[feature_name_iter].nunique() > 1:
-                mask_has_variance.loc[feature_name_iter] = True
-
-        final_selection_mask_for_importances = mask_is_non_essential & mask_is_in_df & mask_has_variance
-        non_essential_importances_filtered = self.current_window_importances[final_selection_mask_for_importances]
-
-        additional_to_select = non_essential_importances_filtered.head(n_additional).index.tolist()
+        additional_to_select = candidate_additional_features.head(n_additional).index.tolist()
 
         for feature_name in additional_to_select:
             if feature_name not in current_selected_features:
@@ -271,8 +258,12 @@ class OptunaFeatureSelector:
 
         current_selected_features = sorted(list(set(current_selected_features)))
 
-        if not current_selected_features or len(current_selected_features) < len(self.essential_features) + 1:
-            return -10.0
+        if not current_selected_features or len(current_selected_features) < len(
+                self.essential_features):  # Allow only essentials
+            if len(current_selected_features) == len(self.essential_features) and min_add == 0 and max_add == 0:
+                pass  # This is fine if no additional features are possible/allowed
+            else:
+                return -10.0
 
         try:
             X_eval = df_window_features[current_selected_features].copy()

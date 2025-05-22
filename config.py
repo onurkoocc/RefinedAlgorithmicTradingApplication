@@ -39,7 +39,7 @@ class Config:
                 "fetch_extended_data": True,
                 "csv_30m": str(self.data_dir / "btc_30m.csv")
             },
-                        "feature_engineering": {
+            "feature_engineering": {
                 "use_chunking": True,
                 "chunk_size": 2000,
                 "correlation_threshold": 0.95,
@@ -52,15 +52,17 @@ class Config:
                 "essential_features": [
                     'open', 'high', 'low', 'close', 'volume',
                     'atr_14', 'rsi_14', 'sma_200', 'ema_50', 'obv',
-                    'adx_14', 'range_position', 'cmf_20'
+                    'adx_14', 'range_position', 'cmf_20',
+                    'cumulative_delta', 'trend_strength'
                 ],
-                "optuna_n_additional_features_min": 7,
-                "optuna_n_additional_features_max": 27,
+                "optuna_ignore_features": ["ema_21", "volatility_regime"],
+                "optuna_n_additional_features_min": 5,
+                "optuna_n_additional_features_max": 25,
 
                 "optuna_sim_trade_threshold_percentile": 70,
-                "optuna_min_trades_for_score": 25, # UPDATED
+                "optuna_min_trades_for_score": 25,  # UPDATED
                 "optuna_feature_count_penalty_factor": 0.003,
-                "optuna_stability_penalty_factor": 0.1, # NEW
+                "optuna_stability_penalty_factor": 0.1,  # NEW
 
                 "optuna_lgbm_n_estimators": 700,
                 "optuna_lgbm_learning_rate": 0.015,
