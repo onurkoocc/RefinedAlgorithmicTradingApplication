@@ -44,21 +44,18 @@ class Config:
                 "chunk_size": 2000,
                 "correlation_threshold": 0.95,
                 "use_optuna_features": True,
-                "optuna_n_trials": 150,
+                "optuna_n_trials": 1500,
                 "optuna_timeout": 3600,  # in seconds
                 "optuna_study_name": "feature_selection_study_v6_sharpe",  # Base name, window ID will be appended
                 "optuna_objective_model": "RandomForest",  # "RandomForest" or "Ridge"
 
                 "essential_features": [  # Features always included, not selected by Optuna
-                    'open', 'high', 'low', 'close', 'volume',
-                    'atr_14', 'rsi_14', 'sma_200', 'ema_50', 'obv',
-                    'adx_14', 'range_position', 'cmf_20',
-                    'cumulative_delta', 'trend_strength'
+                    'open', 'high', 'low', 'close', 'volume'
                 ],
-                "optuna_ignore_features": ["ema_21", "volatility_regime"],
+                "optuna_ignore_features": [],
                 # Features to exclude from Optuna's consideration pool
                 "optuna_n_additional_features_min": 5,  # Min number of additional features Optuna should try to select
-                "optuna_n_additional_features_max": 25,  # Max number of additional features Optuna should try to select
+                "optuna_n_additional_features_max": 35,  # Max number of additional features Optuna should try to select
 
                 "optuna_sim_trade_threshold_percentile": 70,
                 # Percentile of abs model predictions to set trade threshold
