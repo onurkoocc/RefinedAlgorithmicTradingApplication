@@ -34,7 +34,7 @@ class Config:
             "data": {
                 "symbol": "BTCUSDT",
                 "interval_30m": "30m",
-                "min_candles": 30000,
+                "min_candles": 9000,
                 "use_api": True,
                 "fetch_extended_data": True,
                 "csv_30m": str(self.data_dir / "btc_30m.csv")
@@ -221,8 +221,18 @@ class Config:
                 "use_dynamic_slippage": True,
                 "adaptive_training": True,
                 "train_confidence_threshold": 0.60,
-                "optimize_every_n_iterations": 1
+                "optimize_every_n_iterations": 1,
+                "signal_execution_lag": 1,  # Execute signals after N candles
+                "regime_detection_lag": 2,  # Regime detection lag in candles
             },
+        "exchange": {
+            "min_order_size_btc": 0.0003,
+            "min_notional_usd": 25.0,
+            "order_rejection_rate": 0.02,  # 2% random rejection
+            "api_rate_limit_delay": 0.5,   # seconds between API calls
+            "max_api_retries": 3,
+            "connection_failure_rate": 0.01  # 1% connection failures
+        },
             "market_regime": {
                 "lookback_period": 72,
                 "enable_parameter_blending": True,

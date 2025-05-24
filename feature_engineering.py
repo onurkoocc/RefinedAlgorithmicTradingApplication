@@ -114,15 +114,27 @@ class FeatureEngineer:
                 2 * np.pi * (df_adv.index.day - 1) / (df_adv.index.days_in_month - 1 + 1e-9))
 
         if len(df_adv) >= self.market_regime_util.lookback_period:
-            regime_outputs = [self.market_regime_util.detect_regime(
-                df_adv.iloc[max(0, i - self.market_regime_util.lookback_period):i + 1])
-                # Ensure current row is included
-                for i in range(len(df_adv))]
+            regime_lag = self.config.get("backtest", "regime_detection_lag", 2)
+            regime_outputs = []
+
+            for i in range(len(df_adv)):
+                if i < regime_lag:
+                    regime_outputs.append({
+                        'type': 'neutral',
+                        'confidence': 0.3,
+                        'metrics': {'atr_pct': 0.01}
+                    })
+                else:
+                    lookback_start = max(0, i - self.market_regime_util.lookback_period - regime_lag + 1)
+                    lookback_end = i - regime_lag + 1
+                    regime_result = self.market_regime_util.detect_regime(
+                        df_adv.iloc[lookback_start:lookback_end]
+                    )
+                    regime_outputs.append(regime_result)
 
             df_adv['market_regime_type'] = [r['type'] for r in regime_outputs]
             df_adv['market_regime'] = [self._map_regime_to_numeric(r['type'], r['confidence']) for r in regime_outputs]
-            df_adv['volatility_regime'] = [r['metrics'].get('atr_pct', 0.01) / 0.03 for r in
-                                           regime_outputs]  # Use atr_pct
+            df_adv['volatility_regime'] = [r['metrics'].get('atr_pct', 0.01) / 0.03 for r in regime_outputs]
             df_adv['volatility_regime'] = np.clip(df_adv['volatility_regime'], 0, 1)
         else:
             df_adv['market_regime_type'] = 'neutral'
@@ -153,10 +165,9 @@ class FeatureEngineer:
             df_adv['trend_strength'] = 0.5
 
         if 'taker_buy_base_asset_volume' in df_adv.columns and 'volume' in df_adv.columns:
-            buy_vol = df_adv['taker_buy_base_asset_volume']
-            sell_vol = df_adv['volume'] - buy_vol
-            df_adv['cumulative_delta_val'] = (buy_vol - sell_vol).fillna(
-                0)  # Renamed to avoid conflict if 'cumulative_delta' is used for rolling sum
+            buy_vol = df_adv['taker_buy_base_asset_volume'].shift(1).fillna(0)
+            sell_vol = (df_adv['volume'] - df_adv['taker_buy_base_asset_volume']).shift(1).fillna(0)
+            df_adv['cumulative_delta_val'] = (buy_vol - sell_vol)
             df_adv['cumulative_delta'] = df_adv['cumulative_delta_val'].rolling(window=20, min_periods=5).sum()
             avg_vol_20 = df_adv['volume'].rolling(window=20, min_periods=5).mean().fillna(1)
             df_adv['cumulative_delta'] = df_adv['cumulative_delta'] / (avg_vol_20 + 1e-9)
@@ -177,7 +188,6 @@ class FeatureEngineer:
             df_adv['vol_norm_close_change_5'] = df_adv['close'].pct_change(5).fillna(0) / (atr_norm + 1e-9)
             df_adv['vol_norm_momentum_10'] = df_adv['close'].pct_change(10).fillna(0) / (atr_norm + 1e-9)
 
-        # Lagged Returns
         returns = df_adv['close'].pct_change().fillna(0)
         for lag in self.lag_periods:
             df_adv[f'return_lag_{lag}'] = returns.shift(lag).fillna(0)

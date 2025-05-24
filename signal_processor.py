@@ -94,19 +94,28 @@ class SignalGenerator:
                     regime_params[key] = value
 
         latest_features = df_current_features.iloc[-1]
+
+        last_complete_candle_idx = -2 if len(df_current_features) > 1 else -1
+        last_complete_features = df_current_features.iloc[last_complete_candle_idx]
+
         signal_components = {
             "predicted_return": model_pred_scaled,
             "market_phase": market_phase,
             "regime_confidence": regime_confidence,
             "volatility": self.indicator_util.detect_volatility_regime(df_current_features),
-            "ema_signal": self._check_ma_signal(latest_features),
-            "macd_signal": self._check_macd_signal(latest_features),
-            "volume_confirms": self.indicator_util.check_volume_confirmation(df_current_features,
-                                                                             "long" if model_pred_scaled > 0 else "short"),
-            "atr_at_entry": latest_features.get(f'atr_{self.config.get("feature_engineering", "atr_period", 14)}',
-                                                latest_features.get('close', 1) * 0.01),
+            "ema_signal": self._check_ma_signal(last_complete_features),
+            "macd_signal": self._check_macd_signal(last_complete_features),
+            "volume_confirms": self.indicator_util.check_volume_confirmation(
+                df_current_features.iloc[:-1] if len(df_current_features) > 1 else df_current_features,
+                "long" if model_pred_scaled > 0 else "short"
+            ),
+            "atr_at_entry": last_complete_features.get(
+                f'atr_{self.config.get("feature_engineering", "atr_period", 14)}',
+                last_complete_features.get('close', 1) * 0.01
+            ),
             "current_price": latest_features.get('close', 0.0)
         }
+
         signal_components.update(regime_params)
         signal_components.update(market_regime_info.get("metrics", {}))
 
@@ -115,8 +124,11 @@ class SignalGenerator:
 
         threshold_factor = regime_params.get("signal_threshold_factors", 1.0)
 
-        buy_thresh = self.base_buy_threshold * threshold_factor
-        strong_buy_thresh = self.base_strong_buy_threshold * threshold_factor
+        horizon = self.config.get("model", "horizon", 12)
+        horizon_discount = 1.0 - (horizon / 48.0)  # Reduce threshold for longer horizons
+
+        buy_thresh = self.base_buy_threshold * threshold_factor * horizon_discount
+        strong_buy_thresh = self.base_strong_buy_threshold * threshold_factor * horizon_discount
 
         final_signal_type = "NoTrade"
         reason = "BelowThreshold"
@@ -152,8 +164,10 @@ class SignalGenerator:
             "market_phase": market_phase,
             "volatility": signal_components["volatility"],
             "atr_at_entry": signal_components["atr_at_entry"],
-            "current_price": signal_components["current_price"]
+            "current_price": signal_components["current_price"],
+            "prediction_horizon": horizon
         }
+
         output_signal.update(regime_params)
         if market_regime_info.get("blended_parameters"):
             output_signal["blended_parameters"] = market_regime_info["blended_parameters"]

@@ -84,11 +84,20 @@ class MarketSimulator:
 
         self.trades_executed = []
         self.current_position = None
+        self.pending_signal = None
+
+        self.min_order_size_btc = config.get("exchange", "min_order_size_btc", 0.0003)
+        self.min_notional_usd = config.get("exchange", "min_notional_usd", 25.0)
+        self.order_rejection_rate = config.get("exchange", "order_rejection_rate", 0.02)
+        self.signal_execution_lag = config.get("backtest", "signal_execution_lag", 1)
+        self.regime_detection_lag = config.get("backtest", "regime_detection_lag", 2)
+
 
     def _apply_entry_costs(self, entry_price: float, quantity: float, direction: str) -> float:
         slipped_price = entry_price * (1 + self.slippage_pct if direction == 'long' else 1 - self.slippage_pct)
         cost = slipped_price * quantity * self.transaction_cost_pct
         return slipped_price, cost
+
 
     def _apply_exit_costs(self, exit_price: float, quantity: float, direction: str) -> float:
         slipped_price = exit_price * (1 - self.slippage_pct if direction == 'long' else 1 + self.slippage_pct)
@@ -99,30 +108,87 @@ class MarketSimulator:
                          signal_generator, risk_manager_instance) -> List[Dict]:
         self.trades_executed = []
         self.current_position = None
+        self.pending_signal = None
 
         if len(df_test_features) != len(model_predictions):
             self.logger.warning(
-                f"Test features ({len(df_test_features)}) and predictions ({len(model_predictions)}) length mismatch. Assuming df_test_features is aligned with prediction output.")
+                f"Test features ({len(df_test_features)}) and predictions ({len(model_predictions)}) length mismatch.")
 
         for i in range(len(model_predictions)):
             current_data_point = df_test_features.iloc[[i]]
             current_time = df_test_features.index[i]
             current_actual_close = df_test_features['actual_close'].iloc[i]
-            lookback_for_signal = self.config.get("market_regime", "lookback_period", 60)
-            market_condition_df = df_test_features.iloc[max(0, i - lookback_for_signal + 1): i + 1]
+            current_actual_open = df_test_features['actual_open'].iloc[i]
+
+            if self.pending_signal and i == self.pending_signal['execute_at_index']:
+                signal_details = self.pending_signal['signal']
+                entry_price_actual = current_actual_open
+
+                atr_at_entry = signal_details.get("atr_at_entry", entry_price_actual * 0.015)
+                initial_sl_price = risk_manager_instance.get_initial_stop_loss(
+                    signal_details, entry_price_actual, atr_at_entry)
+
+                quantity = risk_manager_instance.calculate_position_size(
+                    signal_details, entry_price_actual, initial_sl_price)
+
+                if quantity > 0 and self._check_order_validity(quantity, entry_price_actual):
+                    entry_price_slipped, entry_tx_cost = self._apply_entry_costs(
+                        entry_price_actual, quantity, signal_details["direction"])
+
+                    self.current_position = {
+                        "id": str(uuid4()),
+                        "entry_time": current_time,
+                        "direction": signal_details["direction"],
+                        "entry_price_actual": entry_price_actual,
+                        "entry_price_slipped": entry_price_slipped,
+                        "quantity": quantity,
+                        "initial_stop_loss": initial_sl_price,
+                        "current_stop_loss": initial_sl_price,
+                        "entry_signal_type": signal_details["signal_type"],
+                        "market_phase_at_entry": signal_details.get("market_phase", "neutral"),
+                        "ensemble_score": signal_details.get("ensemble_score", 0.5),
+                        "atr_at_entry": atr_at_entry,
+                        "entry_tx_cost": entry_tx_cost,
+                        "prediction_horizon_candles": self.config.get("model", "horizon", 12),
+                        "entry_index": i
+                    }
+                    for k, v in signal_details.items():
+                        if k not in self.current_position:
+                            self.current_position[k] = v
+
+                self.pending_signal = None
 
             if self.current_position:
+                candles_since_entry = i - self.current_position["entry_index"]
+                prediction_decay = max(0, 1.0 - (
+                            candles_since_entry / self.current_position["prediction_horizon_candles"]))
+
+                lookback_for_exit = self.config.get("market_regime", "lookback_period", 60)
+                if i >= lookback_for_exit + self.regime_detection_lag:
+                    market_condition_df_exit = df_test_features.iloc[
+                                               max(0, i - lookback_for_exit - self.regime_detection_lag + 1):
+                                               i - self.regime_detection_lag + 1
+                                               ]
+                else:
+                    market_condition_df_exit = df_test_features.iloc[max(0, i - lookback_for_exit + 1): i + 1]
+
+                market_regime_info_current = signal_generator.market_regime_detector.detect_regime(
+                    market_condition_df_exit)
+
                 market_conditions_for_exit = {
-                    'market_phase': self.current_position.get('market_phase_at_entry', 'neutral'),
-                    'volatility': market_condition_df['volatility_regime'].iloc[
-                        -1] if 'volatility_regime' in market_condition_df else 0.5,
-                    'momentum': market_condition_df['trend_strength'].iloc[
-                        -1] if 'trend_strength' in market_condition_df else 0,
-                    'rsi_14': market_condition_df['rsi_14'].iloc[-1] if 'rsi_14' in market_condition_df else 50,
-                    'macd_histogram': market_condition_df[
+                    'market_phase': market_regime_info_current['type'],
+                    'volatility': market_condition_df_exit['volatility_regime'].iloc[
+                        -1] if 'volatility_regime' in market_condition_df_exit else 0.5,
+                    'momentum': market_condition_df_exit['trend_strength'].iloc[
+                        -1] if 'trend_strength' in market_condition_df_exit else 0,
+                    'rsi_14': market_condition_df_exit['rsi_14'].iloc[
+                        -1] if 'rsi_14' in market_condition_df_exit else 50,
+                    'macd_histogram': market_condition_df_exit[
                         f'macd_histogram_{self.config.get("feature_engineering", "macd_fast", 12)}_{self.config.get("feature_engineering", "macd_slow", 26)}_{self.config.get("feature_engineering", "macd_signal", 9)}'].iloc[
-                        -1] if f'macd_histogram_{self.config.get("feature_engineering", "macd_fast", 12)}_{self.config.get("feature_engineering", "macd_slow", 26)}_{self.config.get("feature_engineering", "macd_signal", 9)}' in market_condition_df else 0,
-                    'current_time': current_time
+                        -1] if f'macd_histogram_{self.config.get("feature_engineering", "macd_fast", 12)}_{self.config.get("feature_engineering", "macd_slow", 26)}_{self.config.get("feature_engineering", "macd_signal", 9)}' in market_condition_df_exit else 0,
+                    'current_time': current_time,
+                    'prediction_confidence': prediction_decay,
+                    'blended_parameters': market_regime_info_current.get('blended_parameters')
                 }
 
                 exit_decision = risk_manager_instance.handle_exit_decision(
@@ -146,13 +212,15 @@ class MarketSimulator:
 
                     pnl -= (self.current_position["entry_tx_cost"] + exit_tx_cost)
 
-                    trade_record = {**self.current_position,
-                                    "exit_time": current_time,
-                                    "exit_price_slipped": exit_price_slipped,
-                                    "exit_reason": exit_decision["reason"],
-                                    "pnl": pnl,
-                                    "exit_tx_cost": exit_tx_cost
-                                    }
+                    trade_record = {
+                        **self.current_position,
+                        "exit_time": current_time,
+                        "exit_price_slipped": exit_price_slipped,
+                        "exit_reason": exit_decision["reason"],
+                        "pnl": pnl,
+                        "exit_tx_cost": exit_tx_cost,
+                        "duration_hours": (current_time - self.current_position["entry_time"]).total_seconds() / 3600
+                    }
                     self.trades_executed.append(trade_record)
                     risk_manager_instance.update_after_trade(trade_record)
                     self.portfolio_manager.update_capital_from_risk_manager()
@@ -161,85 +229,76 @@ class MarketSimulator:
                 elif exit_decision.get("partial_exit", False):
                     partial_portion = exit_decision["portion"]
                     partial_quantity = self.current_position["quantity"] * partial_portion
-                    remaining_quantity = self.current_position["quantity"] - partial_quantity
 
-                    exit_price_slipped, partial_exit_tx_cost = self._apply_exit_costs(
-                        exit_decision.get("price", current_actual_close),
-                        partial_quantity,
-                        self.current_position["direction"]
-                    )
+                    if self._check_order_validity(partial_quantity, current_actual_close):
+                        remaining_quantity = self.current_position["quantity"] - partial_quantity
 
-                    partial_pnl = 0
-                    if self.current_position["direction"] == "long":
-                        partial_pnl = (exit_price_slipped - self.current_position[
-                            "entry_price_slipped"]) * partial_quantity
-                    else:
-                        partial_pnl = (self.current_position[
-                                           "entry_price_slipped"] - exit_price_slipped) * partial_quantity
+                        exit_price_slipped, partial_exit_tx_cost = self._apply_exit_costs(
+                            exit_decision.get("price", current_actual_close),
+                            partial_quantity,
+                            self.current_position["direction"]
+                        )
 
-                    pro_rata_entry_cost = self.current_position["entry_tx_cost"] * partial_portion
-                    partial_pnl -= (pro_rata_entry_cost + partial_exit_tx_cost)
+                        partial_pnl = 0
+                        if self.current_position["direction"] == "long":
+                            partial_pnl = (exit_price_slipped - self.current_position[
+                                "entry_price_slipped"]) * partial_quantity
+                        else:
+                            partial_pnl = (self.current_position[
+                                               "entry_price_slipped"] - exit_price_slipped) * partial_quantity
 
-                    partial_trade_record = {**self.current_position,
-                                            "quantity": partial_quantity,
-                                            "exit_time": current_time,
-                                            "exit_price_slipped": exit_price_slipped,
-                                            "exit_reason": exit_decision["reason"],
-                                            "pnl": partial_pnl,
-                                            "is_partial": True,
-                                            "partial_id": exit_decision.get("id"),
-                                            "exit_tx_cost": partial_exit_tx_cost
-                                            }
-                    self.trades_executed.append(partial_trade_record)
-                    risk_manager_instance.update_after_trade(partial_trade_record)
+                        pro_rata_entry_cost = self.current_position["entry_tx_cost"] * partial_portion
+                        partial_pnl -= (pro_rata_entry_cost + partial_exit_tx_cost)
 
-                    self.current_position["quantity"] = remaining_quantity
-                    self.current_position["entry_tx_cost"] -= pro_rata_entry_cost
-                    self.current_position[exit_decision.get("update_position_flag", "partial_exit_taken")] = True
-                    self.portfolio_manager.update_capital_from_risk_manager()
+                        partial_trade_record = {
+                            **self.current_position,
+                            "quantity": partial_quantity,
+                            "exit_time": current_time,
+                            "exit_price_slipped": exit_price_slipped,
+                            "exit_reason": exit_decision["reason"],
+                            "pnl": partial_pnl,
+                            "is_partial": True,
+                            "partial_id": exit_decision.get("id"),
+                            "exit_tx_cost": partial_exit_tx_cost,
+                            "duration_hours": (current_time - self.current_position[
+                                "entry_time"]).total_seconds() / 3600
+                        }
+                        self.trades_executed.append(partial_trade_record)
+                        risk_manager_instance.update_after_trade(partial_trade_record)
 
+                        self.current_position["quantity"] = remaining_quantity
+                        self.current_position["entry_tx_cost"] -= pro_rata_entry_cost
+                        self.current_position[exit_decision.get("update_position_flag", "partial_exit_taken")] = True
+                        self.portfolio_manager.update_capital_from_risk_manager()
 
                 elif exit_decision.get("update_stop", False):
                     self.current_position["current_stop_loss"] = exit_decision["new_stop"]
 
-            if not self.current_position:
+            if not self.current_position and not self.pending_signal:
+                lookback_for_signal = self.config.get("market_regime", "lookback_period", 60)
+
+                if i >= lookback_for_signal + self.regime_detection_lag:
+                    market_condition_df = df_test_features.iloc[
+                                          max(0, i - lookback_for_signal - self.regime_detection_lag + 1):
+                                          i - self.regime_detection_lag + 1
+                                          ]
+                else:
+                    market_condition_df = df_test_features.iloc[max(0, i - lookback_for_signal + 1): i + 1]
+
                 signal_details = signal_generator.generate_signal(model_predictions[i], market_condition_df)
 
                 if signal_details and signal_details.get("signal_type") not in ["NoTrade", None]:
-                    entry_price_actual = df_test_features['actual_open'].iloc[i]
-                    atr_at_entry = signal_details.get("atr_at_entry", entry_price_actual * 0.015)
-
-                    initial_sl_price = risk_manager_instance.get_initial_stop_loss(signal_details,
-                                                                                   entry_price_actual, atr_at_entry)
-
-                    quantity = risk_manager_instance.calculate_position_size(signal_details, entry_price_actual,
-                                                                             initial_sl_price)
-
-                    if quantity > 0:
-                        entry_price_slipped, entry_tx_cost = self._apply_entry_costs(entry_price_actual, quantity,
-                                                                                     signal_details["direction"])
-                        self.current_position = {
-                            "id": str(uuid4()), "entry_time": current_time,
-                            "direction": signal_details["direction"],
-                            "entry_price_actual": entry_price_actual,
-                            "entry_price_slipped": entry_price_slipped,
-                            "quantity": quantity,
-                            "initial_stop_loss": initial_sl_price,
-                            "current_stop_loss": initial_sl_price,
-                            "entry_signal_type": signal_details["signal_type"],
-                            "market_phase_at_entry": signal_details.get("market_phase", "neutral"),
-                            "ensemble_score": signal_details.get("ensemble_score", 0.5),
-                            "atr_at_entry": atr_at_entry,
-                            "entry_tx_cost": entry_tx_cost
+                    if i + self.signal_execution_lag < len(df_test_features):
+                        self.pending_signal = {
+                            'signal': signal_details,
+                            'execute_at_index': i + self.signal_execution_lag,
+                            'generated_at_index': i
                         }
-                        for k, v in signal_details.items():
-                            if k not in self.current_position: self.current_position[k] = v
 
         if self.current_position:
             last_close_price = df_test_features['actual_close'].iloc[-1]
-            exit_price_slipped, exit_tx_cost = self._apply_exit_costs(last_close_price,
-                                                                      self.current_position["quantity"],
-                                                                      self.current_position["direction"])
+            exit_price_slipped, exit_tx_cost = self._apply_exit_costs(
+                last_close_price, self.current_position["quantity"], self.current_position["direction"])
 
             pnl = 0
             if self.current_position["direction"] == "long":
@@ -250,13 +309,16 @@ class MarketSimulator:
                     "quantity"]
             pnl -= (self.current_position["entry_tx_cost"] + exit_tx_cost)
 
-            trade_record = {**self.current_position,
-                            "exit_time": df_test_features.index[-1],
-                            "exit_price_slipped": exit_price_slipped,
-                            "exit_reason": "EndOfBacktest",
-                            "pnl": pnl,
-                            "exit_tx_cost": exit_tx_cost
-                            }
+            trade_record = {
+                **self.current_position,
+                "exit_time": df_test_features.index[-1],
+                "exit_price_slipped": exit_price_slipped,
+                "exit_reason": "EndOfBacktest",
+                "pnl": pnl,
+                "exit_tx_cost": exit_tx_cost,
+                "duration_hours": (df_test_features.index[-1] - self.current_position[
+                    "entry_time"]).total_seconds() / 3600
+            }
             self.trades_executed.append(trade_record)
             risk_manager_instance.update_after_trade(trade_record)
             self.portfolio_manager.update_capital_from_risk_manager()
@@ -264,6 +326,15 @@ class MarketSimulator:
 
         return self.trades_executed
 
+    def _check_order_validity(self, quantity: float, price: float) -> bool:
+        if quantity < self.min_order_size_btc:
+            return False
+        if quantity * price < self.min_notional_usd:
+            return False
+        if np.random.random() < self.order_rejection_rate:
+            self.logger.debug("Order randomly rejected to simulate exchange conditions")
+            return False
+        return True
 
 class BacktestEngine:
     def __init__(self, config, data_preparer, model_trainer, signal_generator, risk_manager):

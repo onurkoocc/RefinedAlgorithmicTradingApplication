@@ -359,13 +359,13 @@ class RiskManager:
                              market_conditions: Dict[str, Any]) -> Dict[str, Any]:
         entry_time = position['entry_time']
         direction = position['direction']
-        entry_price = float(position['entry_price_slipped'])  # Use slipped entry for PnL calc against current_price
+        entry_price = float(position['entry_price_slipped'])
         current_stop_loss = float(position['current_stop_loss'])
         initial_stop_loss = float(position.get('initial_stop_loss', current_stop_loss))
-        atr = float(position.get('atr_at_entry', current_price * 0.015))  # Use ATR from entry
+        atr = float(position.get('atr_at_entry', current_price * 0.015))
 
         trade_duration_hours = (current_time - entry_time).total_seconds() / 3600
-        pnl_pct = self._calculate_pnl_pct(direction, entry_price, current_price)  # PnL based on slipped entry
+        pnl_pct = self._calculate_pnl_pct(direction, entry_price, current_price)
 
         market_phase = market_conditions.get('market_phase', 'neutral')
         volatility = float(market_conditions.get('volatility', 0.5))
@@ -373,19 +373,18 @@ class RiskManager:
         momentum = float(market_conditions.get('momentum', 0))
         rsi = float(market_conditions.get('rsi_14', 50))
         macd_hist = float(market_conditions.get('macd_histogram', 0))
+        prediction_confidence = float(market_conditions.get('prediction_confidence', 1.0))
 
-        # Get regime parameters, potentially blended
         if market_conditions.get("blended_parameters"):
             market_regime_params = market_conditions["blended_parameters"]
-            # Ensure all necessary keys are present in blended_parameters
             default_single_regime_params = self._get_market_regime_params(market_phase)
             for key, default_val in default_single_regime_params.items():
                 if key not in market_regime_params:
                     market_regime_params[key] = default_val
                 elif isinstance(default_val, dict) and isinstance(market_regime_params[key], dict):
                     for sub_key, sub_default_val in default_val.items():
-                        if sub_key not in market_regime_params[key]: market_regime_params[key][
-                            sub_key] = sub_default_val
+                        if sub_key not in market_regime_params[key]:
+                            market_regime_params[key][sub_key] = sub_default_val
         else:
             market_regime_params = self._get_market_regime_params(market_phase)
 
@@ -402,6 +401,8 @@ class RiskManager:
         profit_target_pct = self._get_dynamic_profit_target(market_phase, direction, trade_duration_hours, volatility,
                                                             market_regime_params)
 
+        profit_target_pct *= prediction_confidence
+
         stop_loss_pct_from_entry = abs(
             entry_price - initial_stop_loss) / entry_price if initial_stop_loss > 0 and entry_price > 0 else float(
             'inf')
@@ -415,12 +416,17 @@ class RiskManager:
         if pnl_pct >= profit_target_pct:
             return {"exit": True, "reason": "ProfitTarget", "exit_price": current_price}
 
+        if prediction_confidence < 0.3 and trade_duration_hours > 6:
+            if abs(pnl_pct) < 0.005:
+                return {"exit": True, "reason": "LowPredictionConfidence", "exit_price": current_price}
+
         max_duration_hours = self._get_dynamic_max_duration(market_phase, direction, volatility, ensemble_score,
                                                             market_regime_params)
         if trade_duration_hours > max_duration_hours:
             return {"exit": True, "reason": f"MaxDuration_{market_phase}", "exit_price": current_price}
 
-        if pnl_pct < 0 and trade_duration_hours > self.early_loss_time_hours and pnl_pct < self.early_loss_threshold:
+        early_loss_time_adjusted = self.early_loss_time_hours * (1 + (1 - prediction_confidence))
+        if pnl_pct < 0 and trade_duration_hours > early_loss_time_adjusted and pnl_pct < self.early_loss_threshold:
             if not ((direction == 'long' and momentum > 0.15) or (direction == 'short' and momentum < -0.15)):
                 return {"exit": True, "reason": "EarlyLoss", "exit_price": current_price}
 
@@ -429,18 +435,18 @@ class RiskManager:
 
         if pnl_pct > 0.005:
             reversal_signal = False
-            if direction == 'long' and momentum < -0.2 and macd_hist < 0: reversal_signal = True
-            if direction == 'short' and momentum > 0.2 and macd_hist > 0: reversal_signal = True
+            if direction == 'long' and momentum < -0.2 and macd_hist < 0:
+                reversal_signal = True
+            if direction == 'short' and momentum > 0.2 and macd_hist > 0:
+                reversal_signal = True
             if reversal_signal:
                 return {"exit": True, "reason": "MomentumReversal", "exit_price": current_price}
 
         if pnl_pct > 0.004:
-            if direction == 'long' and rsi > self.rsi_extreme_levels["overbought"]: return {"exit": True,
-                                                                                            "reason": "RSIExtreme",
-                                                                                            "exit_price": current_price}
-            if direction == 'short' and rsi < self.rsi_extreme_levels["oversold"]: return {"exit": True,
-                                                                                           "reason": "RSIExtreme",
-                                                                                           "exit_price": current_price}
+            if direction == 'long' and rsi > self.rsi_extreme_levels["overbought"]:
+                return {"exit": True, "reason": "RSIExtreme", "exit_price": current_price}
+            if direction == 'short' and rsi < self.rsi_extreme_levels["oversold"]:
+                return {"exit": True, "reason": "RSIExtreme", "exit_price": current_price}
 
         decay_threshold_pct = 0.0
         sorted_decay_times = sorted(self.time_decay_factors_config.keys())
@@ -469,34 +475,47 @@ class RiskManager:
             partial_exit_flag = f"partial_exit_taken_{level_id}"
             if pnl_pct >= level_info["threshold"] and not position.get(partial_exit_flag, False):
                 return {
-                    "exit": False, "partial_exit": True,
-                    "portion": level_info["portion"], "id": f"PartialExit_{level_id}",
-                    "price": current_price, "reason": f"PartialProfit_{int(level_info['portion'] * 100)}pct_L{i + 1}",
+                    "exit": False,
+                    "partial_exit": True,
+                    "portion": level_info["portion"],
+                    "id": f"PartialExit_{level_id}",
+                    "price": current_price,
+                    "reason": f"PartialProfit_{int(level_info['portion'] * 100)}pct_L{i + 1}",
                     "update_position_flag": partial_exit_flag
                 }
 
-        if pnl_pct > 0.01:  # Start trailing only if in some profit
+        if pnl_pct > 0.01:
             atr_multiplier = market_regime_params["atr_multipliers"].get(direction, 2.0)
             if pnl_pct > 0.05:
                 atr_multiplier *= 0.7
             elif pnl_pct > 0.03:
                 atr_multiplier *= 0.85
 
+            atr_multiplier *= (0.8 + 0.4 * prediction_confidence)
+
             new_potential_stop = 0
             if direction == 'long':
                 new_potential_stop = current_price - (atr * atr_multiplier)
                 if new_potential_stop > current_stop_loss:
-                    if pnl_pct > 0.015: new_potential_stop = max(new_potential_stop,
-                                                                 entry_price + (entry_price * 0.001))
-                    return {"exit": False, "update_stop": True, "new_stop": new_potential_stop,
-                            "reason": "TrailingStopUpdate"}
+                    if pnl_pct > 0.015:
+                        new_potential_stop = max(new_potential_stop, entry_price + (entry_price * 0.001))
+                    return {
+                        "exit": False,
+                        "update_stop": True,
+                        "new_stop": new_potential_stop,
+                        "reason": "TrailingStopUpdate"
+                    }
             elif direction == 'short':
                 new_potential_stop = current_price + (atr * atr_multiplier)
                 if new_potential_stop < current_stop_loss:
-                    if pnl_pct > 0.015: new_potential_stop = min(new_potential_stop,
-                                                                 entry_price - (entry_price * 0.001))
-                    return {"exit": False, "update_stop": True, "new_stop": new_potential_stop,
-                            "reason": "TrailingStopUpdate"}
+                    if pnl_pct > 0.015:
+                        new_potential_stop = min(new_potential_stop, entry_price - (entry_price * 0.001))
+                    return {
+                        "exit": False,
+                        "update_stop": True,
+                        "new_stop": new_potential_stop,
+                        "reason": "TrailingStopUpdate"
+                    }
 
         return {"exit": False, "reason": "NoExitConditionMet"}
 
