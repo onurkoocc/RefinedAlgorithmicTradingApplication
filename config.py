@@ -45,52 +45,58 @@ class Config:
                 "correlation_threshold": 0.95,
                 "use_optuna_features": True,
                 "optuna_n_trials": 150,
-                "optuna_timeout": 3600,
-                "optuna_study_name": "feature_selection_study_v6_sharpe",
-                "optuna_objective_model": "RandomForest",
+                "optuna_timeout": 3600,  # in seconds
+                "optuna_study_name": "feature_selection_study_v6_sharpe",  # Base name, window ID will be appended
+                "optuna_objective_model": "RandomForest",  # "RandomForest" or "Ridge"
 
-                "essential_features": [
+                "essential_features": [  # Features always included, not selected by Optuna
                     'open', 'high', 'low', 'close', 'volume',
                     'atr_14', 'rsi_14', 'sma_200', 'ema_50', 'obv',
                     'adx_14', 'range_position', 'cmf_20',
                     'cumulative_delta', 'trend_strength'
                 ],
                 "optuna_ignore_features": ["ema_21", "volatility_regime"],
-                "optuna_n_additional_features_min": 5,
-                "optuna_n_additional_features_max": 25,
+                # Features to exclude from Optuna's consideration pool
+                "optuna_n_additional_features_min": 5,  # Min number of additional features Optuna should try to select
+                "optuna_n_additional_features_max": 25,  # Max number of additional features Optuna should try to select
 
                 "optuna_sim_trade_threshold_percentile": 70,
-                "optuna_min_trades_for_score": 25,  # UPDATED
-                "optuna_feature_count_penalty_factor": 0.003,
-                "optuna_stability_penalty_factor": 0.1,  # NEW
+                # Percentile of abs model predictions to set trade threshold
+                "optuna_min_trades_for_score": 25,  # Min simulated trades in a fold to calculate a valid score
+                "optuna_feature_count_penalty_factor": 0.003,  # Penalty per feature deviation from ideal count
+                "optuna_stability_penalty_factor": 0.1,  # Factor for stability penalty (std_dev / mean_pnl)
+                "optuna_max_instability_ratio": 10.0,
+                # Caps the (std_dev / mean_pnl) ratio for stability penalty calculation
 
-                "optuna_lgbm_n_estimators": 700,
+                "optuna_lgbm_n_estimators": 700,  # For internal feature importance calculation
                 "optuna_lgbm_learning_rate": 0.015,
                 "optuna_lgbm_min_child_samples": 25,
                 "optuna_lgbm_early_stopping_rounds": 70,
                 "optuna_lgbm_min_split_gain": 0.0001,
                 "optuna_reuse_existing_study_results": True,
-                "optuna_rf_n_estimators": 75,
-                "optuna_rf_max_depth": 9,
+                # If true, loads and potentially reuses best trial from existing study
+                "optuna_rf_n_estimators": 75,  # For Optuna objective model if RandomForest
+                "optuna_rf_max_depth": 9,  # For Optuna objective model if RandomForest
 
-                "feature_selection_method": "importance",
-                "use_adaptive_features": False,
-                "use_only_essential_features": False,
+                "feature_selection_method": "importance",  # "importance" or "correlation"
+                "use_adaptive_features": False,  # If true, re-selects features periodically
+                "use_only_essential_features": False,  # If true, bypasses Optuna and uses only essential_features
 
                 "indicators_to_compute": [
                     "ema_9", "ema_21", "ema_50", "sma_200",
                     "macd_12_26_9",
-                    "adx_14",
+                    "adx_14",  # also gives plus_di_14, minus_di_14
                     "rsi_14",
-                    "bb_20_2",
+                    "bb_20_2",  # also gives bb_upper, bb_lower, bb_middle, bb_width
                     "atr_14", "obv",
-                    "stoch_14_3",
+                    "stoch_14_3",  # also gives stoch_k, stoch_d
                     "roc_12",
                     "cmf_20",
                     "histvol_20"
                 ],
-                "lag_periods": [1, 2, 3, 5, 8, 13],
+                "lag_periods": [1, 2, 3, 5, 8, 13],  # For lagged returns/features
 
+                # Parameters for individual indicators if not covered by indicators_to_compute format
                 "ema_short_period": 9, "ema_medium_period": 21, "ema_long_period": 50, "ema_vlong_period": 200,
                 "macd_fast": 12, "macd_slow": 26, "macd_signal": 9,
                 "adx_period": 14, "rsi_period": 14, "bb_period": 20, "bb_stddev": 2, "atr_period": 14,

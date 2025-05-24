@@ -31,13 +31,11 @@ class OptunaFeatureSelector:
 
         self.n_trials = fe_config.get("optuna_n_trials", 150)
         self.timeout_seconds = fe_config.get("optuna_timeout", 3600)
-        self.base_study_name = fe_config.get("optuna_study_name", "feature_selection_study_v5_sharpe")
+        self.base_study_name = fe_config.get("optuna_study_name", "feature_selection_study_v6_sharpe")
         self.optuna_objective_model = fe_config.get("optuna_objective_model", "RandomForest")
 
-        self.essential_features = fe_config.get("essential_features",
-                                                ['open', 'high', 'low', 'close', 'volume', 'sma_200', 'obv', 'ema_50',
-                                                 'atr_14', 'rsi_14', 'adx_14', 'range_position'])
-        self.ignore_features = fe_config.get("optuna_ignore_features", [])  # NEW
+        self.essential_features = fe_config.get("essential_features", [])
+        self.ignore_features = fe_config.get("optuna_ignore_features", [])
 
         self.optuna_n_additional_features_min = fe_config.get("optuna_n_additional_features_min", 8)
         max_model_features = model_config.get("max_features", 60)
@@ -57,6 +55,7 @@ class OptunaFeatureSelector:
         self.optuna_min_trades_for_score = fe_config.get("optuna_min_trades_for_score", 25)
         self.optuna_feature_count_penalty_factor = fe_config.get("optuna_feature_count_penalty_factor", 0.003)
         self.optuna_stability_penalty_factor = fe_config.get("optuna_stability_penalty_factor", 0.1)
+        self.optuna_max_instability_ratio = fe_config.get("optuna_max_instability_ratio", 10.0)
 
         self.lgbm_n_estimators = fe_config.get("optuna_lgbm_n_estimators", 600)
         self.lgbm_learning_rate = fe_config.get("optuna_lgbm_learning_rate", 0.02)
@@ -140,17 +139,22 @@ class OptunaFeatureSelector:
             self.current_window_importances = pd.Series(dtype=float)
 
     def _get_candidate_additional_features(self, df_window_features: pd.DataFrame) -> pd.Series:
+        if self.current_window_importances is None or self.current_window_importances.empty:
+            return pd.Series(dtype=float)
+
         idx = self.current_window_importances.index
         mask_is_non_essential = ~idx.isin(self.essential_features)
-        mask_is_not_ignored = ~idx.isin(self.ignore_features)  # NEW MASK
+        mask_is_not_ignored = ~idx.isin(self.ignore_features)
         mask_is_in_df = idx.isin(df_window_features.columns)
 
         mask_has_variance = pd.Series(False, index=idx)
         candidate_for_variance_check = idx[mask_is_non_essential & mask_is_not_ignored & mask_is_in_df]
 
         for feature_name_iter in candidate_for_variance_check:
-            if df_window_features[feature_name_iter].nunique() > 1:
+            if feature_name_iter in df_window_features.columns and df_window_features[feature_name_iter].nunique() > 1:
                 mask_has_variance.loc[feature_name_iter] = True
+            elif feature_name_iter not in df_window_features.columns:
+                mask_has_variance.loc[feature_name_iter] = False  # Explicitly false if not in df
 
         final_selection_mask = mask_is_non_essential & mask_is_not_ignored & mask_is_in_df & mask_has_variance
         return self.current_window_importances[final_selection_mask]
@@ -173,50 +177,54 @@ class OptunaFeatureSelector:
         current_max_additional = min(self.optuna_n_additional_features_max, potential_add_features_count)
         current_min_additional = min(self.optuna_n_additional_features_min, current_max_additional)
 
-        if current_min_additional > current_max_additional:
+        if current_min_additional > current_max_additional:  # Ensure min is not greater than max
             current_min_additional = current_max_additional
 
         if current_max_additional == 0:
             self.logger.info(
                 f"Window {window_id}: No additional non-essential, non-ignored features with variance to select. Returning essentials.")
+            self._save_best_features(self.essential_features[:],
+                                     filename=f"optimized_feature_set_window_{window_id}.joblib")
             return self.essential_features[:]
 
         window_specific_study_name = f"{self.base_study_name}_win_{window_id}"
-
         study = None
         try:
             study = optuna.load_study(study_name=window_specific_study_name, storage=f"sqlite:///{self.optuna_db_path}")
             self.logger.info(f"Window {window_id}: Loaded existing Optuna study '{window_specific_study_name}'.")
             if study.best_trial and self.config.get("feature_engineering", "optuna_reuse_existing_study_results", True):
-                self.logger.info(f"Reusing best trial {study.best_trial.number} with value {study.best_value:.4f}.")
-            else:
+                self.logger.info(
+                    f"Reusing best trial {study.best_trial.number} with value {study.best_trial.value:.4f}.")
+            else:  # Existing study but no best trial or not reusing, so optimize
                 self.logger.info(f"Optimizing study '{window_specific_study_name}'.")
                 study.optimize(
                     lambda trial: self._objective(trial, df_window_features, candidate_additional_features,
-                                                  current_min_additional,
-                                                  current_max_additional, window_id),
+                                                  current_min_additional, current_max_additional, window_id),
                     n_trials=self.n_trials, timeout=self.timeout_seconds, show_progress_bar=True
                 )
-        except KeyError:
+        except KeyError:  # Study does not exist
             self.logger.info(f"Window {window_id}: Creating new Optuna study '{window_specific_study_name}'.")
             study = optuna.create_study(
                 study_name=window_specific_study_name, direction="maximize",
-                storage=f"sqlite:///{self.optuna_db_path}", load_if_exists=True
+                storage=f"sqlite:///{self.optuna_db_path}", load_if_exists=True  # load_if_exists is good practice
             )
             study.optimize(
                 lambda trial: self._objective(trial, df_window_features, candidate_additional_features,
-                                              current_min_additional, current_max_additional,
-                                              window_id),
+                                              current_min_additional, current_max_additional, window_id),
                 n_trials=self.n_trials, timeout=self.timeout_seconds, show_progress_bar=True
             )
         except Exception as e:
             self.logger.error(
                 f"Window {window_id}: Error with Optuna study '{window_specific_study_name}': {e}. Returning essentials.")
+            self._save_best_features(self.essential_features[:],
+                                     filename=f"optimized_feature_set_window_{window_id}.joblib")
             return self.essential_features[:]
 
         if not study or not study.best_trial:
             self.logger.warning(
                 f"Window {window_id}: Optuna study completed without a best trial. Returning essential features.")
+            self._save_best_features(self.essential_features[:],
+                                     filename=f"optimized_feature_set_window_{window_id}.joblib")
             return self.essential_features[:]
 
         best_trial = study.best_trial
@@ -243,11 +251,11 @@ class OptunaFeatureSelector:
                    window_id: Union[int, str]) -> float:
         current_selected_features = self.essential_features[:]
 
-        if max_add < min_add:
+        if max_add < min_add:  # Should not happen if logic in optimize_features is correct
             n_additional = max_add
-        elif max_add == min_add:
+        elif max_add == min_add:  # If only one possibility (e.g. min_add = max_add = 0)
             n_additional = min_add
-        else:
+        else:  # Normal case
             n_additional = trial.suggest_int("n_additional_features", min_add, max_add)
 
         additional_to_select = candidate_additional_features.head(n_additional).index.tolist()
@@ -258,16 +266,12 @@ class OptunaFeatureSelector:
 
         current_selected_features = sorted(list(set(current_selected_features)))
 
-        if not current_selected_features or len(current_selected_features) < len(
-                self.essential_features):  # Allow only essentials
-            if len(current_selected_features) == len(self.essential_features) and min_add == 0 and max_add == 0:
-                pass  # This is fine if no additional features are possible/allowed
-            else:
-                return -10.0
+        if not current_selected_features:  # Should always have essentials
+            return -10.0
 
         try:
             X_eval = df_window_features[current_selected_features].copy()
-            for col in X_eval.columns:
+            for col in X_eval.columns:  # Basic NaN handling for safety
                 if X_eval[col].isnull().all():
                     X_eval[col] = 0
                 elif X_eval[col].isnull().any():
@@ -311,6 +315,7 @@ class OptunaFeatureSelector:
                 eval_model.fit(X_train, y_train_raw)
                 predictions_raw_pct = eval_model.predict(X_test)
 
+                fold_score_val = 0.0
                 if len(predictions_raw_pct) > 5:
                     abs_fold_preds = np.abs(predictions_raw_pct)
                     sim_pred_threshold = np.percentile(abs_fold_preds,
@@ -324,20 +329,27 @@ class OptunaFeatureSelector:
                         if abs(pred) > sim_pred_threshold
                     ]
 
-                    if len(fold_trade_pnls) >= self.optuna_min_trades_for_score:
+                    if len(fold_trade_pnls) < self.optuna_min_trades_for_score:
+                        fold_score_val = -1.0
+                    else:
                         mean_pnl = np.mean(fold_trade_pnls)
                         std_pnl = np.std(fold_trade_pnls)
-                        sharpe_like_score = mean_pnl / (std_pnl + 1e-7)
 
-                        stability_penalty = (std_pnl / (abs(mean_pnl) + 1e-7)) * self.optuna_stability_penalty_factor
+                        if mean_pnl <= 0:  # Significantly penalize non-profitable folds
+                            fold_score_val = mean_pnl  # e.g. -0.001 is worse than -0.0001
+                        else:
+                            # Positive PnL
+                            sharpe_like_score = mean_pnl / (std_pnl + 1e-9)  # Use 1e-9
 
-                        fold_score = sharpe_like_score - stability_penalty
-                    else:
-                        fold_score = -1.0
-                else:
-                    fold_score = -2.0
+                            instability_ratio = std_pnl / (mean_pnl + 1e-9)  # mean_pnl is positive here
+                            capped_instability_ratio = min(instability_ratio, self.optuna_max_instability_ratio)
 
-                fold_scores.append(fold_score)
+                            stability_penalty_value = capped_instability_ratio * self.optuna_stability_penalty_factor
+                            fold_score_val = sharpe_like_score - stability_penalty_value
+                else:  # Not enough predictions
+                    fold_score_val = -2.0
+
+                fold_scores.append(fold_score_val)
 
             final_score = np.mean(fold_scores) if fold_scores else -10.0
 
