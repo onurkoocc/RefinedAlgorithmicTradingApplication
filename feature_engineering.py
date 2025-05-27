@@ -1,6 +1,7 @@
 import logging
 import numpy as np
 import pandas as pd
+import pandas_ta as ta
 import gc
 from typing import Dict, List, Optional, Tuple, Any, Union
 from scipy import stats
@@ -29,41 +30,20 @@ class FeatureEngineer:
         ]
 
         self.essential_features = [
-            # Core price data
             'open', 'high', 'low', 'close', 'volume',
-
-            # Volume dynamics
             'taker_buy_base_asset_volume', 'cumulative_delta', 'volume_imbalance_ratio',
             'volume_price_momentum',
-
-            # Trend indicators
             'ema_9', 'ema_21', 'ema_50', 'sma_200',
             'adx_14', 'plus_di_14', 'minus_di_14',
             'trend_strength', 'ma_cross_velocity',
-
-            # Momentum oscillators
             'rsi_14', 'rsi_roc_3', 'macd_histogram_12_26_9',
-
-            # Volatility metrics
             'atr_14', 'bb_width_20', 'volatility_regime',
-
-            # Market context
             'market_regime', 'mean_reversion_signal', 'price_impact_ratio',
-
-            # Support/resistance
             'bb_percent_b', 'range_position', 'pullback_strength',
-
-            # Time-based patterns
             'hour_sin', 'hour_cos', 'day_of_week_sin', 'day_of_week_cos',
             'cycle_phase', 'cycle_position',
-
-            # Price action patterns
             'relative_candle_size', 'candle_body_ratio', 'gap',
-
-            # Order flow
             'spread_pct', 'close_vwap_diff',
-
-            # Adaptive volatility features
             'vol_norm_close_change', 'vol_norm_momentum'
         ]
 
@@ -79,7 +59,6 @@ class FeatureEngineer:
 
         self.logger.info(f"Available columns in input data: {df_30m.columns.tolist()}")
 
-        # Ensure datetime index for time features
         if not isinstance(df_30m.index, pd.DatetimeIndex):
             try:
                 df_30m.index = pd.to_datetime(df_30m.index)
@@ -100,7 +79,6 @@ class FeatureEngineer:
         final_df = self._store_actual_prices(final_df)
         final_df = self._standardize_column_names(final_df)
 
-        # Make sure time features exist (may have been added already, but check again)
         if not all(col in final_df.columns for col in ['hour_sin', 'hour_cos', 'day_of_week_sin', 'day_of_week_cos']):
             final_df = self.indicator_util.calculate_time_features(final_df)
 
@@ -110,15 +88,15 @@ class FeatureEngineer:
     def compute_advanced_features(self, df: pd.DataFrame) -> pd.DataFrame:
         df = df.copy()
 
-        # Calculate market regimes and volatility using improved methods
+        # Ensure required indicators are present
+        df = self._ensure_required_indicators(df)
+
         df = self._calculate_improved_market_regime(df)
         df = self._calculate_improved_volatility_regime(df)
 
-        # Calculate rsi_roc_3 for all data
         if 'rsi_14' in df.columns:
             df['rsi_roc_3'] = df['rsi_14'].pct_change(3) * 100
 
-        # Calculate trend_strength
         if 'adx_14' in df.columns:
             df['trend_strength'] = df['adx_14'] / 100
 
@@ -135,10 +113,8 @@ class FeatureEngineer:
         else:
             df['trend_strength'] = 0.5
 
-        # Identify market regime segments
         regime_chunks = self._identify_regime_chunks(df['market_regime'])
 
-        # Apply regime-specific feature engineering
         for regime_type, indices in regime_chunks.items():
             if not indices:
                 continue
@@ -157,7 +133,6 @@ class FeatureEngineer:
                     df[col] = np.nan
                 df.iloc[indices, df.columns.get_loc(col)] = regime_df[col].values
 
-        # Add additional features
         df = self._add_order_flow_features(df)
         df = self._add_nonlinear_interactions(df)
         df = self._add_adaptive_volatility_features(df)
@@ -169,67 +144,49 @@ class FeatureEngineer:
         return df
 
     def _calculate_improved_market_regime(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Calculate market regime using a more robust approach with lookback periods"""
         if len(df) < 20 or not all(col in df.columns for col in ['close', 'high', 'low']):
             df['market_regime'] = 0.0
             return df
 
-        # Calculate price movements over multiple timeframes
         df['pct_change_short'] = df['close'].pct_change(5)
         df['pct_change_med'] = df['close'].pct_change(20)
         df['pct_change_long'] = df['close'].pct_change(50)
 
-        # Calculate EMA relationships
         if all(col in df.columns for col in ['ema_9', 'ema_21', 'ema_50']):
-            # Calculate directional alignment score
             df['ema_alignment'] = 0.0
 
-            # Long trend: ema9 > ema21 > ema50
             long_mask = (df['ema_9'] > df['ema_21']) & (df['ema_21'] > df['ema_50'])
             df.loc[long_mask, 'ema_alignment'] = 1.0
 
-            # Short trend: ema9 < ema21 < ema50
             short_mask = (df['ema_9'] < df['ema_21']) & (df['ema_21'] < df['ema_50'])
             df.loc[short_mask, 'ema_alignment'] = -1.0
 
-            # Calculate slopes to detect momentum
             df['ema9_slope'] = df['ema_9'].pct_change(3) * 100
             df['ema21_slope'] = df['ema_21'].pct_change(3) * 100
 
-            # Combine alignment with slope for stronger signal
             df['ema_trend_score'] = df['ema_alignment'] * df['ema9_slope'].abs()
         else:
             df['ema_alignment'] = 0.0
             df['ema_trend_score'] = 0.0
 
-        # ADX to measure trend strength
         has_adx = 'adx_14' in df.columns and not df['adx_14'].isna().all()
         if has_adx:
             df['trend_intensity'] = df['adx_14'] / 100.0
         else:
-            # Fallback: Calculate volatility-adjusted momentum
             df['price_diff'] = df['close'] - df['close'].rolling(10).mean()
             df['volatility'] = df['high'].rolling(10).max() - df['low'].rolling(10).min()
             df['trend_intensity'] = df['price_diff'] / df['volatility'].where(df['volatility'] > 0, 1)
             df['trend_intensity'] = df['trend_intensity'].clip(-1, 1).fillna(0)
 
-        # Calculate trend strengths with appropriate signs
-        # Positive values: bullish regime, Negative values: bearish regime
-        # Magnitude indicates strength: 0-0.3 weak, 0.3-0.7 moderate, 0.7-1.0 strong
-
-        # Short-term regime (more reactive)
         df['short_regime'] = df['pct_change_short'].rolling(5).mean() * 50
         df['short_regime'] = df['short_regime'].clip(-1, 1)
 
-        # Medium-term regime
         df['med_regime'] = df['pct_change_med'].rolling(10).mean() * 80
         df['med_regime'] = df['med_regime'].clip(-1, 1)
 
-        # Long-term regime
         df['long_regime'] = df['pct_change_long'].rolling(15).mean() * 120
         df['long_regime'] = df['long_regime'].clip(-1, 1)
 
-        # Check for ranging market using volatility and lack of direction
         if 'bb_width_20' in df.columns:
             df['ranging_signal'] = (df['bb_width_20'] < 0.03).astype(float) * 0.5
         else:
@@ -237,8 +194,6 @@ class FeatureEngineer:
             rolling_range = (df['high'].rolling(20).max() - df['low'].rolling(20).min()) / df['close']
             df['ranging_signal'] = ((rolling_std < 0.005) & (rolling_range < 0.03)).astype(float) * 0.5
 
-        # Combine signals with appropriate weighting
-        # Give more weight to longer timeframes for stability
         df['market_regime'] = (
                 0.2 * df['short_regime'] +
                 0.3 * df['med_regime'] +
@@ -246,16 +201,10 @@ class FeatureEngineer:
                 0.2 * df['ema_alignment']
         )
 
-        # Adjust for ranging markets (reduce magnitude when ranging)
         df['market_regime'] = df['market_regime'] * (1 - df['ranging_signal'])
-
-        # Smooth the regime to prevent frequent switching
         df['market_regime'] = df['market_regime'].ewm(span=10, adjust=False).mean()
-
-        # Clean and clip final values
         df['market_regime'] = df['market_regime'].fillna(0).clip(-1, 1)
 
-        # Clear temporary columns
         columns_to_drop = [
             'pct_change_short', 'pct_change_med', 'pct_change_long',
             'short_regime', 'med_regime', 'long_regime',
@@ -268,83 +217,65 @@ class FeatureEngineer:
         return df
 
     def _calculate_improved_volatility_regime(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Calculate volatility regime using multiple indicators for robustness"""
         if len(df) < 20 or not all(col in df.columns for col in ['close', 'high', 'low']):
             df['volatility_regime'] = 0.5
             return df
 
-        # 1. Calculate normalized ATR-based volatility if ATR is available
         if 'atr_14' in df.columns:
             df['atr_volatility'] = df['atr_14'] / df['close']
 
-            # Normalize ATR to a 0-1 scale using recent history as context
             lookback = 100
             if len(df) > lookback:
                 rolling_min_atr = df['atr_volatility'].rolling(lookback).min()
                 rolling_max_atr = df['atr_volatility'].rolling(lookback).max()
 
-                # Avoid division by zero
                 denominator = (rolling_max_atr - rolling_min_atr).replace(0, 1e-6)
                 df['atr_volatility_normalized'] = (df['atr_volatility'] - rolling_min_atr) / denominator
             else:
-                # Simple min-max scaling for shorter datasets
                 min_atr = df['atr_volatility'].min()
                 max_atr = df['atr_volatility'].max()
                 range_atr = max(max_atr - min_atr, 1e-6)
                 df['atr_volatility_normalized'] = (df['atr_volatility'] - min_atr) / range_atr
         else:
-            # Calculate a simple ATR-like measure manually
             df['high_low_range'] = (df['high'] - df['low']) / df['close']
             df['atr_volatility'] = df['high_low_range'].rolling(14).mean()
 
-            # Normalize
             min_val = df['atr_volatility'].min()
             max_val = df['atr_volatility'].max()
             range_val = max(max_val - min_val, 1e-6)
             df['atr_volatility_normalized'] = (df['atr_volatility'] - min_val) / range_val
 
-        # 2. Calculate return-based volatility (standard deviation of returns)
         df['returns'] = df['close'].pct_change()
-        df['return_volatility'] = df['returns'].rolling(20).std() * np.sqrt(20)  # Scaled
+        df['return_volatility'] = df['returns'].rolling(20).std() * np.sqrt(20)
 
-        # Normalize return volatility
         return_vol_max = df['return_volatility'].rolling(50).max()
         return_vol_min = df['return_volatility'].rolling(50).min()
         denominator = (return_vol_max - return_vol_min).replace(0, 1e-6)
         df['return_volatility_normalized'] = (df['return_volatility'] - return_vol_min) / denominator
 
-        # 3. Use Bollinger Band width if available
         if 'bb_width_20' in df.columns:
-            # BB width is often already normalized, but let's ensure consistency
             bb_width_max = df['bb_width_20'].rolling(50).max()
             bb_width_min = df['bb_width_20'].rolling(50).min()
             denominator = (bb_width_max - bb_width_min).replace(0, 1e-6)
             df['bb_volatility_normalized'] = (df['bb_width_20'] - bb_width_min) / denominator
 
-            # Combine multiple volatility signals (more weighting to BB width as it's effective)
             df['volatility_regime'] = (
                     0.4 * df['bb_volatility_normalized'].fillna(0.5) +
                     0.4 * df['atr_volatility_normalized'].fillna(0.5) +
                     0.2 * df['return_volatility_normalized'].fillna(0.5)
             )
         else:
-            # Without BB width, use atr and return volatility
             df['volatility_regime'] = (
                     0.6 * df['atr_volatility_normalized'].fillna(0.5) +
                     0.4 * df['return_volatility_normalized'].fillna(0.5)
             )
 
-        # Exponential smoothing to reduce noise
         df['volatility_regime'] = df['volatility_regime'].ewm(span=5, adjust=False).mean()
-
-        # Ensure the values are within 0-1 range
         df['volatility_regime'] = df['volatility_regime'].clip(0, 1).fillna(0.5)
 
-        # Add volatility regime changes which can be predictive
         df['volatility_increasing'] = (df['volatility_regime'].diff(5) > 0.1).astype(float)
         df['volatility_decreasing'] = (df['volatility_regime'].diff(5) < -0.1).astype(float)
 
-        # Clean up temporary columns
         columns_to_drop = [
             'returns', 'return_volatility', 'return_volatility_normalized',
             'atr_volatility', 'atr_volatility_normalized'
@@ -356,18 +287,6 @@ class FeatureEngineer:
 
         df = df.drop(columns=columns_to_drop, errors='ignore')
         return df
-
-    def _map_market_phase_to_regime(self, market_phase):
-        if market_phase == 'uptrend':
-            return 0.8
-        elif market_phase == 'downtrend':
-            return -0.8
-        elif market_phase == 'ranging_at_resistance':
-            return 0.3
-        elif market_phase == 'ranging_at_support':
-            return -0.3
-        else:
-            return 0.0
 
     def _identify_regime_chunks(self, market_regime):
         chunks = {
@@ -481,18 +400,15 @@ class FeatureEngineer:
         return df
 
     def _add_liquidity_features(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Add features that measure market liquidity and imbalance"""
         if len(df) < 20 or 'volume' not in df.columns:
             return df
 
         df_out = df.copy()
 
-        # Calculate volume imbalance ratio
         if 'volume' in df.columns and 'close' in df.columns and 'open' in df.columns:
             up_volume = df['volume'] * (df['close'] > df['open'])
             down_volume = df['volume'] * (df['close'] < df['open'])
 
-            # Avoid division by zero
             up_volume = up_volume.replace(0, 1e-10)
             down_volume = down_volume.replace(0, 1e-10)
 
@@ -500,109 +416,81 @@ class FeatureEngineer:
             df_out['volume_imbalance_ratio'] = df_out['volume_imbalance_ratio'].replace([np.inf, -np.inf], 10).clip(-10,
                                                                                                                     10)
 
-            # Calculate rolling volume imbalance
             df_out['volume_imbalance_10'] = df_out['volume_imbalance_ratio'].rolling(10).mean().fillna(1)
-
-            # Calculate volume acceleration
             df_out['volume_acceleration'] = df['volume'].pct_change(3).fillna(0)
 
-        # Calculate bid-ask liquidity proxies (using high-low spread as a proxy)
         if 'high' in df.columns and 'low' in df.columns and 'close' in df.columns:
-            # Calculate spread as a percentage of price
             df_out['spread_pct'] = (df['high'] - df['low']) / df['close']
-
-            # Calculate moving average of spread
             df_out['avg_spread_10'] = df_out['spread_pct'].rolling(10).mean().fillna(df_out['spread_pct'])
-
-            # Calculate spread volatility
             df_out['spread_volatility'] = df_out['spread_pct'].rolling(20).std().fillna(0)
-
-            # Calculate spread acceleration
             df_out['spread_acceleration'] = df_out['spread_pct'].pct_change(3).fillna(0)
 
-        # Calculate volume-weighted average price (VWAP)
         if 'volume' in df.columns and 'close' in df.columns:
-            df_out['vwap_daily'] = (df['close'] * df['volume']).rolling(48).sum() / df['volume'].rolling(48).sum()
-            df_out['vwap_daily'].fillna(df['close'], inplace=True)
+            df_out.ta.vwap(append=True)
+            df_out.rename(columns={'VWAP_D': 'vwap_daily'}, inplace=True)
 
-            # Calculate close - VWAP (deviation from fair value)
+            if 'vwap_daily' not in df_out.columns:
+                df_out['vwap_daily'] = (df['close'] * df['volume']).rolling(48).sum() / df['volume'].rolling(48).sum()
+
+            df_out['vwap_daily'].fillna(df['close'], inplace=True)
             df_out['close_vwap_diff'] = (df['close'] - df_out['vwap_daily']) / df_out['vwap_daily']
 
         return df_out
 
     def _add_cyclic_pattern_features(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Add features that capture cyclic patterns in the data"""
         if len(df) < 50:
             return df
 
         df_out = df.copy()
 
-        # Add Fourier transform features for price cycles
         if 'close' in df.columns:
             try:
-                # Get normalized price data
                 price_data = df['close'].values
                 if len(price_data) > 100:
-                    # Compute fast Fourier transform
                     from scipy.fft import fft
 
-                    # Use the last 128 data points for FFT
                     n = min(128, len(price_data))
                     price_segment = price_data[-n:]
 
-                    # Normalize and detrend
                     norm_price = (price_segment - np.mean(price_segment)) / np.std(price_segment)
 
-                    # Compute FFT
                     fft_values = fft(norm_price)
                     fft_magnitudes = np.abs(fft_values)[:n // 2]
 
-                    # Get the dominant frequency and its power
                     dominant_idx = np.argmax(fft_magnitudes[1:]) + 1
 
-                    # Calculate the period length (in candles)
                     period_length = n / dominant_idx if dominant_idx > 0 else n
 
-                    # Store the period length and magnitude
                     df_out['cycle_period'] = period_length
                     df_out['cycle_strength'] = fft_magnitudes[dominant_idx] / np.sum(fft_magnitudes) if np.sum(
                         fft_magnitudes) > 0 else 0
 
-                    # Calculate the sine wave of the dominant cycle
                     cycles_completed = np.arange(len(df_out)) / period_length
                     df_out['cycle_phase'] = np.sin(2 * np.pi * cycles_completed)
-
-                    # Calculate the position in the dominant cycle (0-1 range)
                     df_out['cycle_position'] = (cycles_completed % 1)
 
             except Exception as e:
-                # If FFT fails, use a simpler approach
                 df_out['cycle_period'] = 0
                 df_out['cycle_strength'] = 0
                 df_out['cycle_phase'] = 0
                 df_out['cycle_position'] = 0
 
-        # Add time-based cyclical features
         if isinstance(df.index, pd.DatetimeIndex):
-            # Hour of day as sine/cosine (already added by indicator_util)
             if 'hour_sin' not in df.columns:
                 hours = df.index.hour
                 df_out['hour_sin'] = np.sin(2 * np.pi * hours / 24.0)
                 df_out['hour_cos'] = np.cos(2 * np.pi * hours / 24.0)
 
-            # Day of week features (already added by indicator_util)
             if 'day_of_week_sin' not in df.columns:
                 day_of_week = df.index.dayofweek
                 df_out['day_of_week_sin'] = np.sin(2 * np.pi * day_of_week / 7.0)
                 df_out['day_of_week_cos'] = np.cos(2 * np.pi * day_of_week / 7.0)
 
-            # Add day of month features (new)
             day_of_month = df.index.day
             max_days = 31
             df_out['day_of_month_sin'] = np.sin(2 * np.pi * day_of_month / max_days)
             df_out['day_of_month_cos'] = np.cos(2 * np.pi * day_of_month / max_days)
 
-            # Add month features (new)
             months = df.index.month
             df_out['month_sin'] = np.sin(2 * np.pi * months / 12.0)
             df_out['month_cos'] = np.cos(2 * np.pi * months / 12.0)
@@ -610,57 +498,41 @@ class FeatureEngineer:
         return df_out
 
     def _add_market_impact_features(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Add features related to market impact and price reactions"""
         if len(df) < 20:
             return df
 
         df_out = df.copy()
 
-        # Calculate price impact ratio
         if all(col in df.columns for col in ['close', 'volume']):
-            # Calculate price changes
             price_changes = df['close'].pct_change()
 
-            # Calculate normalized volume
             volume_ma = df['volume'].rolling(20).mean()
             norm_volume = df['volume'] / volume_ma
 
-            # Calculate price impact ratio (price change per unit volume)
-            # Higher values mean more price impact with less volume
             df_out['price_impact_ratio'] = abs(price_changes) / norm_volume
             df_out['price_impact_ratio'] = df_out['price_impact_ratio'].replace([np.inf, -np.inf], 0).fillna(0)
 
-            # Rolling average of price impact
             df_out['avg_price_impact_10'] = df_out['price_impact_ratio'].rolling(10).mean().fillna(0)
 
-        # Calculate candle size relative to average
         if all(col in df.columns for col in ['high', 'low', 'close']):
-            # Candle size
             candle_size = (df['high'] - df['low']) / df['close']
 
-            # Average candle size over 20 periods
             avg_candle_size = candle_size.rolling(20).mean()
 
-            # Relative candle size (compared to average)
             df_out['relative_candle_size'] = candle_size / avg_candle_size
             df_out['relative_candle_size'] = df_out['relative_candle_size'].replace([np.inf, -np.inf], 1).fillna(1)
 
-            # Large candle indicator
             df_out['large_candle'] = (df_out['relative_candle_size'] > 1.5).astype(float)
 
-            # Candle body ratio (close-open relative to high-low)
             body_size = abs(df['close'] - df['open'])
             total_size = df['high'] - df['low']
             df_out['candle_body_ratio'] = body_size / total_size
             df_out['candle_body_ratio'] = df_out['candle_body_ratio'].replace([np.inf, -np.inf], 0.5).fillna(0.5)
 
-        # Calculate gap features
         if 'close' in df.columns and 'open' in df.columns:
-            # Previous close to current open gap
             df_out['gap'] = (df['open'] - df['close'].shift(1)) / df['close'].shift(1)
             df_out['gap'] = df_out['gap'].fillna(0)
 
-            # Gap significance (is it larger than normal)
             df_out['gap_significance'] = abs(df_out['gap']) / df_out['gap'].rolling(20).std()
             df_out['gap_significance'] = df_out['gap_significance'].replace([np.inf, -np.inf], 0).fillna(0)
 
@@ -676,11 +548,29 @@ class FeatureEngineer:
             if len(df) > 3:
                 df['macd_acceleration'] = df['macd_histogram_12_26_9'].diff().diff()
 
+        # Check if atr_14 exists, if not calculate it
+        if 'atr_14' not in df.columns and all(col in df.columns for col in ['high', 'low', 'close']):
+            df.ta.atr(length=14, append=True)
+            # Try different possible column names
+            atr_columns = [col for col in df.columns if 'ATR' in col.upper()]
+            if atr_columns:
+                df.rename(columns={atr_columns[0]: 'atr_14'}, inplace=True)
+
         if 'atr_14' in df.columns and 'close' in df.columns:
-            df['vol_norm_close_change'] = df['close'].pct_change(5) / (df['atr_14'] / df['close'])
-            df['vol_norm_momentum'] = df['close'].pct_change(10) / (df['atr_14'] / df['close'])
+            # Ensure ATR is not zero to avoid division errors
+            atr_close_ratio = (df['atr_14'] / df['close']).replace(0, 1e-6)
+
+            df['vol_norm_close_change'] = df['close'].pct_change(5) / atr_close_ratio
+            df['vol_norm_momentum'] = df['close'].pct_change(10) / atr_close_ratio
+
             log_return = np.log(df['close'] / df['close'].shift(1))
-            df['vol_adjusted_log_return'] = log_return / df['atr_14'].pct_change(20).rolling(10).std()
+            atr_pct_std = df['atr_14'].pct_change(20).rolling(10).std().replace(0, 1e-6)
+            df['vol_adjusted_log_return'] = log_return / atr_pct_std
+        else:
+            # Fallback if ATR is not available
+            df['vol_norm_close_change'] = df['close'].pct_change(5)
+            df['vol_norm_momentum'] = df['close'].pct_change(10)
+            df['vol_adjusted_log_return'] = np.log(df['close'] / df['close'].shift(1))
 
         if 'ema_21' in df.columns and 'ema_50' in df.columns:
             df['ma_spread'] = (df['ema_21'] / df['ema_50'] - 1) * 100
@@ -706,6 +596,28 @@ class FeatureEngineer:
                 (df['volume'] > df['volume'].rolling(20).mean() * 2) &
                 (abs(df['close'].pct_change()) > df['close'].pct_change().rolling(20).std() * 2),
                 np.sign(df['close'].pct_change()) * -1, 0)
+
+        return df
+
+    def _ensure_required_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Ensure all required indicators are present with correct names"""
+        df = df.copy()
+
+        # Check for ATR specifically
+        if 'atr_14' not in df.columns:
+            # Look for any ATR column
+            atr_cols = [col for col in df.columns if 'atr' in col.lower() or 'ATR' in col]
+            if atr_cols:
+                # Use the first ATR column found
+                df.rename(columns={atr_cols[0]: 'atr_14'}, inplace=True)
+            else:
+                # Calculate ATR if not found
+                if all(col in df.columns for col in ['high', 'low', 'close']):
+                    df.ta.atr(length=14, append=True)
+                    # Find the newly created ATR column
+                    new_atr_cols = [col for col in df.columns if 'ATR' in col and col not in atr_cols]
+                    if new_atr_cols:
+                        df.rename(columns={new_atr_cols[0]: 'atr_14'}, inplace=True)
 
         return df
 
@@ -867,20 +779,16 @@ class FeatureEngineer:
     def _store_actual_prices(self, df: pd.DataFrame) -> pd.DataFrame:
         price_columns = ['open', 'high', 'low', 'close']
 
-        # Create a dictionary to hold all the actual price columns
         actual_prices = {}
         for col in price_columns:
             if col in df.columns:
                 actual_prices[f'actual_{col}'] = df[col]
 
-        # If no columns to add, return original dataframe
         if not actual_prices:
             return df
 
-        # Create a dataframe with just the actual price columns
         actual_df = pd.DataFrame(actual_prices, index=df.index)
 
-        # Concat the actual price columns with the original dataframe
         return pd.concat([df, actual_df], axis=1)
 
     def _standardize_column_names(self, df: pd.DataFrame) -> pd.DataFrame:

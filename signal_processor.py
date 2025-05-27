@@ -267,35 +267,25 @@ class MultiTimeframeAnalyzer:
         if len(data) == 0:
             return 0
 
-        alpha = 2 / (period + 1)
-        ema = np.zeros_like(data)
-        ema[0] = data[0]
-
-        for i in range(1, len(data)):
-            ema[i] = alpha * data[i] + (1 - alpha) * ema[i - 1]
-
-        return ema[-1]
+        df = pd.DataFrame({'close': data})
+        df.ta.ema(length=period, append=True)
+        ema_col = f'EMA_{period}'
+        if ema_col in df.columns:
+            return df[ema_col].iloc[-1]
+        return data[-1]
 
     def _calculate_rsi(self, data, period=14):
         if len(data) < period + 1:
             return 50
 
         try:
-            delta = np.diff(data)
-            gain = np.where(delta > 0, delta, 0)
-            loss = np.where(delta < 0, -delta, 0)
-
-            avg_gain = np.mean(gain[:period])
-            avg_loss = np.mean(loss[:period])
-
-            if avg_loss <= 0.00001:  # Avoid division by effectively zero
-                return 100
-
-            rs = avg_gain / avg_loss
-            rsi = 100 - (100 / (1 + rs))
-
-            return rsi
-        except (ZeroDivisionError, IndexError, ValueError):
+            df = pd.DataFrame({'close': data})
+            df.ta.rsi(length=period, append=True)
+            rsi_col = f'RSI_{period}'
+            if rsi_col in df.columns and not pd.isna(df[rsi_col].iloc[-1]):
+                return df[rsi_col].iloc[-1]
+            return 50
+        except:
             return 50
 
     def _calculate_macd(self, data, fast_period=12, slow_period=26, signal_period=9):
@@ -303,15 +293,19 @@ class MultiTimeframeAnalyzer:
             return 0, 0, 0
 
         try:
-            ema_fast = self._calculate_ema(data, fast_period)
-            ema_slow = self._calculate_ema(data, slow_period)
+            df = pd.DataFrame({'close': data})
+            macd_data = df.ta.macd(fast=fast_period, slow=slow_period, signal=signal_period, append=True)
 
-            macd = ema_fast - ema_slow
-            macd_signal = macd  # Should be EMA of MACD, but simplified for safety
-            macd_hist = macd - macd_signal
+            macd_col = f'MACD_{fast_period}_{slow_period}_{signal_period}'
+            macd_signal_col = f'MACDs_{fast_period}_{slow_period}_{signal_period}'
+            macd_hist_col = f'MACDh_{fast_period}_{slow_period}_{signal_period}'
+
+            macd = df[macd_col].iloc[-1] if macd_col in df.columns else 0
+            macd_signal = df[macd_signal_col].iloc[-1] if macd_signal_col in df.columns else 0
+            macd_hist = df[macd_hist_col].iloc[-1] if macd_hist_col in df.columns else 0
 
             return macd, macd_signal, macd_hist
-        except (ZeroDivisionError, IndexError, ValueError):
+        except:
             return 0, 0, 0
 
     def _calculate_adx(self, data, period=14):
@@ -319,8 +313,20 @@ class MultiTimeframeAnalyzer:
             if len(data) < period + 1:
                 return 25
 
-            # Simplified ADX calculation to avoid the complex calculations that might cause errors
-            return 25  # Default moderate value
+            df = pd.DataFrame({
+                'high': data['high'].values,
+                'low': data['low'].values,
+                'close': data['close'].values
+            })
+
+            adx_data = df.ta.adx(length=period, append=True)
+
+            adx_col = f'ADX_{period}'
+
+            if adx_col in df.columns and not pd.isna(df[adx_col].iloc[-1]):
+                return df[adx_col].iloc[-1]
+
+            return 25
         except Exception:
             return 25
 
@@ -1066,7 +1072,6 @@ class VolumeProfileAnalyzer:
                 "volume_trend": 0
             }
 
-        # Fix: Check for NaN values in data
         if data['volume'].isna().any() or data['close'].isna().any() or data['open'].isna().any():
             data = data.copy()
             data = data.fillna(method='ffill').fillna(method='bfill')
@@ -1078,7 +1083,6 @@ class VolumeProfileAnalyzer:
                     "volume_trend": 0
                 }
 
-        # Calculate buying vs selling volume
         up_candles = data['close'] > data['open']
         down_candles = data['close'] < data['open']
 
@@ -1097,24 +1101,19 @@ class VolumeProfileAnalyzer:
         buying_pressure = buying_volume / total_volume
         selling_pressure = selling_volume / total_volume
 
-        # Calculate volume delta (normalized difference)
         volume_delta = (buying_volume - selling_volume) / total_volume
 
-        # Calculate volume trend
         recent_volumes = data['volume'].values[-5:]
         prev_volumes = data['volume'].values[-10:-5] if len(data) >= 10 else data['volume'].values[:5]
 
-        # Fix: Check for zero volumes
         recent_avg = np.mean(recent_volumes) if len(recent_volumes) > 0 and np.sum(recent_volumes) > 0 else 0.001
         prev_avg = np.mean(prev_volumes) if len(prev_volumes) > 0 and np.sum(prev_volumes) > 0 else 0.001
 
-        # Fix: Avoid division by zero
         if prev_avg <= 0:
             volume_trend = 0
         else:
             volume_trend = (recent_avg / prev_avg) - 1
 
-        # Add taker buy ratio if available
         taker_buy_ratio = 0.5
         if 'taker_buy_base_asset_volume' in data.columns and 'volume' in data.columns:
             taker_volumes = data['taker_buy_base_asset_volume'].sum()
