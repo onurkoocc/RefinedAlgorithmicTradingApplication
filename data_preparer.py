@@ -10,8 +10,9 @@ from sklearn.preprocessing import StandardScaler, RobustScaler, MinMaxScaler
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.feature_selection import mutual_info_regression
 from pathlib import Path
+from indicator_util import IndicatorUtil
 
-from optuna_feature_selector import OptunaFeatureSelector
+from xgboost_feature_selector import XGBoostFeatureSelector
 
 
 class DataPreparer:
@@ -19,8 +20,8 @@ class DataPreparer:
         self.config = config
         self.logger = logging.getLogger("DataPreparer")
 
-        self.sequence_length = config.get("model", "sequence_length", 72)
-        self.horizon = config.get("model", "horizon", 16)
+        self.sequence_length = config.get("model", "sequence_length", 48)  # Updated default
+        self.horizon = config.get("model", "horizon", 8)  # Updated default
         self.normalize_method = config.get("model", "normalize_method", "feature_specific")
         self.train_ratio = config.get("model", "train_ratio", 0.7)
 
@@ -28,7 +29,7 @@ class DataPreparer:
         self.scaler_path = os.path.join(self.results_dir, "models", "feature_scaler.pkl")
         self.feature_list_path = os.path.join(self.results_dir, "models", "feature_list.json")
         self.importance_path = os.path.join(self.results_dir, "models", "feature_importance.json")
-
+        self.indicator_util = IndicatorUtil()
         self.price_column = "close"
 
         self.scaler = None
@@ -39,71 +40,47 @@ class DataPreparer:
         self.normalization_stats = {}
 
         self.train_features = None
-        self.max_features = config.get("model", "max_features", 48)
+        self.max_features = config.get("features", "max_features", 12)
 
         self.essential_features = [
-            # Core price data
-            'open', 'high', 'low', 'close', 'volume',
-
-            # Volume dynamics
-            'taker_buy_base_asset_volume', 'cumulative_delta', 'volume_imbalance_ratio',
-            'volume_price_momentum',
-
-            # Trend indicators
-            'ema_9', 'ema_21', 'ema_50', 'sma_200',
-            'adx_14', 'plus_di_14', 'minus_di_14',
-            'trend_strength', 'ma_cross_velocity',
-
-            # Momentum oscillators
-            'rsi_14', 'rsi_roc_3', 'macd_histogram_12_26_9',
-
-            # Volatility metrics
-            'atr_14', 'bb_width_20', 'volatility_regime',
-
-            # Market context
-            'market_regime', 'mean_reversion_signal', 'price_impact_ratio',
-
-            # Support/resistance
-            'bb_percent_b', 'range_position', 'pullback_strength',
-
-            # Time-based patterns
-            'hour_sin', 'hour_cos', 'day_of_week_sin', 'day_of_week_cos',
-            'cycle_phase', 'cycle_position',
-
-            # Price action patterns
-            'relative_candle_size', 'candle_body_ratio', 'gap',
-
-            # Order flow
-            'spread_pct', 'close_vwap_diff',
-
-            # Adaptive volatility features
-            'vol_norm_close_change', 'vol_norm_momentum'
+            # Streamlined 12 features
+            'returns',
+            'log_returns', 
+            'realized_volatility',
+            'volume_ratio',
+            'dollar_volume',
+            'rsi_14',
+            'rate_of_change',
+            'ema_cross_signal',
+            'adx_14',
+            'price_vs_sma',
+            'high_low_spread',
+            'volume_imbalance'
         ]
 
         # Create Optuna feature selector
-        self.use_optuna_features = config.get("feature_engineering", "use_optuna_features", False)
-        self.optuna_feature_selector = OptunaFeatureSelector(config, self)
+        self.use_xgboost_features = config.get("feature_engineering", "use_xgboost_features", False)
+        self.xgboost_feature_selector = XGBoostFeatureSelector(config, self)
         self.optimized_features = None
 
         self.use_adaptive_features = config.get("feature_engineering", "use_adaptive_features", False)
         self.feature_selection_method = config.get("feature_engineering", "feature_selection_method", "importance")
-        self.dynamic_feature_count = config.get("feature_engineering", "dynamic_feature_count", 50)
+        self.dynamic_feature_count = config.get("features", "dynamic_feature_count", 12)
         self.use_only_essential_features = config.get("feature_engineering", "use_only_essential_features", False)
 
         self.fallback_indicators = {
-            "rsi_14": 50,
-            "cci_20": 0,
-            "willr_14": -50,
-            "macd_histogram_12_26_9": 0,
-            "bb_percent_b": 0.5,
-            "market_regime": 0,
-            "volatility_regime": 0.5,
-            "taker_buy_ratio": 0.5,
-            "mfi": 50,
-            "hour_sin": 0,
-            "hour_cos": 1,  # Midnight default
-            "day_of_week_sin": 0,
-            "day_of_week_cos": 1  # Monday default
+            "returns": 0.0,
+            "log_returns": 0.0,
+            "realized_volatility": 0.02,
+            "volume_ratio": 1.0,
+            "dollar_volume": 20.0,  # log scale
+            "rsi_14": 0.5,  # normalized 0-1
+            "rate_of_change": 0.0,
+            "ema_cross_signal": 0.0,
+            "adx_14": 0.25,  # normalized 0-1
+            "price_vs_sma": 0.0,
+            "high_low_spread": 0.01,
+            "volume_imbalance": 0.0
         }
 
         self._load_scaler_and_features()
@@ -137,10 +114,8 @@ class DataPreparer:
             self.logger.warning(f"Error loading feature importance: {e}")
 
     def _load_optimized_features(self):
-        if self.use_optuna_features:
-            self.optimized_features = self.optuna_feature_selector.load_best_features()
-            if self.optimized_features:
-                self.logger.info(f"Loaded {len(self.optimized_features)} optimized features")
+        if self.use_xgboost_features:
+            self.optimized_features = self.xgboost_feature_selector.load_best_features()
 
     def _save_scaler_and_features(self):
         try:
@@ -177,14 +152,14 @@ class DataPreparer:
 
         actual_cols = [col for col in df.columns if col.startswith('actual_')]
 
-        if self.use_optuna_features:
+        if self.use_xgboost_features:
             self.logger.info("Running Optuna feature optimization...")
-            self.optimized_features = self.optuna_feature_selector.optimize_features(df)
+            self.optimized_features = self.xgboost_feature_selector.optimize_features(df)
 
         # Use Optuna-optimized features if available
-        if self.use_optuna_features and self.optimized_features:
+        if self.use_xgboost_features and self.optimized_features:
             self.train_features = self._filter_available_features(df, self.optimized_features)
-            self.logger.info(f"Using {len(self.train_features)} Optuna-optimized features for current iteration")
+            self.logger.info(f"Using {len(self.train_features)} XGBoost-optimized features for current iteration")
         else:
             self.train_features = self._get_available_features(df)
             self.logger.info(f"Using {len(self.train_features)} standard features")
@@ -227,6 +202,11 @@ class DataPreparer:
 
             # Now normalize train and validation separately
             if self.normalize_method != "none":
+                # Reset scalers for each iteration to ensure consistency
+                self.scaler = None
+                self.scaler_dict = {}
+                self.logger.debug(f"Resetting scalers for new iteration training")
+                
                 # Reshape for normalization
                 X_train_reshaped = X_train.reshape(-1, X_train.shape[2])
 
@@ -358,8 +338,13 @@ class DataPreparer:
                     available_essential_features.append(feature)
                 elif f'm30_{feature}' in df_columns:
                     available_essential_features.append(f'm30_{feature}')
+            
+            # Always include OHLCV columns for target calculation
+            for col in ['open', 'high', 'low', 'close', 'volume']:
+                if col in df_columns and col not in available_essential_features:
+                    available_essential_features.append(col)
 
-            self.logger.info(f"Using only {len(available_essential_features)} essential features")
+            self.logger.info(f"Using only {len(available_essential_features)} essential features (including OHLCV)")
             return available_essential_features
         for feature in self.essential_features:
             if feature in df.columns:
@@ -437,6 +422,9 @@ class DataPreparer:
             X_features = df_labeled.values.astype(np.float32)
 
             if self.normalize_method != "none":
+                # Debug logging for scaler state
+                self.logger.debug(f"Scaler state: method={self.normalize_method}, has_scaler={self.scaler is not None}, has_scaler_dict={bool(self.scaler_dict)}")
+                
                 if self.normalize_method == 'feature_specific' and self.scaler_dict:
                     X_features = self._apply_feature_specific_normalization(X_features, df_labeled.columns)
                 elif self.scaler:
@@ -447,6 +435,8 @@ class DataPreparer:
 
                     try:
                         X_features = self.scaler.transform(X_features)
+                        # Log statistics after scaling
+                        self.logger.debug(f"Scaled features stats: mean={np.mean(X_features):.4f}, std={np.std(X_features):.4f}")
                     except Exception as e:
                         self.logger.error(f"Error transforming test data: {e}")
                         X_features = (X_features - np.mean(X_features, axis=0)) / np.maximum(np.std(X_features, axis=0),
@@ -472,8 +462,7 @@ class DataPreparer:
                 if not isinstance(df.index, pd.DatetimeIndex):
                     df_with_datetime = df.copy()
                     df_with_datetime.index = pd.to_datetime(df_with_datetime.index)
-                    time_features = self.optuna_feature_selector.data_preparer.indicator_util.calculate_time_features(
-                        df_with_datetime)
+                    time_features = self.indicator_util.calculate_time_features(df_with_datetime)
                     if feature in time_features.columns:
                         return time_features[feature]
             except:
@@ -782,9 +771,8 @@ class DataPreparer:
         return df_clean
 
     def optimize_features(self, df_features):
-        if self.use_optuna_features:
-            # Force optimization regardless of whether optimized_features already exists
-            self.logger.info("Running Optuna feature optimization for current iteration...")
-            self.optimized_features = self.optuna_feature_selector.optimize_features(df_features)
+        if self.use_xgboost_features:
+            self.logger.info("Running XGBoost feature optimization for current iteration...")
+            self.optimized_features = self.xgboost_feature_selector.optimize_features(df_features)
             return self.optimized_features
         return None

@@ -387,6 +387,7 @@ class MarketRegimeDetector:
                 "weak_uptrend": 0.0,
                 "choppy": 0.0,
                 "ranging": 0.0,
+                "neutral": 0.0,  # Add neutral to avoid defaulting
                 "ranging_at_support": 0.0,
                 "ranging_at_resistance": 0.0,
                 "downtrend_transition": 0.0,  # New transition regime
@@ -407,13 +408,20 @@ class MarketRegimeDetector:
                     ema21 = df['ema_21'].iloc[-1]
                     ema50 = df['ema_50'].iloc[-1]
 
-                    # Detect trends based on EMAs
+                    # Detect trends based on EMAs - MORE SENSITIVE
+                    # Calculate EMA slopes for better trend detection
+                    ema9_slope = (ema9 - df['ema_9'].iloc[-5]) / df['ema_9'].iloc[-5] * 100 if len(df) > 5 and df['ema_9'].iloc[-5] > 0 else 0
+                    ema21_slope = (ema21 - df['ema_21'].iloc[-5]) / df['ema_21'].iloc[-5] * 100 if len(df) > 5 and df['ema_21'].iloc[-5] > 0 else 0
+                    
                     if current_price > ema9 > ema21 > ema50:
-                        regimes["strong_uptrend"] = 0.5
+                        regimes["strong_uptrend"] = 0.6  # Increased from 0.5
                         regimes["uptrend"] = 0.3
                     elif current_price > ema9 > ema21:
-                        regimes["uptrend"] = 0.4
+                        regimes["uptrend"] = 0.5  # Increased from 0.4
                         regimes["weak_uptrend"] = 0.3
+                    elif current_price > ema21 and ema9_slope > 0.05:  # New condition for early trend detection
+                        regimes["weak_uptrend"] = 0.4
+                        regimes["uptrend_transition"] = 0.3
 
                         # Check for transition from neutral/ranging to uptrend
                         if len(self.regime_history) > 0 and "ranging" in self.regime_history[-1]:
@@ -421,11 +429,18 @@ class MarketRegimeDetector:
                             regimes["uptrend"] = 0.2
 
                     elif current_price < ema9 < ema21 < ema50:
-                        regimes["strong_downtrend"] = 0.5
+                        regimes["strong_downtrend"] = 0.6  # Increased from 0.5
                         regimes["downtrend"] = 0.3
                     elif current_price < ema9 < ema21:
-                        regimes["downtrend"] = 0.4
+                        regimes["downtrend"] = 0.5  # Increased from 0.4
                         regimes["weak_downtrend"] = 0.3
+                    elif current_price < ema21 and ema9_slope < -0.05:  # New condition for early trend detection
+                        regimes["weak_downtrend"] = 0.4
+                        regimes["downtrend_transition"] = 0.3
+                    else:
+                        # If none of the trend conditions are met, it's likely neutral/ranging
+                        regimes["neutral"] += 0.3
+                        regimes["ranging"] += 0.2
 
                         # Check for transition from neutral/ranging to downtrend
                         if len(self.regime_history) > 0 and "ranging" in self.regime_history[-1]:
@@ -451,13 +466,16 @@ class MarketRegimeDetector:
                         except (ZeroDivisionError, TypeError):
                             pass
             else:
-                # Default to neutral if EMA indicators are not available
-                regimes["neutral"] = 0.5
+                # Default to ranging if EMA indicators are not available
+                regimes["ranging"] = 0.5
+                regimes["neutral"] = 0.2
 
-            # ADX for trend strength
+            # ADX for trend strength - HANDLE NORMALIZED VALUES (0-1 range)
             if 'adx_14' in df.columns and not pd.isna(df['adx_14'].iloc[-1]):
-                adx = df['adx_14'].iloc[-1]
-                if adx > 30:
+                adx_raw = df['adx_14'].iloc[-1]
+                # Check if ADX is normalized (0-1 range) or standard (0-100 range)
+                adx = adx_raw * 100 if adx_raw <= 1.0 else adx_raw
+                if adx > 25:  # Lowered from 30
                     # Strong trend, boost appropriate trend regime
                     if regimes["strong_uptrend"] > 0.3:
                         regimes["strong_uptrend"] += 0.3
@@ -470,8 +488,9 @@ class MarketRegimeDetector:
                         regimes["downtrend"] += 0.2
                         regimes["strong_downtrend"] += 0.1
                 elif adx < 20:
-                    # Weak trend, might be ranging
-                    regimes["ranging"] += 0.3
+                    # Weak trend, might be ranging or neutral
+                    regimes["ranging"] += 0.25
+                    regimes["neutral"] += 0.25  # Add neutral probability
                     regimes["choppy"] += 0.2
 
                     # Decrease trend regimes
@@ -487,27 +506,87 @@ class MarketRegimeDetector:
                             regimes["ranging_at_resistance"] += 0.4
                             regimes["ranging"] -= 0.2
 
-            # Volatility assessment
-            if volatility > 0.7:
+            # Volatility assessment - MORE SENSITIVE
+            if volatility > 0.5:  # Lowered from 0.7
                 regimes["volatile"] += 0.5
-                # Decrease ranging probability
+                # Decrease ranging and neutral probability
                 regimes["ranging"] = max(0, regimes["ranging"] - 0.2)
+                regimes["neutral"] = max(0, regimes["neutral"] - 0.2)
+            elif volatility < 0.2:  # Low volatility might indicate neutral
+                regimes["neutral"] += 0.2
 
-            # Check for ranging using Bollinger Band width
+            # Check for ranging using Bollinger Band width - ADJUSTED THRESHOLDS
             if 'bb_width_20' in df.columns and not pd.isna(df['bb_width_20'].iloc[-1]):
                 bb_width = df['bb_width_20'].iloc[-1]
-                if bb_width < 0.03:
+                if bb_width < 0.02:  # Very narrow - likely neutral/dead market
+                    regimes["neutral"] += 0.3
+                    regimes["ranging"] += 0.2
+                elif bb_width < 0.03:
                     regimes["ranging"] += 0.4
                     regimes["choppy"] -= 0.1
                 elif bb_width < 0.05:
                     regimes["ranging"] += 0.2
+                elif bb_width > 0.08:  # Wide bands indicate volatility or trending
+                    regimes["volatile"] += 0.2
+                    # Boost current trend if any
+                    for key in ["strong_uptrend", "uptrend", "strong_downtrend", "downtrend"]:
+                        if regimes[key] > 0.2:
+                            regimes[key] += 0.15
 
+            # Add momentum-based regime detection using RSI - HANDLE NORMALIZED VALUES
+            if 'rsi_14' in df.columns and not pd.isna(df['rsi_14'].iloc[-1]):
+                rsi_raw = df['rsi_14'].iloc[-1]
+                # Check if RSI is normalized (0-1) or standard (0-100)
+                rsi = rsi_raw * 100 if rsi_raw <= 1.0 else rsi_raw
+                if rsi > 70:  # Overbought - likely strong uptrend
+                    regimes["strong_uptrend"] += 0.3
+                    regimes["uptrend"] += 0.2
+                elif rsi > 60:
+                    regimes["uptrend"] += 0.25
+                    regimes["weak_uptrend"] += 0.15
+                elif rsi < 30:  # Oversold - likely strong downtrend
+                    regimes["strong_downtrend"] += 0.3
+                    regimes["downtrend"] += 0.2
+                elif rsi < 40:
+                    regimes["downtrend"] += 0.25
+                    regimes["weak_downtrend"] += 0.15
+                elif 45 <= rsi <= 55:  # Neutral RSI
+                    regimes["neutral"] += 0.15
+                    regimes["ranging"] += 0.1
+            
+            # Volume analysis for regime confirmation
+            if 'volume' in df.columns and len(df) > 20:
+                recent_vol = df['volume'].iloc[-5:].mean()
+                avg_vol = df['volume'].iloc[-20:].mean()
+                if avg_vol > 0:
+                    vol_ratio = recent_vol / avg_vol
+                    if vol_ratio > 1.5:  # High volume confirms trends
+                        # Boost trending regimes
+                        for key in ["strong_uptrend", "uptrend", "strong_downtrend", "downtrend"]:
+                            if regimes[key] > 0.2:
+                                regimes[key] *= 1.3
+                    elif vol_ratio < 0.7:  # Low volume suggests neutral/ranging
+                        regimes["neutral"] += 0.2
+                        regimes["ranging"] += 0.1
+            
             # Normalize probabilities
             total_prob = sum(regimes.values())
             if total_prob > 0:
                 for regime in regimes:
                     regimes[regime] /= total_prob
 
+            # REGIME BALANCING LOGIC - Prevent over-classification
+            # If neutral is too dominant, redistribute some probability
+            if regimes["neutral"] > 0.5:
+                excess = regimes["neutral"] - 0.5
+                regimes["neutral"] = 0.5
+                # Redistribute to other regimes based on their relative weights
+                other_regimes = {k: v for k, v in regimes.items() if k != "neutral" and v > 0}
+                if other_regimes:
+                    total_other = sum(other_regimes.values())
+                    for regime in other_regimes:
+                        regimes[regime] += excess * (other_regimes[regime] / total_other) if total_other > 0 else 0
+            
             # Find the most likely regime
             primary_regime = max(regimes.items(), key=lambda x: x[1])
 
@@ -536,7 +615,9 @@ class MarketRegimeDetector:
     def _calculate_trend_strength(self, df):
         try:
             if 'adx_14' in df.columns and not pd.isna(df['adx_14'].iloc[-1]):
-                adx = df['adx_14'].iloc[-1]
+                adx_raw = df['adx_14'].iloc[-1]
+                # Handle normalized ADX (0-1) or standard (0-100)
+                adx = adx_raw * 100 if adx_raw <= 1.0 else adx_raw
                 return min(1.0, adx / 50.0)
 
             if len(df) < 20:
@@ -1264,7 +1345,19 @@ class SignalConfidenceScorer:
         return scored_signals if len(scored_signals) > 1 else scored_signals[0]
 
     def _normalize_prediction(self, prediction):
-        return min(1.0, max(0.0, (abs(prediction) * 50) ** 0.7))
+        # Improved normalization for better score distribution
+        # Typical predictions are in range [-0.01, 0.01], we want scores in [0, 1]
+        abs_pred = abs(prediction)
+        if abs_pred < 0.0001:
+            return 0.0
+        elif abs_pred < 0.001:
+            return 0.3 + (abs_pred - 0.0001) / 0.0009 * 0.2  # 0.3 to 0.5
+        elif abs_pred < 0.005:
+            return 0.5 + (abs_pred - 0.001) / 0.004 * 0.3  # 0.5 to 0.8
+        elif abs_pred < 0.01:
+            return 0.8 + (abs_pred - 0.005) / 0.005 * 0.15  # 0.8 to 0.95
+        else:
+            return min(1.0, 0.95 + abs_pred * 5)  # 0.95+
 
     def _calculate_technical_alignment(self, signal):
         ema_signal = signal.get("ema_signal", 0)
@@ -1766,6 +1859,10 @@ class SignalGenerator:
             trend_strength = float(signal.get("trend_strength", 0.5))
             volatility = float(signal.get("volatility", 0.5))
             rsi_14 = float(signal.get("rsi_14", 50))
+            
+            # Debug logging for confidence score analysis
+            if confidence_score > 0:
+                self.logger.debug(f"Confidence score: {confidence_score:.6f}, Thresholds: weak={thresholds.get('weak', 0.0008):.6f}, normal={thresholds.get('normal', 0.001):.6f}")
 
             # Apply adaptive mode adjustments if enabled
             if adaptive_mode:
@@ -1785,8 +1882,14 @@ class SignalGenerator:
             elif confidence_score >= thresholds.get("normal", 0.001):
                 signal_type = "Buy" if direction == "long" else "Sell"
             elif confidence_score >= thresholds.get("weak", 0.0008):
-                signal_type = "NoTrade"
-                signal["reason"] = "BelowNormalThreshold"
+                # Allow trades with additional confirmation even at weak threshold
+                if (volume_confirms and multi_timeframe_confirmation) or \
+                   (trend_strength > 0.7 and abs(predicted_return) > 0.002):
+                    signal_type = "Buy" if direction == "long" else "Sell"
+                    signal["weak_signal_with_confirmation"] = True
+                else:
+                    signal_type = "NoTrade"
+                    signal["reason"] = "BelowNormalThreshold"
             else:
                 signal_type = "NoTrade"
                 signal["reason"] = "BelowWeakThreshold"

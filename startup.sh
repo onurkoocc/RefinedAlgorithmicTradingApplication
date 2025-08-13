@@ -4,7 +4,7 @@ set -e
 echo "Starting Bitcoin Trading System..."
 
 # Create necessary directories
-mkdir -p data results/models results/backtest results/logs
+mkdir -p data results/models results/backtest results/logs results/feature_selection
 
 # Remove the config file check
 echo "Using default configuration from Config class."

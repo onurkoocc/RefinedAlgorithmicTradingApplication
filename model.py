@@ -65,7 +65,7 @@ class OptimizedGrowthMetricCallback(tf.keras.callbacks.Callback):
         }
         self.historical_returns = []
         self.threshold_history = []
-        self.max_drawdown_threshold = 0.15
+        self.max_drawdown_threshold = 0.25
         self.consecutive_loss_scale = 0.85
         self.max_position_size = 0.5
 
@@ -367,7 +367,7 @@ class OptimizedGrowthMetricCallback(tf.keras.callbacks.Callback):
                 print(f"✅ On track for target growth of {self.monthly_target * 100:.1f}% monthly")
             else:
                 print(f"⚠️ Below target growth of {self.monthly_target * 100:.1f}% monthly")
-            if max_drawdown > 0.12:
+            if max_drawdown > 0.15:
                 print(f"⚠️ High drawdown risk: {max_drawdown * 100:.1f}%")
 
 class NoisySequence(tf.keras.utils.Sequence):
@@ -410,25 +410,25 @@ class NoisySequence(tf.keras.utils.Sequence):
 class OptimizedHybridModel:
     def __init__(self, config, input_shape, feature_names=None):
         self.config = config
-        self.input_shape = input_shape  # (72, 43)
+        self.input_shape = input_shape  # (48, 17) - optimized sequence length
         self.feature_names = feature_names
         self.model = None
         self.logger = logging.getLogger("OptimizedHybridModel")
         self.training_metrics = []
 
-        # Optimized hyperparameters
+        # Streamlined hyperparameters for 12 features
         self.best_params = {
-            "projection_size": 48,      # Reduced from 64
-            "transformer_heads": 3,     # Reduced from 4
-            "transformer_dropout": 0.4, # Kept high for regularization
-            "recurrent_units": 32,      # Reduced from 40
-            "recurrent_dropout": 0.25,  # Increased from 0.2
-            "dropout": 0.35,            # Increased from 0.3
-            "dense_units1": 48,         # Reduced from 64
-            "dense_units2": 24,         # Reduced from 32
+            "projection_size": 12,      # Match feature count
+            "transformer_heads": 2,     # Reduced for simplicity
+            "transformer_dropout": 0.3, # Reduced for simpler model
+            "recurrent_units": 24,      # Reduced from 32
+            "recurrent_dropout": 0.25,  
+            "dropout": 0.35,
+            "dense_units1": 16,         # Match config for 12 features
+            "dense_units2": 8,          # Match config
             "l2_lambda": 1e-3,          # Increased from 1e-4
             "learning_rate": 5e-5,      # Increased from 1e-5
-            "epochs": 24
+            "epochs": 20  # Reduced to prevent overfitting
         }
 
     def build_model(self):
@@ -440,14 +440,21 @@ class OptimizedHybridModel:
         transformer_heads = self.best_params["transformer_heads"]
         transformer_dropout = self.best_params["transformer_dropout"]
 
-        x = Dense(projection_size, activation='linear')(x)
-        pos_encoding = self._positional_encoding(self.input_shape[0], projection_size)
-        x = Lambda(lambda x: x + tf.cast(pos_encoding, x.dtype))(x)
+        # Check if transformer/attention is enabled  
+        attention_enabled = self.config.get('model', 'attention_enabled', True)
+        
+        if attention_enabled:
+            x = Dense(projection_size, activation='linear')(x)
+            pos_encoding = self._positional_encoding(self.input_shape[0], projection_size)
+            x = Lambda(lambda x: x + tf.cast(pos_encoding, x.dtype))(x)
 
-        x = self._transformer_encoder_layer(x, units=projection_size,
-                                            num_heads=transformer_heads,
-                                            dropout=transformer_dropout,
-                                            name="hybrid_transformer_0")
+            x = self._transformer_encoder_layer(x, units=projection_size,
+                                                num_heads=transformer_heads,
+                                                dropout=transformer_dropout,
+                                                name="hybrid_transformer_0")
+        else:
+            # Skip transformer, use simple dense projection
+            x = Dense(projection_size, activation='relu')(x)
 
         recurrent_units = self.best_params["recurrent_units"]
         recurrent_dropout = self.best_params["recurrent_dropout"]
@@ -581,8 +588,9 @@ class TradingModel:
         self.config = config
         self.logger = logging.getLogger("OptimizedTradingModel")
         self.model_path = config.get("model", "model_path")
-        self.sequence_length = 72  # Fixed as per your lookback
-        self.horizon = 16          # Fixed as per your horizon
+        # Get sequence length and horizon from config (optimized values)
+        self.sequence_length = config.get("model", "sequence_length", 48)
+        self.horizon = config.get("model", "horizon", 8)
         self.batch_size = config.get("model", "batch_size", 128)
         self.epochs = config.get("model", "epochs", 24)
         self.early_stopping_patience = config.get("model", "early_stopping_patience", 12)
@@ -644,7 +652,7 @@ class TradingModel:
         self.model = None
         tf.keras.backend.clear_session()
 
-        input_shape = (self.sequence_length, X_train.shape[2])  # (72, 43)
+        input_shape = (self.sequence_length, X_train.shape[2])  # (48, 17) - optimized
         feature_names = df_val.columns.tolist() if hasattr(df_val, 'columns') else None
         batch_size = self.batch_size
 
@@ -671,7 +679,7 @@ class TradingModel:
 
     def load_model(self, model_path=None):
         path = model_path or self.model_path
-        hybrid_model = OptimizedHybridModel(self.config, (self.sequence_length, 43))
+        hybrid_model = OptimizedHybridModel(self.config, (self.sequence_length, 12))
         if hybrid_model.load_model(path):
             self.model = hybrid_model.model
             return self.model

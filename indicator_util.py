@@ -249,13 +249,16 @@ class IndicatorUtil:
         if len(df) < 5:
             return False
 
-        if 'obv' not in df.columns:
-            df.ta.obv(append=True)
-            df.rename(columns={'OBV': 'obv'}, inplace=True)
+        # Always work with a copy to avoid any pandas warnings
+        df_work = df.copy()
+        
+        if 'obv' not in df_work.columns:
+            df_work.ta.obv(append=True)
+            df_work.rename(columns={'OBV': 'obv'}, inplace=True)
 
-        volumes = df['volume'].values[-5:]
-        closes = df['close'].values[-5:]
-        obv_values = df['obv'].values[-5:]
+        volumes = df_work['volume'].values[-5:]
+        closes = df_work['close'].values[-5:]
+        obv_values = df_work['obv'].values[-5:]
 
         price_change = closes[-1] / closes[-2] - 1
         obv_change = obv_values[-1] - obv_values[-2]
@@ -276,17 +279,20 @@ class IndicatorUtil:
         if len(df) < 20:
             return 0.5
 
-        if 'bb_width_20' not in df.columns:
-            df.ta.bbands(length=20, std=2, append=True)
-            df.rename(columns={'BBB_20_2.0': 'bb_width_20'}, inplace=True)
+        # Always work with a copy to avoid any pandas warnings
+        df_work = df.copy()
+        
+        if 'bb_width_20' not in df_work.columns:
+            df_work.ta.bbands(length=20, std=2, append=True)
+            df_work.rename(columns={'BBB_20_2.0': 'bb_width_20'}, inplace=True)
 
-        bb_width = df['bb_width_20'].iloc[-1]
+        bb_width = df_work['bb_width_20'].iloc[-1]
 
         if np.isnan(bb_width):
             return 0.5
 
-        if len(df) >= 20:
-            returns = df['close'].pct_change().values[-20:]
+        if len(df_work) >= 20:
+            returns = df_work['close'].pct_change().values[-20:]
             returns = returns[~np.isnan(returns)]
             hist_vol = np.std(returns) * np.sqrt(48)
         else:

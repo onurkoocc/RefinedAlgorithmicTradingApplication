@@ -24,11 +24,13 @@ class BacktestEngine:
         from metric_calculator import MetricCalculator
         from exporter import Exporter
         from indicator_util import IndicatorUtil
+        from exit_manager import ExitManager
 
         self.time_manager = AdaptiveTimeManager(config)
         self.metric_calculator = MetricCalculator(config)
         self.exporter = Exporter(config)
         self.indicator_util = IndicatorUtil()
+        self.exit_manager = ExitManager(config)
 
         self.train_window_size = config.get("backtest", "train_window_size", 4500)
         self.test_window_size = config.get("backtest", "test_window_size", 500)
@@ -196,6 +198,19 @@ class BacktestEngine:
                 return None
 
             predictions = self.model.predict(X_test)
+            
+            # Enhanced diagnostics for debugging signal generation
+            self.logger.info(f"Iteration {iteration}: Predictions shape: {predictions.shape}, Non-zero predictions: {np.sum(predictions != 0)}")
+            if len(predictions) > 0:
+                pred_stats = {
+                    "mean": float(np.mean(predictions)),
+                    "std": float(np.std(predictions)),
+                    "min": float(np.min(predictions)),
+                    "max": float(np.max(predictions)),
+                    "percentile_25": float(np.percentile(predictions, 25)),
+                    "percentile_75": float(np.percentile(predictions, 75))
+                }
+                self.logger.info(f"Iteration {iteration} prediction stats: {pred_stats}")
 
             simulation_result = self.market_simulator.simulate(
                 iteration,
@@ -363,6 +378,8 @@ class MarketSimulator:
 
     def simulate(self, iteration, predictions, df_labeled, fwd_returns,
                  signal_generator, risk_manager, time_manager) -> Dict[str, Any]:
+        import numpy as np  # Move numpy import to top to avoid scope issues
+        
         self._reset_simulation_state()
         self.iteration = iteration
 
@@ -371,10 +388,15 @@ class MarketSimulator:
 
         seq_len = self.config.get("model", "sequence_length", 72)
         last_day = None
+        
+        # Initialize signal generation statistics at method level to ensure they're always available
+        self.confidence_scores = []
+        self.signal_types_count = {"Buy": 0, "Sell": 0, "NoTrade": 0}
+        self.threshold_failures = {"BelowWeakThreshold": 0, "BelowNormalThreshold": 0, "Other": 0}
 
         for i, model_probs in enumerate(predictions):
             if i % 100 == 0:
-                self.logger.debug(f"Processing prediction {i}/{len(predictions)}")
+                self.logger.debug(f"Iteration {self.iteration}: Processing prediction {i}/{len(predictions)}")
 
             row_idx = i + seq_len
             if row_idx >= len(df_labeled):
@@ -409,6 +431,16 @@ class MarketSimulator:
 
         if self.position != 0 and self.trade_entry is not None:
             self._close_final_position(df_labeled)
+            
+        # Log comprehensive diagnostics
+        self.logger.info(f"Iteration {self.iteration} Signal Generation Diagnostics:")
+        self.logger.info(f"  - Total signals: {sum(self.signal_types_count.values())}")
+        self.logger.info(f"  - Signal types: Buy={self.signal_types_count['Buy']}, Sell={self.signal_types_count['Sell']}, NoTrade={self.signal_types_count['NoTrade']}")
+        self.logger.info(f"  - Threshold failures: {self.threshold_failures}")
+        if self.confidence_scores:
+            self.logger.info(f"  - Confidence scores: mean={np.mean(self.confidence_scores):.6f}, max={np.max(self.confidence_scores):.6f}, min={np.min(self.confidence_scores):.6f}")
+            self.logger.info(f"  - Scores > 0.0008: {sum(1 for c in self.confidence_scores if c > 0.0008)}, > 0.001: {sum(1 for c in self.confidence_scores if c > 0.001)}, > 0.008: {sum(1 for c in self.confidence_scores if c > 0.008)}")
+        self.logger.info(f"  - Trades executed: {len(self.trades)}")
 
         return {
             "final_equity": self.portfolio_manager.current_capital,
@@ -565,11 +597,33 @@ class MarketSimulator:
                 df_labeled.iloc[:row_idx],
                 **adjusted_signal
             )
+            
         except Exception as e:
             self.logger.error(f"Signal error at {current_time}: {e}")
             signal = {"signal_type": "NoTrade", "reason": f"SignalError_{e}"}
 
+        # Track confidence scores for diagnostics
+        if "confidence_score" in signal:
+            self.confidence_scores.append(signal["confidence_score"])
+        if "reason" in signal:
+            reason = signal["reason"]
+            if "BelowWeakThreshold" in reason:
+                self.threshold_failures["BelowWeakThreshold"] += 1
+            elif "BelowNormalThreshold" in reason:
+                self.threshold_failures["BelowNormalThreshold"] += 1
+            else:
+                self.threshold_failures["Other"] += 1
+
         self._update_signal_stats(signal)
+        
+        # Track signal types
+        sig_type_base = signal.get("signal_type", "NoTrade")
+        if "Buy" in sig_type_base:
+            self.signal_types_count["Buy"] += 1
+        elif "Sell" in sig_type_base:
+            self.signal_types_count["Sell"] += 1  
+        else:
+            self.signal_types_count["NoTrade"] += 1
 
         sig_type = signal.get('signal_type', '')
         if sig_type.endswith('Buy') or sig_type.endswith('Sell'):

@@ -17,9 +17,10 @@ COPY requirements.txt /app/
 RUN pip install --no-cache-dir -r requirements.txt && \
     rm -rf /root/.cache/pip
 
-RUN mkdir -p /app/data /app/results/models /app/results/backtest /app/results/logs
+RUN mkdir -p /app/data /app/results/models /app/results/backtest /app/results/logs /app/results/feature_selection
 
 COPY *.py /app/
+COPY *.md /app/
 COPY startup.sh /app/
 # Fix Windows line endings by removing \r
 RUN sed -i 's/\r$//' /app/startup.sh

@@ -15,7 +15,7 @@ from model import TradingModel
 from risk_manager import RiskManager
 from signal_processor import SignalGenerator
 from adaptive_time_management import AdaptiveTimeManager
-from optuna_feature_selector import OptunaFeatureSelector
+from xgboost_feature_selector import XGBoostFeatureSelector
 
 
 def setup_logging(config, log_level=logging.INFO):
@@ -91,13 +91,6 @@ def parse_args():
         help="Enable enhanced exit strategy optimizations"
     )
 
-    parser.add_argument(
-        "--optuna-trials",
-        type=int,
-        default=30,
-        help="Number of Optuna trials for feature optimization"
-    )
-
     return parser.parse_args()
 
 
@@ -116,7 +109,7 @@ def fetch_data(config, use_api=False):
 
 def create_features(config, df_30m):
     feature_engineer = FeatureEngineer(config)
-    df_features = feature_engineer.process_features(df_30m)
+    df_features = feature_engineer.create_features(df_30m)
 
     if df_features.empty:
         return None
@@ -213,19 +206,12 @@ def optimize_exit_strategies(config, df_features):
 
 def optimize_features(config, df_features):
     logger = logging.getLogger(__name__)
-    logger.info("Starting feature optimization with Optuna")
+    logger.info("Starting feature optimization with XGBoost")
 
-    # Update Optuna parameters from command line if provided
-    if hasattr(args, 'optuna_trials') and args.optuna_trials:
-        config.set("feature_engineering", "optuna_n_trials", args.optuna_trials)
+    feature_selector = XGBoostFeatureSelector(config)
 
-    # Create feature selector
-    feature_selector = OptunaFeatureSelector(config)
-
-    # Run optimization
     optimized_features = feature_selector.optimize_features(df_features)
 
-    # Report results
     if optimized_features:
         logger.info(f"Feature optimization complete. Selected {len(optimized_features)} features")
         essential_features = config.get("feature_engineering", "essential_features", [])
@@ -234,11 +220,9 @@ def optimize_features(config, df_features):
         logger.info(f"Essential features: {len(essential_features)}")
         logger.info(f"Additional optimized features: {len(non_essential)}")
 
-        # Create a DataPreparer and test with the optimized features
         data_preparer = DataPreparer(config)
         data_preparer.optimized_features = optimized_features
 
-        # Run a short test with optimized features
         X_train, y_train, X_val, y_val, df_val, fwd_returns_val = data_preparer.prepare_data(df_features)
 
         if len(X_train) > 0 and len(y_train) > 0:

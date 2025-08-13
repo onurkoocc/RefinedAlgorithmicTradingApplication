@@ -43,62 +43,48 @@ class Config:
                 "use_chunking": True,
                 "chunk_size": 2000,
                 "correlation_threshold": 0.9,
-                "use_optuna_features": False,
-                "optuna_n_trials": 100,
-                "optuna_timeout": 3600,
-                "optuna_metric": "growth_score",
+                "use_xgboost_features": False,  # Changed from use_optuna_features
+                "xgb_cv_splits": 3,  # XGBoost cross-validation splits
+                "xgb_importance_threshold": 0.001,  # Minimum importance threshold
+                "xgb_use_gain": True,  # Use gain-based importance
                 "feature_selection_method": "importance",
                 "use_adaptive_features": False,  # Changed from False
-                "dynamic_feature_count": 48,  # Increased from 50
-                "max_features": 48,  # Increased from 50
-                "use_only_essential_features": True,  # Changed from True
-                "use_cyclic_features": True,
-                "use_liquidity_features": True,
-                "use_market_impact_features": True,
+                "dynamic_feature_count": 13,  # Streamlined from 48, added MACD
+                "max_features": 13,  # Streamlined from 48, added MACD
+                "use_only_essential_features": True,
+                "use_streamlined_features": True,  # New flag for streamlined features
+                "use_cyclic_features": False,  # Simplified
+                "use_liquidity_features": False,  # Simplified
+                "use_market_impact_features": False,  # Simplified
                 "essential_features": [
-                    # Core price data
-                    'open', 'high', 'low', 'close', 'volume',
+                    # Price Action (3 features)
+                    'returns',
+                    'log_returns', 
+                    'realized_volatility',
 
-                    # Volume dynamics
-                    'taker_buy_base_asset_volume', 'cumulative_delta', 'volume_imbalance_ratio',
-                    'volume_price_momentum',
+                    # Volume (2 features)
+                    'volume_ratio',
+                    'dollar_volume',
 
-                    # Trend indicators
-                    'ema_9', 'ema_21', 'ema_50', 'sma_200',
-                    'adx_14', 'plus_di_14', 'minus_di_14',
-                    'trend_strength', 'ma_cross_velocity',
+                    # Momentum (2 features)
+                    'rsi_14',
+                    'rate_of_change',
 
-                    # Momentum oscillators
-                    'rsi_14', 'rsi_roc_3', 'macd_histogram_12_26_9',
+                    # Trend (3 features)
+                    'ema_cross_signal',
+                    'adx_14',
+                    'price_vs_sma',
 
-                    # Volatility metrics
-                    'atr_14', 'bb_width_20', 'volatility_regime',
-
-                    # Market context
-                    'market_regime', 'mean_reversion_signal', 'price_impact_ratio',
-
-                    # Support/resistance
-                    'bb_percent_b', 'range_position', 'pullback_strength',
-
-                    # Time-based patterns
-                    'hour_sin', 'hour_cos', 'day_of_week_sin', 'day_of_week_cos',
-                    'cycle_phase', 'cycle_position',
-
-                    # Price action patterns
-                    'relative_candle_size', 'candle_body_ratio', 'gap',
-
-                    # Order flow
-                    'spread_pct', 'close_vwap_diff',
-
-                    # Adaptive volatility features
-                    'vol_norm_close_change', 'vol_norm_momentum'
+                    # Market Microstructure (2 features)
+                    'high_low_spread',
+                    'volume_imbalance',
+                    
+                    # MACD for momentum (1 feature)
+                    'macd_histogram'
                 ],
                 "indicators_to_compute": [
-                    "ema_9", "ema_21", "ema_50", "sma_200",
-                    "macd_12_26", "macd_signal_12_26_9", "macd_histogram_12_26_9", "adx_14", "plus_di_14",
-                    "minus_di_14",
-                    "rsi_14", "bb_middle_20", "bb_upper_20", "bb_lower_20", "bb_width_20",
-                    "atr_14", "obv", "cmf_20"
+                    # Only essential indicators for streamlined features
+                    "ema_9", "ema_21", "sma_50", "adx_14", "rsi_14"
                 ],
                 "ema_short_period": 9,
                 "ema_medium_period": 21,
@@ -116,83 +102,80 @@ class Config:
             },
             "risk": {
                 "initial_capital": 10000.0,
-                "base_risk_per_trade": 0.015,
-                "max_risk_per_trade": 0.025,
-                "min_risk_per_trade": 0.008,
-                "max_portfolio_risk": 0.20,
-                "max_drawdown_percent": 0.20,
-                "kelly_fraction": 0.5,
+                # OPTIMIZED: Much more conservative risk after -18% loss
+                "base_risk_per_trade": 0.008,  # Halved from 1.5% to 0.8%
+                "max_risk_per_trade": 0.015,   # Reduced from 2.5% to 1.5%
+                "min_risk_per_trade": 0.005,   # More conservative minimum
+                "max_portfolio_risk": 0.12,    # Reduced from 20% to 12%
+                "max_drawdown_percent": 0.15,  # Tighter drawdown limit (was 25%)
+                
+                # OPTIMIZED: More conservative Kelly and position sizing
+                "kelly_fraction": 0.3,         # Reduced from 0.5 to 0.3
                 "use_adaptive_kelly": True,
                 "volatility_scaling": True,
                 "momentum_scaling": True,
                 "confidence_scaling": True,
-                "streak_sensitivity": 0.12,
-                "equity_growth_factor": 0.85,
-                "drawdown_risk_factor": 1.5,
-                "recovery_factor": 0.6,
-                "max_correlation_risk": 0.12,
-                "max_single_exposure": 0.40,
-                "min_hours_between_trades": 1.0,
-                "trade_time_decay": 3.0,
-                "ranging_position_reduction": 0.6,
-                "regime_adjustment_frequency": 50,
-                "trend_threshold": 25,
-                "max_trades_per_day": 24,
-                "min_trade_size_usd": 25.0,
+                "streak_sensitivity": 0.15,    # More sensitive to losing streaks
+                "equity_growth_factor": 0.75,  # More conservative
+                "drawdown_risk_factor": 2.0,   # Higher penalty for drawdowns
+                "recovery_factor": 0.4,        # More conservative recovery
+                
+                # OPTIMIZED: Stricter trade limits after 423 trades analysis
+                "max_correlation_risk": 0.08,  # Lower correlation risk
+                "max_single_exposure": 0.25,   # Reduced from 40% to 25%
+                "min_hours_between_trades": 2.0,  # Force longer gaps (was 1.0h)
+                "trade_time_decay": 2.0,       # Faster time decay
+                "ranging_position_reduction": 0.4,  # Much smaller positions in ranging
+                "regime_adjustment_frequency": 30,  # More frequent adjustments
+                "trend_threshold": 30,         # Higher trend requirement
+                "max_trades_per_day": 8,       # Much stricter (was 24)
+                "min_trade_size_usd": 50.0,    # Higher minimum trade size
                 "min_trade_size_btc": 0.0003,
                 "emergency_stop_buffer": 0.002
             },
-            "exit": {
-                "base_atr_multiplier": 3.6,  # Increased from 3.0
+            "exit_strategy": {
+                # OPTIMIZED: Tighter stops to prevent large losses (-$220 worst trade)
+                "base_stop_atr_multiplier": 1.5,  # Tighter than 2.0x to limit damage
+                "regime_stop_adjustments": {
+                    "volatile": 1.4,      # Wider stops in volatile markets  
+                    "trending": 0.7,      # Much tighter in trending - trend should protect
+                    "ranging": 1.1,       # Tighter in ranging markets (92% of trades!)
+                    "neutral": 0.9,       # Tighter for neutral (main problem area)
+                    "strong_uptrend": 0.6,  # Very tight in strong trends
+                    "strong_downtrend": 0.6
+                },
+                
+                # OPTIMIZED: Earlier profit taking to capture wins before reversals
+                "profit_target_1_atr": 1.2,  # Faster first target - capture early profits
+                "profit_target_2_atr": 2.5,  # Reasonable second target
+                "profit_target_3_atr": 4.0,  # More conservative third target (was 6x)
+                
+                # OPTIMIZED: Take more profits early, less late
+                "target_1_exit_size": 0.6,  # Exit 60% at first target (was 50%)
+                "target_2_exit_size": 0.3,  # Exit 30% at second target
+                "target_3_exit_size": 0.1,  # Only 10% rides to final target (was 20%)
+                
+                # Trailing Stop System
+                "trailing_start_atr": 1.0,   # Start trailing after 1x ATR profit
+                "trailing_distance_atr": 1.5, # Trail at 1.5x ATR distance
+                
+                # Time-Based Exits  
+                "max_hold_hours": 48,        # Maximum hold: 48 hours
+                "flat_position_hours": 24,   # Reduce if flat after 24 hours
+                
+                # Market Condition Exits
+                "enable_regime_change_exit": True,
+                "volatility_spike_threshold": 2.5,  # Exit if vol spikes 2.5x
+                
+                # Risk Management
+                "min_reward_risk_ratio": 2.0,  # Target minimum 2:1 R:R
+                "max_adverse_excursion_limit": 0.08,  # 8% max adverse move
+                
+                # Legacy compatibility (keeping old parameters)
                 "enable_dynamic_trailing": True,
-                "trailing_activation_threshold": 0.015,  # Increased from 0.01
-                "enable_partial_exits": True,
-                "partial_exit_levels": 4,
+                "enable_partial_exits": True, 
                 "time_based_exits": True,
-                "max_trade_duration_hours": 24.0,
-                "rsi_extreme_exit": True,
-                "rsi_overbought": 75,
-                "rsi_oversold": 25,
-                "macd_reversal_exit": True,
-                "enable_early_loss_exit": True,
-                "early_loss_threshold": -0.018,  # Changed from -0.012 for more breathing room
-                "early_loss_time": 3.0,  # Increased from 2.5
-                "enable_quick_profit_exit": True,
-                "quick_profit_threshold": 0.008,  # Increased from 0.006
-                "min_holding_time": 0.4,  # Increased from 0.3
-                "enable_stagnant_exit": True,
-                "stagnant_threshold": 0.004,  # Increased from 0.003
-                "stagnant_time": 3.5,  # Increased from 3.0
-                "enable_trailing_take_profit": True,
-                "trailing_tp_activation_ratio": 0.5,  # When to start trailing (50% of avg profitable duration)
-                "trailing_tp_atr_multiplier": 1.3,  # Tighter ATR multiplier for take profit trailing
-                "min_stop_percent": 0.015,  # 1.5% minimum stop distance
-                "enable_volatility_tp_scaling": True,
-                "volatility_tp_factors": {
-                    "low": 0.95,    # 5% lower targets in low volatility
-                    "medium": 1.0,  # Base level
-                    "high": 1.3,    # 30% higher targets in high volatility (increased from 1.2)
-                    "extreme": 1.6  # 60% higher targets in extreme volatility (increased from 1.4)
-                },
-                "enable_emergency_stop_adjustment": True,
-                "atr_multiplier_map": {
-                    "strong_uptrend": {"long": 3.8, "short": 3.2},  # All increased
-                    "uptrend": {"long": 3.5, "short": 3.0},
-                    "neutral": {"long": 3.2, "short": 3.2},
-                    "downtrend": {"long": 3.0, "short": 3.5},
-                    "strong_downtrend": {"long": 3.2, "short": 3.8},
-                    "ranging_at_support": {"long": 3.0, "short": 3.6},
-                    "ranging_at_resistance": {"long": 3.6, "short": 3.0},
-                    "volatile": {"long": 4.3, "short": 4.3}  # Significantly increased for volatile markets
-                },
-                "profit_targets": {
-                    "micro": 0.005,    # Increased from 0.003
-                    "quick": 0.0075,   # Increased from 0.006
-                    "small": 0.012,    # Increased from 0.01
-                    "medium": 0.018,   # Increased from 0.015
-                    "large": 0.030,    # Increased from 0.025
-                    "extended": 0.048  # Increased from 0.04
-                }
+                "max_trade_duration_hours": 48.0
             },
             "time_management": {
                 "min_profit_taking_hours": 1.0,
@@ -203,20 +186,20 @@ class Config:
                 "medium_term_lookback": 6,
                 "long_term_lookback": 12,
                 "profit_targets": {
-                    "micro": 0.005,    # Increased from 0.003
-                    "quick": 0.0075,   # Increased from 0.006
-                    "small": 0.012,    # Increased from 0.01
-                    "medium": 0.018,   # Increased from 0.015
-                    "large": 0.030,    # Increased from 0.025
+                    "micro": 0.005,  # Increased from 0.003
+                    "quick": 0.0075,  # Increased from 0.006
+                    "small": 0.012,  # Increased from 0.01
+                    "medium": 0.018,  # Increased from 0.015
+                    "large": 0.030,  # Increased from 0.025
                     "extended": 0.048  # Increased from 0.04
                 },
                 "max_position_age": {
-                    "neutral": 24.0,                # Increased from 18.0
-                    "uptrend": 18.0,                # Increased from 14.0
-                    "downtrend": 16.0,              # Increased from 12.0
-                    "ranging_at_support": 10.0,     # Increased from 8.0
-                    "ranging_at_resistance": 6.0,   # Increased from 4.0
-                    "volatile": 10.0                # Increased from 8.0
+                    "neutral": 24.0,  # Increased from 18.0
+                    "uptrend": 18.0,  # Increased from 14.0
+                    "downtrend": 16.0,  # Increased from 12.0
+                    "ranging_at_support": 10.0,  # Increased from 8.0
+                    "ranging_at_resistance": 6.0,  # Increased from 4.0
+                    "volatile": 10.0  # Increased from 8.0
                 },
                 "phase_exit_preferences": {
                     "neutral": {
@@ -240,43 +223,53 @@ class Config:
                 "trailing_activation_threshold": 0.015  # Increased from 0.01
             },
             "signal": {
-                "confidence_threshold": 0.001,
-                "ranging_confidence_threshold": 0.002,
-                "strong_signal_threshold": 0.07,
+                # FIXED: Reasonable thresholds to allow trading while maintaining quality
+                "confidence_threshold": 0.0008,  # Reasonable threshold for signal generation
+                "ranging_confidence_threshold": 0.0015,  # Slightly higher for ranging markets
+                "strong_signal_threshold": 0.12,  # Higher threshold - stronger signals only
                 "atr_multiplier_sl": 2.2,
                 "use_regime_filter": True,
                 "use_volatility_filter": True,
-                "rsi_overbought": 75,
-                "rsi_oversold": 25,
-                "return_threshold": 0.00015,
-                "trending_threshold": 26,
-                "ranging_threshold": 18
+                
+                # OPTIMIZED: Stricter RSI filters to avoid overextended moves
+                "rsi_overbought": 70,  # More conservative (was 75)
+                "rsi_oversold": 30,   # More conservative (was 25)
+                
+                # OPTIMIZED: Higher return threshold for quality moves
+                "return_threshold": 0.0008,  # Much higher quality requirement
+                "trending_threshold": 30,    # Higher threshold for trend detection
+                "ranging_threshold": 15,     # Lower threshold - stricter ranging detection
+                
+                # NEW: Market condition filters
+                "min_volume_ratio": 1.5,     # Require above-average volume
+                "max_neutral_trades_pct": 0.3,  # Limit neutral market trades to 30%
+                "volatility_percentile_min": 0.4,  # Avoid low volatility periods
             },
             "model": {
-                "sequence_length": 72,
-                "horizon": 16,
+                "sequence_length": 48,  # Reduced from 72 - focus on recent data
+                "horizon": 8,           # Reduced from 16 - shorter prediction horizon
                 "normalize_method": "feature_specific",
-                "train_ratio": 0.7,
-                "epochs": 24,
-                "batch_size": 128,
-                "use_mixed_precision": True,
-                "early_stopping_patience": 12,
-                "dropout_rate": 0.35,
-                "recurrent_dropout": 0.25,
-                "recurrent_units": 32,
-                "dense_units1": 48,
-                "dense_units2": 24,
-                "l2_reg": 1e-3,
-                "attention_enabled": True,
-                "initial_learning_rate": 5e-5,
-                "lr_decay_factor": 0.85,
-                "direction_loss_weight": 1.0,
-                "clipnorm": 1.0,
+                "train_ratio": 0.8,    # Increased from 0.7 - more training data
+                "epochs": 15,          # Further reduced to prevent overfitting
+                "batch_size": 32,      # Smaller batch size for better generalization
+                "use_mixed_precision": False,  # Disable for stability
+                "early_stopping_patience": 4,  # Even more aggressive early stopping
+                "dropout_rate": 0.2,   # Reduced dropout - model was too restricted
+                "recurrent_dropout": 0.1,  # Much lower recurrent dropout
+                "recurrent_units": 32, # Back to 32 - need some complexity
+                "dense_units1": 24,    # Increased slightly from 16
+                "dense_units2": 12,    # Increased slightly from 8
+                "l2_reg": 5e-4,        # Reduced regularization
+                "attention_enabled": False,  # Keep disabled for simplicity
+                "initial_learning_rate": 5e-5,  # Lower learning rate for stability
+                "lr_decay_factor": 0.85,  # More aggressive decay
+                "direction_loss_weight": 2.0,  # Emphasize direction prediction
+                "clipnorm": 0.5,       # Tighter gradient clipping
                 "model_path": "path/to/results_dir/models/best_model.keras",
                 "transformer_params": {
-                    "projection_size": 48,
-                    "transformer_heads": 3,
-                    "transformer_dropout": 0.4,
+                    "projection_size": 12,  # Match feature count
+                    "transformer_heads": 2,  # Reduced
+                    "transformer_dropout": 0.3,
                     "layers": 1
                 },
                 "data_augmentation": {
@@ -286,7 +279,7 @@ class Config:
                     "mask_probability": 0.2
                 },
                 "risk_management": {
-                    "max_drawdown_threshold": 0.15,
+                    "max_drawdown_threshold": 0.25,
                     "consecutive_loss_scale": 0.85,
                     "max_position_size": 0.5,
                     "max_trades_per_day": 5,
